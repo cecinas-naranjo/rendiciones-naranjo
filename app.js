@@ -118,7 +118,7 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 
 const TABS = {
   VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
-  BODEGA: [['despacho', 'Despacho', 'box'], ['CONSUMO', 'Consumo', 'store']],
+  BODEGA: [['despacho', 'Despacho', 'box']],
   RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Folios'], ['despacho', 'Kilos'], ['COBRANZA', 'Cobranza'],
     ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
 };
@@ -166,7 +166,8 @@ async function iniciar() {
   S.fecha = S.fecha || S.cat.hoy;
   const tabs = TABS[S.sess.rol] || [];
   S.tab = S.tab && tabs.some(t => t[0] === S.tab) ? S.tab : tabs[0][0];
-  const abajo = tabs.length <= 4;
+  const unica = tabs.length === 1;          // bodega: una sola pantalla, sin menú
+  const abajo = !unica && tabs.length <= 4;
   document.body.classList.toggle('has-bottom', abajo);
   app.innerHTML = `<header>
       <div class="hbar"><div class="brand"><img src="logo.png" alt=""><div><b>Naranjo</b><small>${esc(S.sess.nombre)}</small></div></div>
@@ -174,7 +175,7 @@ async function iniciar() {
         <div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha">
           <button id="next" aria-label="Día siguiente">›</button></div>
         <button class="icon-btn" id="out">Salir</button></div>
-      ${abajo ? '<div class="progress" aria-hidden="true"><i id="prog"></i></div>' : `<nav class="top" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${t[1]}</button>`).join('')}</nav>`}
+      ${abajo || unica ? '<div class="progress" aria-hidden="true"><i id="prog"></i></div>' : `<nav class="top" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${t[1]}</button>`).join('')}</nav>`}
     </header>
     <main id="main"></main>
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
@@ -183,7 +184,7 @@ async function iniciar() {
   $('#fecha').onchange = e => e.target.value && cambiarFecha(e.target.value);
   $('#prev').onclick = () => cambiarFecha(sumarDias(S.fecha, -1));
   $('#next').onclick = () => cambiarFecha(sumarDias(S.fecha, 1));
-  $('#nav').onclick = e => { const b = e.target.closest('button'); if (b) ir(b.dataset.t); };
+  if ($('#nav')) $('#nav').onclick = e => { const b = e.target.closest('button'); if (b) ir(b.dataset.t); };
   ir(S.tab);
 }
 function ir(t) {
