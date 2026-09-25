@@ -14,14 +14,17 @@ const CFG = {
   TZ: 'America/Santiago',
   // Carpeta "Resumen Rendición" en el Drive de la empresa (donde se guardan las rendiciones cerradas)
   RENDICIONES_FOLDER_ID: '1Osm3OciOJQFgvuFil4s9ZfXd4XUMni3B',
-  APP_NAME: 'Rendiciones Naranjo'
+  APP_NAME: 'Rendiciones Naranjo',
+  // Diferencia de kilos (vendido según bodega vs facturado) desde la cual se alerta, por vendedor
+  TOLERANCIA_KG: 1
 };
 
 const SCHEMA = {
   USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo'],
-  PRODUCTOS:   ['codigo','nombre','unidad','tipo','orden','activo'],
+  PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo'],
   DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado'],
   DOCUMENTOS:  ['folio_key','fecha','tipo','folio','rut','cliente','total','condicion_dte','terminal','vendedor','estado','importado'],
+  VENTAS_DETALLE: ['linea_key','fecha','folio_key','tipo','folio','codigo','producto','cantidad','precio','total','neto','terminal','vendedor','categoria','pago','es_guia','importado'],
   PAGOS:       ['id','folio_key','fecha','vendedor','forma','banco','monto','referencia','registrado_por','registrado'],
   DESCUENTOS:  ['id','folio_key','fecha','vendedor','cliente','monto','motivo','estado','solicitado_por','autorizado_por','resuelto'],
   COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado'],
@@ -39,18 +42,61 @@ const ROLES_AUTORIZAN = ['ADMIN','SUPERVISOR'];
 
 /* ============================ SETUP ============================ */
 
+// Lista de precios 2026. Códigos numéricos = códigos de Mi DTE. Los que empiezan con "?" aún no se conocen:
+// se completan solos la primera vez que aparecen en un "Informe de ventas" (se busca por nombre).
+const PRODUCTOS_BASE = [
+  ['1','LONGANIZA','PROPIOS','KG',6390], ['1.1','LONGANIZA LARGA','PROPIOS','KG',6390],
+  ['3','PATE DE CERDO','PROPIOS','KG',6390], ['5','ARROLLADO','PROPIOS','KG',7390],
+  ['5.1','ARROLLADO CON CUERO','PROPIOS','KG',''], ['10','ARROLLADO C/AJI','PROPIOS','KG',7490],
+  ['6','QUESO DE CABEZA','PROPIOS','KG',6590], ['7','SALCHICHON CERVECERO','PROPIOS','KG',6690],
+  ['8','MORTADELA LISA','PROPIOS','KG',5590], ['9','MORTADELA JAMONADA','PROPIOS','KG',6190],
+  ['11','JAMON SANDWICH','PROPIOS','KG',6090], ['?CAZUELA','CAZUELA AHUMADA','PROPIOS','KG',4300],
+  ['?DESMECH','CARNE DE VACUNO DESMECHADO CAMESTRE 1KG','CARNICOS','UN',12531],
+  ['?MOLIDA','CARNE MOLIDA VACUNO 500G - 10 PORCIENTO','CARNICOS','UN',4553],
+  ['?BBQ','CERDO BBQ DESMECHADA 1KG','CARNICOS','UN',12531],
+  ['?CHULETA','CHULETA VETADA','CARNICOS','KG',4190],
+  ['?COSTILLAR','COSTILLAR DE CERDO AHUMADO ENV.','CARNICOS','UN',7000],
+  ['?ARVEJAS','ARVEJAS 10X200G M. VERDE','CONGELADOS','UN',6139],
+  ['?CHOCLO','CHOCLO 10X200G M. VERDE','CONGELADOS','UN',6186],
+  ['?CHOCLOT','CHOCLO TROCITO M. VERDE 20X180G','CONGELADOS','UN',16135],
+  ['?EMPQG1','EMP MED LUNA QUESO GRANEL 1X3KG','CONGELADOS','UN',11345],
+  ['?EMPQG3','EMP MED LUNA QUESO GRANEL 3X3 9KG','CONGELADOS','UN',34034],
+  ['?EMPPINO','EMP PINO VACUNO MED LUNA 8X600G BOLSA','CONGELADOS','UN',23990],
+  ['?EMPQ14','EMP QUESO 14X24X25G ESTUCHE','CONGELADOS','UN',36602],
+  ['?EMPQ1','EMP QUESO 1X24X25G ESTUCHE','CONGELADOS','UN',2614],
+  ['?EMPQML','EMP QUESO MED LUNA 8X600G','CONGELADOS','UN',21301],
+  ['?PAPAS','PAPAS PRE FRITAS 4X2.5KG SUPER CAPITAN','CONGELADOS','UN',20230],
+  ['?PCHOCLO','PASTA CHOCLO 1 KILO','CONGELADOS','UN',2939],
+  ['?POROTO','POROTO VERDE 10X150G M. VERDE','CONGELADOS','UN',6389],
+  ['?PRIMAV','PRIMAVERA 10X200G M. VERDE','CONGELADOS','UN',6153],
+  ['?SOFRITO','SOFRITO CON AJO 12X150G M. VERDE','CONGELADOS','UN',7670],
+  ['?SOPA12','SOPAIPILLA 20X12X420G','CONGELADOS','UN',31868],
+  ['?SOPA48','SOPAIPILLA 20X48X500G','CONGELADOS','UN',38056],
+  ['?MANTEQ','MANTEQUILLA PAN. HUILCO 5X250G','LACTEOS','UN',13108],
+  ['?GAUDA','Q. LAM GAUDA 3X500G HUILCO','LACTEOS','UN',12271],
+  ['?MANTEC','Q. LAM MANTECOSO 3X500G HUILCO','LACTEOS','UN',13164]
+];
+
+/** Crea o actualiza las hojas. Se puede ejecutar de nuevo sin perder datos. */
 function setup() {
   const ss = SpreadsheetApp.getActive();
   Object.keys(SCHEMA).forEach(name => {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
-    if (sh.getLastRow() === 0) {
-      sh.getRange(1, 1, 1, SCHEMA[name].length).setValues([SCHEMA[name]]).setFontWeight('bold');
+    const head = SCHEMA[name];
+    const actual = sh.getLastRow() ? sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0] : [];
+    const igual = head.every((h, i) => actual[i] === h);
+    if (!igual) {
+      // PRODUCTOS cambió de estructura en la v2: se reemplaza por la lista de precios 2026
+      if (name === 'PRODUCTOS' || sh.getLastRow() <= 1) sh.clear();
+      sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
       sh.setFrozenRows(1);
     }
   });
-  // Folios y RUT como texto para no perder ceros ni formatos
   ss.getSheetByName('DOCUMENTOS').getRange('A:E').setNumberFormat('@');
+  ss.getSheetByName('VENTAS_DETALLE').getRange('A:F').setNumberFormat('@');
+  ss.getSheetByName('PRODUCTOS').getRange('A:A').setNumberFormat('@');
+  ss.getSheetByName('USUARIOS').getRange('D:E').setNumberFormat('@');
 
   const us = ss.getSheetByName('USUARIOS');
   if (us.getLastRow() === 1) {
@@ -64,25 +110,18 @@ function setup() {
       ['MUÑOZ','Muñoz','VENDEDOR','1004','NARANJOT7',true],
       ['GUTIERREZ','Gutiérrez','VENDEDOR','1005','NARANJOT9',true],
       ['DISTRIBUIDOR','Distribuidor','VENDEDOR','1006','SUPERMERCADO',true],
-      ['SALA','Venta en bodega (consumo)','VENDEDOR','1007','',true]
+      ['SALA','Venta en bodega','VENDEDOR','1007','BODEGA',true]
     ]);
-    us.getRange('D:D').setNumberFormat('@');
+  } else {
+    const sala = read_('USUARIOS').find(u => u.usuario === 'SALA');
+    if (sala && !sala.terminales) { sala.nombre = 'Venta en bodega'; sala.terminales = 'BODEGA'; updateRow_('USUARIOS', sala._row, sala); }
   }
   const ps = ss.getSheetByName('PRODUCTOS');
   if (ps.getLastRow() === 1) {
-    const base = [
-      ['LONG','Longaniza','KG','ELABORADO'],['LONGC','Longaniza casera','KG','ELABORADO'],
-      ['PRIE','Prieta','KG','ELABORADO'],['CHOR','Chorizo','KG','ELABORADO'],
-      ['VIEN','Vienesa','KG','ELABORADO'],['MORL','Mortadela lisa','KG','ELABORADO'],
-      ['MORJ','Mortadela jamonada','KG','ELABORADO'],['QCAB','Queso de cabeza','KG','ELABORADO'],
-      ['ARRH','Arrollado huaso','KG','ELABORADO'],['PATE','Paté','KG','ELABORADO'],
-      ['SALC','Salchichón cervecero','KG','ELABORADO'],['JAMO','Jamón','KG','ELABORADO'],
-      ['CONG','Congelados (reventa)','UN','REVENTA']
-    ].map((r, i) => r.concat([i + 1, true]));
-    ps.getRange(2, 1, base.length, 6).setValues(base);
+    const base = PRODUCTOS_BASE.map((r, i) => r.concat([i + 1, true]));
+    ps.getRange(2, 1, base.length, SCHEMA.PRODUCTOS.length).setValues(base);
   }
-  const d = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
-  if (d && ss.getSheets().length > 1) ss.deleteSheet(d);
+  ['Hoja 1','Sheet1'].forEach(n => { const d = ss.getSheetByName(n); if (d && ss.getSheets().length > 1) ss.deleteSheet(d); });
   return 'Listo';
 }
 
@@ -91,7 +130,7 @@ function setup() {
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
   listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
-  misDocumentos, guardarDetalle, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
+  misDocumentos, guardarDetalle, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
   borrarMov, getResumen, cerrarRendicion, reabrirRendicion, historial
 };
 
@@ -119,9 +158,21 @@ function uid_() { return Utilities.getUuid().slice(0, 8); }
 function num_(v) {
   if (typeof v === 'number') return v;
   let s = String(v == null ? '' : v).replace(/[^\d.,-]/g, '');
-  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); // 1.234.567,5
+  // Separador de miles solo si es inequívoco: 1.234.567 o 1.234,5. "3.135" se lee como 3,135 (kilos).
+  if (/^-?\d{1,3}(\.\d{3}){2,}(,\d+)?$/.test(s) || /^-?\d{1,3}(\.\d{3})+,\d+$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
   else s = s.replace(/,/g, '.');
   const n = Number(s); return isNaN(n) ? 0 : n;
+}
+
+// "1.0" → "1", "1.1" → "1.1", "abc" → "ABC"
+function codeKey_(c) { const s = String(c == null ? '' : c).trim(); const n = Number(s.replace(',', '.')); return s !== '' && !isNaN(n) ? String(n) : s.toUpperCase(); }
+function normTxt_(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim(); }
+function esGuia_(tipo) { return /gu[ií]a/i.test(String(tipo)); }
+function folioKey_(tipo, folio) { return String(tipo).normalize('NFD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() + '-' + String(folio).trim(); }
+function mapaTerminales_() {
+  const term = {};
+  vendedores_().forEach(v => String(v.terminales || '').split(',').map(x => x.trim().toUpperCase()).filter(String).forEach(t => term[t] = v.usuario));
+  return term;
 }
 
 function normFecha_(v) {
@@ -223,7 +274,7 @@ function catalogo(token) {
     hoy: hoy_(),
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE')
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
-      .map(p => ({ codigo: p.codigo, nombre: p.nombre, unidad: p.unidad, tipo: p.tipo })),
+      .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio) })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales })),
     formas: FORMAS, bancos: BANCOS
   };
@@ -241,17 +292,29 @@ function assertAbierta_(fecha) {
 
 function getDespacho(token, fecha, vendedor) {
   auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
-  return byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor)
-    .map(r => ({ codigo: r.codigo, salida: r.salida, retorno: r.retorno, obs: r.obs }));
+  const det = byFecha_('VENTAS_DETALLE', fecha).filter(r => r.vendedor === vendedor);
+  const facturado = {}, guias = {};
+  det.forEach(r => {
+    const c = codeKey_(r.codigo);
+    if (esGuiaFlag_(r.es_guia)) { (guias[r.folio] = guias[r.folio] || {})[c] = ((guias[r.folio] || {})[c] || 0) + num_(r.cantidad); }
+    else facturado[c] = (facturado[c] || 0) + num_(r.cantidad);
+  });
+  return {
+    filas: byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor)
+      .map(r => ({ codigo: codeKey_(r.codigo), salida: r.salida, retorno: r.retorno, obs: r.obs })),
+    facturado, hayDetalle: det.length > 0,
+    guias: Object.keys(guias).map(f => ({ folio: f, lineas: guias[f] }))
+  };
 }
+function esGuiaFlag_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
 
 function saveDespacho(token, fecha, vendedor, filas) {
   const u = auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
   assertAbierta_(fecha);
   return withLock_(() => {
-    const prods = {}; read_('PRODUCTOS').forEach(p => prods[p.codigo] = p);
+    const prods = {}; read_('PRODUCTOS').forEach(p => prods[codeKey_(p.codigo)] = p);
     const exist = byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor);
-    const map = {}; exist.forEach(r => map[r.codigo] = r);
+    const map = {}; exist.forEach(r => map[codeKey_(r.codigo)] = r);
     const nuevos = [];
     filas.forEach(f => {
       const salida = f.salida === '' ? '' : num_(f.salida);
@@ -281,21 +344,19 @@ function saveDespacho(token, fecha, vendedor, filas) {
 function importarDTE(token, filas) {
   auth_(token, ['RENDICION','SUPERVISOR']);
   return withLock_(() => {
-    const term = {};
-    vendedores_().forEach(v => String(v.terminales || '').split(',').map(s => s.trim().toUpperCase())
-      .filter(String).forEach(t => term[t] = v.usuario));
+    const term = mapaTerminales_();
     const existentes = {}; read_('DOCUMENTOS').forEach(d => existentes[d.folio_key] = d);
-    const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0; const fechas = {};
+    const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0; const fechas = {}, sinTerminal = {};
     filas.forEach(f => {
       const tipo = String(f.Documento || '').trim();
       const folio = String(f.Folio || '').trim();
       if (!tipo || !folio) return;
-      if (/gu[ií]a/i.test(tipo)) { guias++; return; }         // guías de despacho internas: no son venta
-      const key = tipo.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() + '-' + folio;
+      if (esGuia_(tipo)) { guias++; return; }         // guías de despacho internas: no son venta
+      const key = folioKey_(tipo, folio);
       if (existentes[key]) { repetidos++; return; }
       const terminal = String(f['Emitido en'] || '').trim().toUpperCase();
       const vendedor = term[terminal] || '';
-      if (!vendedor) sinVendedor++;
+      if (!vendedor) { sinVendedor++; sinTerminal[terminal] = true; }
       const fecha = normFecha_(f.Fecha);
       fechas[fecha] = true;
       const cond = String(f.Condicion || '').trim();
@@ -305,7 +366,7 @@ function importarDTE(token, filas) {
       existentes[key] = true;
     });
     append_('DOCUMENTOS', nuevos);
-    return { importados: nuevos.length, guias, repetidos, sinVendedor, fechas: Object.keys(fechas).sort() };
+    return { importados: nuevos.length, guias, repetidos, sinVendedor, terminalesSinAsignar: Object.keys(sinTerminal), fechas: Object.keys(fechas).sort() };
   });
 }
 
@@ -315,6 +376,96 @@ function asignarVendedor(token, folio_key, vendedor) {
     const d = read_('DOCUMENTOS').find(x => x.folio_key === folio_key);
     if (!d) throw new Error('Documento no encontrado');
     d.vendedor = vendedor; updateRow_('DOCUMENTOS', d._row, d); return true;
+  });
+}
+
+/* ============================ IMPORTAR DETALLE POR PRODUCTO ============================ */
+
+/**
+ * "Informe de ventas" de Mi DTE (una fila por producto de cada documento). Columnas:
+ * Codigo, Descripcion, Cantidad, Precio, Nombre (tipo doc), Folio, Razon social, Pago, Equipo, Fecha, TOTAL, NETO, PRODUCTOS
+ * Las guías de despacho se guardan marcadas (es_guia) porque son la carga que sale con el vendedor.
+ */
+function importarDetalle(token, filas) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => {
+    const term = mapaTerminales_();
+    const yaHay = {}; read_('VENTAS_DETALLE').forEach(r => yaHay[r.folio_key] = true);
+    const prods = read_('PRODUCTOS');
+    const porCodigo = {}, porNombre = {};
+    prods.forEach(p => { porCodigo[codeKey_(p.codigo)] = p; porNombre[normTxt_(p.nombre)] = p; });
+    const nuevos = [], nuevosProd = {}, fechas = {}, sinTerminal = {};
+    let lineas = 0, guias = 0, omitidas = 0;
+    const contador = {};
+    filas.forEach(f => {
+      const tipo = String(f.Nombre || '').trim(), folio = String(f.Folio || '').trim();
+      const desc = String(f.Descripcion || '').trim();
+      if (!tipo || !folio || !desc) return;
+      const fk = folioKey_(tipo, folio);
+      if (yaHay[fk]) { omitidas++; return; }             // ese documento ya se importó antes
+      let codigo = codeKey_(f.Codigo);
+      let p = porCodigo[codigo];
+      if (!p) {
+        const pn = porNombre[normTxt_(desc)];
+        if (pn && String(pn.codigo).charAt(0) === '?') {  // completar el código de Mi DTE que faltaba
+          delete porCodigo[codeKey_(pn.codigo)]; pn.codigo = codigo; porCodigo[codigo] = pn;
+          updateRow_('PRODUCTOS', pn._row, pn);
+          p = pn;
+        } else if (!nuevosProd[codigo]) {
+          nuevosProd[codigo] = { codigo, nombre: desc, categoria: 'REVISAR', unidad: 'KG', precio: num_(f.Precio), orden: 999, activo: false };
+        }
+      }
+      const terminal = String(f.Equipo || '').trim().toUpperCase();
+      const vendedor = term[terminal] || '';
+      if (!vendedor && !esGuia_(tipo)) sinTerminal[terminal] = true;
+      const fecha = normFecha_(f.Fecha); fechas[fecha] = true;
+      contador[fk] = (contador[fk] || 0) + 1;
+      const g = esGuia_(tipo); g ? guias++ : lineas++;
+      nuevos.push({ linea_key: fk + '#' + contador[fk], fecha, folio_key: fk, tipo, folio, codigo,
+        producto: p ? p.nombre : desc, cantidad: num_(f.Cantidad), precio: num_(f.Precio), total: Math.round(num_(f.TOTAL)),
+        neto: Math.round(num_(f.NETO)), terminal, vendedor, categoria: String(f.PRODUCTOS || '').trim(),
+        pago: String(f.Pago || '').trim(), es_guia: g, importado: now_() });
+    });
+    append_('VENTAS_DETALLE', nuevos);
+    const np = Object.keys(nuevosProd).map(k => nuevosProd[k]);
+    append_('PRODUCTOS', np);
+    return { lineas, guias, omitidas, productosNuevos: np.map(p => p.nombre), terminalesSinAsignar: Object.keys(sinTerminal),
+      fechas: Object.keys(fechas).sort() };
+  });
+}
+
+/* ============================ TERMINALES DE MI DTE ============================ */
+
+function listarTerminales(token) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  const term = mapaTerminales_(), vistos = {};
+  read_('DOCUMENTOS').forEach(d => { if (d.terminal) vistos[d.terminal] = (vistos[d.terminal] || 0) + 1; });
+  read_('VENTAS_DETALLE').forEach(d => { if (d.terminal && !vistos[d.terminal]) vistos[d.terminal] = 0; });
+  Object.keys(term).forEach(t => { if (vistos[t] === undefined) vistos[t] = 0; });
+  return Object.keys(vistos).sort().map(t => ({ terminal: t, vendedor: term[t] || '', documentos: vistos[t] }));
+}
+
+/** Asigna (o quita, con vendedor vacío) un terminal a un vendedor, y reasigna los documentos abiertos de ese terminal. */
+function asignarTerminal(token, terminal, vendedor) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  terminal = String(terminal).trim().toUpperCase();
+  return withLock_(() => {
+    read_('USUARIOS').forEach(u => {
+      const lista = String(u.terminales || '').split(',').map(x => x.trim().toUpperCase()).filter(String);
+      const tiene = lista.indexOf(terminal) >= 0;
+      if (u.usuario === vendedor && !tiene) lista.push(terminal);
+      else if (u.usuario !== vendedor && tiene) lista.splice(lista.indexOf(terminal), 1);
+      else return;
+      u.terminales = lista.join(','); updateRow_('USUARIOS', u._row, u);
+    });
+    const cerradas = {}; read_('RENDICIONES').filter(r => r.estado === 'CERRADA').forEach(r => cerradas[r.fecha] = true);
+    let n = 0;
+    ['DOCUMENTOS', 'VENTAS_DETALLE'].forEach(tabla => read_(tabla).forEach(d => {
+      if (d.terminal === terminal && !cerradas[d.fecha] && d.vendedor !== vendedor) {
+        d.vendedor = vendedor; updateRow_(tabla, d._row, d); if (tabla === 'DOCUMENTOS') n++;
+      }
+    }));
+    return { documentosReasignados: n };
   });
 }
 
@@ -448,6 +599,9 @@ function borrarMov(token, tabla, id) {
 function resumen_(fecha) {
   const docs = docsDelDia_(fecha);
   const desp = byFecha_('DESPACHO', fecha);
+  const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
+  const unidad = {}; read_('PRODUCTOS').forEach(p => unidad[codeKey_(p.codigo)] = p.unidad);
+  const hayDetalle = detV.length > 0;
   const cob = byFecha_('COBRANZA', fecha), gas = byFecha_('GASTOS', fecha);
   const prov = byFecha_('PROVEEDORES', fecha), cons = byFecha_('CONSUMO', fecha);
   const vend = vendedores_().map(v => v.usuario);
@@ -475,14 +629,18 @@ function resumen_(fecha) {
       retorno: k.filter(x => x.unidad !== 'UN').reduce((a, x) => a + num_(x.retorno), 0)
     };
     tot.kilos.vendido = tot.kilos.salida - tot.kilos.retorno;
+    tot.kilos.facturado = detV.filter(x => x.vendedor === v && unidad[codeKey_(x.codigo)] !== 'UN').reduce((a, x) => a + num_(x.cantidad), 0);
+    tot.kilos.diferencia = Math.round((tot.kilos.vendido - tot.kilos.facturado) * 1000) / 1000;
     tot.sinRetorno = k.filter(x => x.salida !== '' && x.retorno === '').length;
+    // la diferencia de kilos solo se evalúa cuando ya se registró todo el retorno
+    tot.kilos.alerta = hayDetalle && tot.kilos.salida > 0 && tot.sinRetorno === 0 && Math.abs(tot.kilos.diferencia) > CFG.TOLERANCIA_KG;
     return tot;
   }).filter(t => t.documentos || t.kilos.salida || t.cobranza || t.gastos);
 
   const sinAsignar = docs.filter(d => !d.vendedor);
   const sum = (arr) => arr.reduce((a, x) => a + num_(x.monto), 0);
   return {
-    fecha, estado: estadoDia_(fecha), porVendedor,
+    fecha, estado: estadoDia_(fecha), porVendedor, hayDetalle,
     sinAsignar: sinAsignar.map(d => ({ folio_key: d.folio_key, tipo: d.tipo, folio: d.folio, cliente: d.cliente, total: d.total, terminal: d.terminal })),
     totales: {
       venta: porVendedor.reduce((a, t) => a + t.venta, 0),
@@ -495,6 +653,9 @@ function resumen_(fecha) {
       .concat(porVendedor.filter(t => t.pendientes).map(t => t.vendedor + ': ' + t.pendientes + ' folio(s) sin detallar'))
       .concat(porVendedor.filter(t => t.descPendientes).map(t => t.vendedor + ': descuentos por autorizar'))
       .concat(porVendedor.filter(t => t.sinRetorno).map(t => t.vendedor + ': falta registrar retorno de ' + t.sinRetorno + ' producto(s)'))
+      .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(1) + ' kg ' +
+        (t.kilos.diferencia > 0 ? 'salieron y no volvieron ni se facturaron' : 'facturados de más respecto a lo que salió')))
+      .concat(fecha && !hayDetalle && desp.length ? ['Falta importar el Informe de ventas (kilos por producto) para cruzar kilos'] : [])
   };
 }
 
@@ -549,9 +710,10 @@ function generarArchivo_(fecha, r) {
   const lbl = { EFECTIVO: 'EFECTIVO', TRANSFERENCIA: 'TRANSFERENCIA', DEP_EFECTIVO: 'DEP. EFECTIVO', CHEQUE: 'CHEQUE', CREDITO: 'CREDITO', NOTA_CREDITO: 'NC' };
 
   // Resumen por vendedor
-  put('RESUMEN', ['VENDEDOR','DOCS','VENTA','CONTADO','CREDITO','DESCUENTOS','EFECTIVO','TRANSFERENCIA','DEP. EFECTIVO','CHEQUE','NC','COBRANZA','GASTOS','EFECTIVO A ENTREGAR','KG SALIDA','KG RETORNO','KG VENDIDOS'],
+  put('RESUMEN', ['VENDEDOR','DOCS','VENTA','CONTADO','CREDITO','DESCUENTOS','EFECTIVO','TRANSFERENCIA','DEP. EFECTIVO','CHEQUE','NC','COBRANZA','GASTOS','EFECTIVO A ENTREGAR','KG SALIDA','KG RETORNO','KG VENDIDOS','KG FACTURADOS','DIF. KG'],
     r.porVendedor.map(t => [t.vendedor, t.documentos, t.venta, t.contado, t.credito, t.descuentos, t.EFECTIVO, t.TRANSFERENCIA,
-      t.DEP_EFECTIVO, t.CHEQUE, t.NOTA_CREDITO, t.cobranza, t.gastos, t.efectivoEntregar, t.kilos.salida, t.kilos.retorno, t.kilos.vendido]));
+      t.DEP_EFECTIVO, t.CHEQUE, t.NOTA_CREDITO, t.cobranza, t.gastos, t.efectivoEntregar, t.kilos.salida, t.kilos.retorno, t.kilos.vendido,
+      t.kilos.facturado, t.kilos.diferencia]));
 
   // Igual a la hoja "VENTA Y CREDITO" actual
   put('VENTA Y CREDITO', ['CLIENTES','DOCUMENTO','FOLIO','FECHA','MONTO','CONDICION','CONTADO','CREDITO','N.CREDITO','FORMA DE PAGO','NC CREDITOS','EFECTIVO','TRANSFERENCIA','CHEQUE','VENDEDOR','DESCUENTO'],
@@ -569,8 +731,12 @@ function generarArchivo_(fecha, r) {
       c.forma === 'EFECTIVO' ? num_(c.monto) : 0, (c.forma === 'TRANSFERENCIA' || c.forma === 'DEP_EFECTIVO') ? num_(c.monto) : 0,
       c.forma === 'CHEQUE' ? num_(c.monto) : 0, c.vendedor]));
 
-  put('KILOS', ['VENDEDOR','CODIGO','PRODUCTO','UNIDAD','SALIDA','RETORNO','VENDIDO'],
-    byFecha_('DESPACHO', fecha).map(k => [k.vendedor, k.codigo, k.producto, k.unidad, num_(k.salida), num_(k.retorno), num_(k.salida) - num_(k.retorno)]));
+  const fact = {};
+  byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)).forEach(x => {
+    const k = x.vendedor + '|' + codeKey_(x.codigo); fact[k] = (fact[k] || 0) + num_(x.cantidad); });
+  put('KILOS', ['VENDEDOR','CODIGO','PRODUCTO','UNIDAD','SALIDA','RETORNO','VENDIDO','FACTURADO','DIFERENCIA'],
+    byFecha_('DESPACHO', fecha).map(k => { const v = num_(k.salida) - num_(k.retorno), f = fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0;
+      return [k.vendedor, k.codigo, k.producto, k.unidad, num_(k.salida), num_(k.retorno), v, f, v - f]; }));
   put('PROVEEDORES', ['PROVEEDOR','DOCUMENTO','FOLIO','MONTO','FORMA','OBS'],
     byFecha_('PROVEEDORES', fecha).map(x => [x.proveedor, x.documento, x.folio, num_(x.monto), x.forma, x.obs]));
   put('CONSUMO', ['CLIENTE','FOLIO','MONTO','FORMA','OBS'],
@@ -583,8 +749,8 @@ function generarArchivo_(fecha, r) {
   const def = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
   if (def) ss.deleteSheet(def);
   ss.getSheets().forEach(s => { if (s.getName() !== 'KILOS') s.getRange('B2:Q').setNumberFormat('#,##0'); });
-  ss.getSheetByName('KILOS').getRange('E2:G').setNumberFormat('#,##0.0');
-  ss.getSheetByName('RESUMEN').getRange('O2:Q').setNumberFormat('#,##0.0');
+  ss.getSheetByName('KILOS').getRange('E2:I').setNumberFormat('#,##0.0');
+  ss.getSheetByName('RESUMEN').getRange('O2:S').setNumberFormat('#,##0.0');
   return ss.getUrl();
 }
 

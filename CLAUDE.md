@@ -23,6 +23,13 @@ Cualquier bug se nota en producción. Idioma de la interfaz: español de Chile. 
 2. Encargada importa el Excel "Ventas Diarias" de Mi DTE (columnas RUT, Documento, Folio, Fecha, Total,
    Condicion, Nombre Cliente, Emitido en). El vendedor se deduce del terminal "Emitido en" (columna
    `terminales` de USUARIOS). Guías de despacho se omiten (son internas). Clave única: `folio_key` = tipo+folio.
+   Además se importa el "Informe de ventas" de Mi DTE (una fila por producto: Codigo, Descripcion, Cantidad, Precio,
+   Nombre=tipo doc, Folio, Pago, Equipo=terminal, Fecha, TOTAL, NETO, PRODUCTOS=categoría) → hoja VENTAS_DETALLE.
+   Las líneas de guías de despacho se guardan con es_guia=TRUE: la guía emitida desde el terminal de un vendedor es la
+   carga que sale con él (hipótesis confirmada con los datos del 22-09-2026) y sirve para precargar la salida en Despacho.
+   Kilos: vendido (salida − retorno) vs facturado (VENTAS_DETALLE sin guías, solo productos unidad KG).
+   Alerta si |diferencia| > CFG.TOLERANCIA_KG y ya está registrado todo el retorno.
+   Códigos de producto: se comparan con codeKey_() ("5.0" == "5"). Códigos "?XXX" = desconocidos, se completan por nombre.
 3. Vendedor detalla cada folio: una o más líneas {forma, banco, monto} que deben sumar exactamente el total
    (menos descuento). Formas: EFECTIVO, TRANSFERENCIA, DEP_EFECTIVO, CHEQUE, CREDITO, NOTA_CREDITO.
    Bancos: BICE, ESTADO, SANTANDER, OTRO. Reemplaza el texto libre histórico ("ESTADO Y EF 20000"...).
@@ -39,16 +46,21 @@ ADMIN (todo, reabre días), SUPERVISOR (rendición + autoriza descuentos), RENDI
 (solo ve sus folios, su cobranza y sus gastos).
 
 ## Hojas (nombres exactos, definidos en SCHEMA)
-USUARIOS, PRODUCTOS, DESPACHO, DOCUMENTOS, PAGOS, DESCUENTOS, COBRANZA, PROVEEDORES, CONSUMO, GASTOS,
+USUARIOS, PRODUCTOS, DESPACHO, DOCUMENTOS, VENTAS_DETALLE, PAGOS, DESCUENTOS, COBRANZA, PROVEEDORES, CONSUMO, GASTOS,
 RENDICIONES, SESIONES. Las filas se leen por encabezado; no depender de números de fila guardados en el cliente.
 
 ## Pendientes
-- Lista real de productos (la actual es provisoria).
+- Confirmar unidades de Cárnicos (se asumió UN salvo Chuleta vetada en KG).
+- Confirmar si SUPERMERCADO (distribuidor) y BODEGA (venta en bodega = consumo) deben rendirse como vendedores.
 - Módulo de gastos definitivo.
 - Reportes de recaudación y ventas a partir de las rendiciones.
 - Hojas por vendedor de la planilla manual (el usuario debe compartirlas).
-- Cruce kilos vendidos vs kilos facturados: requiere export de Mi DTE con detalle por producto.
-- Logo real (los íconos actuales son provisorios: "N" naranja sobre café).
+- Logo: los íconos se hicieron recortando el logo del PDF de precios (baja resolución); reemplazar con el original.
+
+## Diseño
+Tipografía Atkinson Hyperlegible Next (legibilidad en celular al aire libre). Colores: café ahumado #2A1F1A,
+cobre #C2571A (acción principal), fondo #F2F1EF. Roles de terreno (vendedor, bodega) usan barra inferior; oficina usa
+pestañas superiores. Animaciones cortas (≤260 ms) y se desactivan con prefers-reduced-motion.
 
 ## Cómo probar
 Sin tests automáticos. Probar en el celular real; pedir al usuario que confirme antes de dar algo por resuelto.

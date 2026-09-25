@@ -31,9 +31,19 @@ detalle de pago por folio, retorno, cobranza, proveedores, consumo, gastos y cie
 - **USUARIOS**: cambia los PIN de ejemplo. Terminales de Mi DTE pre-asignados según el historial de enero:
   NARANJOT1 → Parada, NARANJOT2 → Aguilera, NARANJOT6 → Vargas, NARANJOT7 → Muñoz, NARANJOT9 → Gutiérrez,
   SUPERMERCADO → Distribuidor. Varios terminales por vendedor: separados por coma.
-- **PRODUCTOS**: lista provisoria; reemplazar por la real.
+- **PRODUCTOS**: lista de precios 2026. Los códigos que empiezan con `?` se completan solos cuando el producto aparece
+  por primera vez en un Informe de ventas. Productos desconocidos del informe se agregan como inactivos con categoría REVISAR.
+- **Terminales**: se asignan desde la app (Importar Mi DTE → Terminales). Ej.: NARANJOT10 apareció en septiembre sin vendedor.
+
+## Flujo diario
+1. **Bodega (mañana)**: Despacho → elige vendedor → anota la salida, o toca "Cargar salida desde guía N°" si la guía ya se importó.
+2. **Encargada**: Importar Mi DTE → sube *Ventas Diarias* y el *Informe de ventas* (juntos o por separado).
+3. **Vendedor**: Mis folios → detalla cómo le pagaron cada folio. Registra cobranza y gastos.
+4. **Bodega (tarde)**: misma pantalla → anota el retorno. Se ve al tiro vendido vs facturado y la diferencia.
+5. **Administración**: autoriza descuentos.
+6. **Encargada**: Rendición → revisa alertas → Cerrar y generar archivo.
 
 ## Actualizar
 - Cambios en la app (pantallas): subir los archivos nuevos a GitHub y aumentar la versión en `sw.js` (`CACHE_NAME`).
-- Cambios en `APPS_SCRIPT.js`: pegar en Apps Script → Implementar → Administrar implementaciones → editar →
+- Cambios en `APPS_SCRIPT.js`: pegar el archivo completo, **ejecutar `setup` otra vez** (actualiza las hojas sin borrar datos) y luego en Apps Script → Implementar → Administrar implementaciones → editar →
   **Nueva versión**. Así la URL no cambia.
