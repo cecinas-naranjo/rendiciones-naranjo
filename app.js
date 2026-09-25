@@ -23,6 +23,9 @@ const IC = {
   cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
   receipt: '<path d="M5 3v18l2-1.5L9 21l2-1.5L13 21l2-1.5L17 21l2-1.5V3l-2 1.5L15 3l-2 1.5L11 3 9 4.5 7 3z"/><path d="M9 9h6M9 13h6"/>',
   box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  bank: '<path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18"/>',
+  clip: '<path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/>',
+  camera: '<path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/>',
   store: '<path d="M3 9l1.5-5h15L21 9M4 9v11h16V9M3 9h18M9 20v-6h6v6"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>'
 };
@@ -42,6 +45,54 @@ function toast(msg, err) {
 }
 const skeleton = n => Array.from({ length: n }, () => '<div class="sk"></div>').join('');
 function render(el, html) { el.innerHTML = html; el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter'); }
+
+/* ---------- fotos y archivos de respaldo ---------- */
+const ADJ = { GASTOS: 1, COBRANZA: 1, PROVEEDORES: 1, DEPOSITOS: 1 };
+/** Achica las fotos (máx. 1600 px, JPEG) para que suban rápido con datos móviles. */
+async function prepararArchivo(f) {
+  let blob = f, nombre = f.name || 'archivo', tipo = f.type || 'application/octet-stream';
+  if (/^image\/(jpe?g|png|webp|heic|heif)/i.test(tipo)) {
+    try {
+      const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
+      const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
+      if (b) { blob = b; tipo = 'image/jpeg'; nombre = nombre.replace(/\.\w+$/, '') + '.jpg'; }
+    } catch (e) { /* si el navegador no puede leerla, se sube tal cual */ }
+  }
+  if (blob.size > 15 * 1024 * 1024) throw new Error(`"${nombre}" pesa más de 15 MB.`);
+  const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = rej; fr.readAsDataURL(blob); });
+  return { nombre, mimeType: tipo, data };
+}
+async function subirArchivos(tabla, id, files) {
+  let n = 0;
+  for (const f of files) {
+    n++; toast(`Subiendo ${files.length > 1 ? n + ' de ' + files.length : 'archivo'}…`);
+    const a = await prepararArchivo(f);
+    await api('subirAdjunto', S.sess.token, Object.assign({ tabla, id }, a));
+  }
+  if (n) toast(n === 1 ? 'Archivo guardado' : n + ' archivos guardados');
+}
+const chipsAdj = (adj, tabla, id, editable) => (adj || []).map((a, i) =>
+  `<a class="chip cu" href="${esc(a.url)}" target="_blank" rel="noopener" title="Ver archivo">${icon('clip')}${i + 1}</a>`).join(' ') +
+  (editable ? ` <button type="button" class="chip" data-adj="${esc(id)}" data-tabla="${tabla}" title="Adjuntar foto o archivo">${icon('camera')} Adjuntar</button>` : '');
+/** Un solo input oculto para "adjuntar después" en cualquier fila. */
+function activarAdjuntarDespues(cont, alTerminar) {
+  let inp = $('#adjLater');
+  if (!inp) { inp = document.createElement('input'); inp.type = 'file'; inp.id = 'adjLater'; inp.accept = 'image/*,application/pdf'; inp.multiple = true; inp.className = 'sr'; document.body.appendChild(inp); }
+  cont.addEventListener('click', e => { const b = e.target.closest('[data-adj]'); if (!b) return;
+    inp.value = ''; inp.onchange = async () => { const fs = [...inp.files]; if (!fs.length) return;
+      try { await subirArchivos(b.dataset.tabla, b.dataset.adj, fs); } finally { alTerminar(); } };
+    inp.click(); });
+}
+const campoArchivos = id => `<div><label class="f">Foto o archivo de respaldo</label>
+  <label class="btn ghost block" style="font-weight:600">${icon('camera')}<span id="${id}L">Tomar foto o elegir archivo</span>
+  <input type="file" id="${id}" accept="image/*,application/pdf" multiple class="sr"></label></div>`;
+function enlazarCampoArchivos(id) {
+  const i = $('#' + id); if (!i) return;
+  i.onchange = () => { $('#' + id + 'L').textContent = i.files.length ? (i.files.length === 1 ? i.files[0].name : i.files.length + ' archivos listos') : 'Tomar foto o elegir archivo'; };
+}
 
 async function api(fn, ...args) {
   busy(true);
@@ -66,10 +117,10 @@ const S = { sess: null, cat: null, fecha: null, tab: null, vend: '', filtro: 'pe
 try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e) {}
 
 const TABS = {
-  VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['GASTOS', 'Gastos', 'receipt']],
+  VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
   BODEGA: [['despacho', 'Despacho', 'box'], ['CONSUMO', 'Consumo', 'store']],
   RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Folios'], ['despacho', 'Kilos'], ['COBRANZA', 'Cobranza'],
-    ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
+    ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR;
@@ -139,7 +190,7 @@ function ir(t) {
   S.tab = t;
   $$('#nav button').forEach(b => { b.classList.toggle('on', b.dataset.t === t); if (b.dataset.t === t) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
   const m = $('#main'); m.onclick = null; m.innerHTML = skeleton(4);
-  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   v(m, t);
 }
 const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(p * 100) + '%'; };
@@ -444,6 +495,7 @@ async function vResumen(m) {
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>${v.CHEQUE ? `<dt>Cheques</dt><dd>${clp(v.CHEQUE)}</dd>` : ''}
         ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
         ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}
+        ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}</dd>` : ''}
         <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
         ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
           <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
@@ -495,6 +547,68 @@ async function vDescuentos(m) {
     await api('resolverDescuento', S.sess.token, si || no, !!si); toast(si ? 'Descuento autorizado' : 'Descuento rechazado'); ir('descuentos'); };
 }
 
+/* ============ DEPÓSITOS DE EFECTIVO ============ */
+async function vDepositos(m) {
+  const esV = S.sess.rol === 'VENDEDOR';
+  if (!esV && !S.vend) S.vend = S.cat.vendedores[0] && S.cat.vendedores[0].usuario;
+  const r = await api('efectivoParaDepositar', S.sess.token, S.fecha, esV ? '' : S.vend);
+  const cerrada = r.estadoDia === 'CERRADA';
+  const libres = r.folios.filter(x => !x.deposito).map(x => Object.assign({ tipo: 'f' }, x))
+    .concat(r.cobranzas.filter(x => !x.deposito).map(x => Object.assign({ tipo: 'c' }, x)));
+  render(m, `<h2>Depósitos de efectivo</h2>
+    <p class="lead">Si depositas o transfieres a la empresa el efectivo que te pagaron, regístralo aquí, marca qué folios incluye y saca una foto al comprobante. Ese monto ya no se entrega en la rendición.</p>
+    ${esV ? '' : `<div class="row" style="margin-bottom:12px"><select class="in" style="width:auto" id="dv">${opcVend(S.vend)}</select></div>`}
+    ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : libres.length ? `<div class="card">
+      <div class="row"><b class="grow">Efectivo por depositar</b><button class="btn ghost sm" id="all">Marcar todos</button></div>
+      <div id="chk" style="margin:10px 0">${libres.map((x, i) => `<label class="switch" style="padding:8px 0;border-top:1px solid var(--line-2)">
+        <input type="checkbox" data-i="${i}" checked><span class="grow">${esc(x.cliente)}<br><span class="muted">${x.tipo === 'c' ? 'Cobranza' : 'Folio'} ${esc(x.folio)}</span></span><b>${clp(x.efectivo)}</b></label>`).join('')}</div>
+      <div class="grid g3">
+        <div><label class="f" for="db">Banco</label><select class="in" id="db"><option value="">Elegir…</option>${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div>
+        <div><label class="f" for="dm">Monto depositado</label><input class="in n" id="dm" inputmode="numeric"></div>
+        <div><label class="f" for="dr">N° de operación</label><input class="in" id="dr" inputmode="numeric"></div>
+        ${campoArchivos('dfile')}
+      </div>
+      <div id="dsal"></div>
+      <button class="btn cu block" id="dg" style="margin-top:6px">Registrar depósito</button></div>`
+    : '<div class="empty"><b>No hay efectivo pendiente</b>Aparece aquí el efectivo de los folios que marcaste como pagados en efectivo.</div>'}
+    <h3>Depósitos registrados</h3>
+    ${r.depositos.length ? r.depositos.map(d => `<div class="card" style="margin-bottom:8px"><div class="row">
+      <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}<div class="muted">${d.folios.length} folio(s)${d.cobranzas.length ? ' y ' + d.cobranzas.length + ' cobranza(s)' : ''} · efectivo incluido ${clp(d.incluido)}</div>
+        ${d.monto !== d.incluido ? `<span class="chip bad">Diferencia ${clp(d.monto - d.incluido)}</span>` : '<span class="chip ok">Cuadra</span>'}
+        <div style="margin-top:6px">${chipsAdj(d.adjuntos, 'DEPOSITOS', d.id, !cerrada || !esV)}</div></div>
+      <div class="big" style="font-size:22px">${clp(d.monto)}</div>${cerrada ? '' : `<button class="x" style="width:42px" data-del="${d.id}" aria-label="Borrar depósito">×</button>`}</div></div>`).join('')
+    : '<div class="empty">Sin depósitos este día.</div>'}`);
+  if (!esV) $('#dv').onchange = e => { S.vend = e.target.value; ir('depositos'); };
+  m.onclick = async e => { const id = e.target.dataset.del; if (!id || !confirm('¿Borrar este depósito?')) return;
+    await api('borrarDeposito', S.sess.token, id); toast('Depósito borrado'); ir('depositos'); };
+  activarAdjuntarDespues(m, () => ir('depositos'));
+  if (cerrada || !libres.length) return;
+  enlazarCampoArchivos('dfile');
+  const sel = () => $$('#chk input').filter(c => c.checked).map(c => libres[c.dataset.i]);
+  const dm = $('#dm');
+  const saldo = () => {
+    const inc = sel().reduce((a, x) => a + x.efectivo, 0), mon = soloDigitos(dm.value);
+    $('#dsal').innerHTML = `<div class="saldo ${mon === inc ? 'ok' : 'no'}"><span>Efectivo marcado ${clp(inc)}</span><span>${mon === inc ? 'Cuadra' : 'Diferencia ' + clp(mon - inc)}</span></div>`;
+  };
+  $('#chk').onchange = () => { dm.value = sel().reduce((a, x) => a + x.efectivo, 0); saldo(); };
+  $('#all').onclick = () => { $$('#chk input').forEach(c => c.checked = true); $('#chk').onchange(); };
+  dm.oninput = saldo; $('#chk').onchange();
+  $('#dg').onclick = async () => {
+    const s2 = sel();
+    if (!$('#db').value) return toast('Elige el banco del depósito.', true);
+    if (!s2.length) return toast('Marca al menos un folio.', true);
+    const b = $('#dg'); b.disabled = true;
+    try {
+      const nuevo = await api('guardarDeposito', S.sess.token, S.fecha, { vendedor: esV ? '' : S.vend, banco: $('#db').value, monto: soloDigitos(dm.value), referencia: $('#dr').value,
+        folios: s2.filter(x => x.tipo === 'f').map(x => x.key), cobranzas: s2.filter(x => x.tipo === 'c').map(x => x.key) });
+      toast('Depósito registrado');
+      const fs = [...$('#dfile').files];
+      if (fs.length) { try { await subirArchivos('DEPOSITOS', nuevo.id, fs); } catch (e) { toast('El depósito quedó guardado, pero el comprobante no subió. Usa "Adjuntar".', true); } }
+      ir('depositos');
+    } finally { b.disabled = false; }
+  };
+}
+
 /* ============ HISTORIAL ============ */
 async function vHistorial(m) {
   const h = await api('historial', S.sess.token);
@@ -511,8 +625,8 @@ const MOV = {
     f: [['proveedor', 'Proveedor'], ['documento', 'Documento'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
   CONSUMO: { t: 'Consumo', d: 'Ventas hechas directamente en la bodega.',
     f: [['cliente', 'Cliente'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
-  GASTOS: { t: 'Gastos', d: 'Combustible, peajes y otros gastos del día. Se descuentan del efectivo a entregar.',
-    f: [['concepto', 'Concepto'], ['monto', 'Monto', 'n'], ['respaldo', 'N° boleta o respaldo'], ['responsable', 'Responsable', 'vend'], ['obs', 'Observación']] }
+  GASTOS: { t: 'Gastos', d: 'Combustible, peajes, almuerzo y otros gastos del día. Saca una foto a la boleta. Se descuentan del efectivo a entregar.',
+    f: [['concepto', 'Concepto'], ['monto', 'Monto', 'n'], ['respaldo', 'N° de boleta'], ['responsable', 'Responsable', 'vend'], ['obs', 'Observación']] }
 };
 async function vMov(m, tabla) {
   const cfg = MOV[tabla], esV = S.sess.rol === 'VENDEDOR';
@@ -522,19 +636,23 @@ async function vMov(m, tabla) {
     : c[2] === 'vend' ? `<select class="in" name="${c[0]}" id="m_${c[0]}">${tabla === 'GASTOS' ? '<option value="GENERAL">General / planta</option>' : ''}${opcVend(S.vend)}</select>`
     : `<input class="in ${c[2] === 'n' ? 'n' : ''}" name="${c[0]}" id="m_${c[0]}" ${c[2] === 'n' ? 'inputmode="numeric"' : ''}>`;
   const rows = await api('listarMov', S.sess.token, tabla, S.fecha);
+  const conAdj = !!ADJ[tabla];
   render(m, `<h2>${cfg.t}</h2><p class="lead">${cfg.d}</p>
-    <div class="card"><div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}</div>
+    <div class="card"><div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}${conAdj ? campoArchivos('mf') : ''}</div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     <div id="ml" style="margin-top:16px"></div>`);
   function lista(rows) {
     const cols = campos.map(c => c[0]);
-    $('#ml').innerHTML = rows.length ? `<div class="tw"><table><thead><tr>${campos.map(c => `<th class="${c[2] === 'n' ? 'r' : ''}">${c[1]}</th>`).join('')}<th></th></tr></thead><tbody>
+    $('#ml').innerHTML = rows.length ? `<div class="tw"><table><thead><tr>${campos.map(c => `<th class="${c[2] === 'n' ? 'r' : ''}">${c[1]}</th>`).join('')}${conAdj ? '<th>Respaldo</th>' : ''}<th></th></tr></thead><tbody>
       ${rows.map(r => `<tr>${cols.map(k => `<td class="${k === 'monto' ? 'r' : ''}">${k === 'monto' ? clp(r[k]) : k === 'forma' ? (FL[r[k]] || esc(r[k])) : esc(r[k])}</td>`).join('')}
+        ${conAdj ? `<td>${chipsAdj(r.adjuntos, tabla, r.id, true)}</td>` : ''}
         <td><button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></td></tr>`).join('')}
-      </tbody><tfoot><tr>${cols.map(k => `<td class="r">${k === 'monto' ? clp(rows.reduce((a, r) => a + r.monto, 0)) : ''}</td>`).join('')}<td></td></tr></tfoot></table></div>`
+      </tbody><tfoot><tr>${cols.map(k => `<td class="r">${k === 'monto' ? clp(rows.reduce((a, r) => a + r.monto, 0)) : ''}</td>`).join('')}${conAdj ? '<td></td>' : ''}<td></td></tr></tfoot></table></div>`
       : '<div class="empty">Sin registros para este día.</div>';
   }
   lista(rows);
+  const recargar = async () => lista(await api('listarMov', S.sess.token, tabla, S.fecha));
+  if (conAdj) { enlazarCampoArchivos('mf'); activarAdjuntarDespues($('#ml'), recargar); }
   $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
     await api('borrarMov', S.sess.token, tabla, id); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); };
   $('#ad').onclick = async () => {
@@ -542,8 +660,14 @@ async function vMov(m, tabla) {
     o.monto = String(soloDigitos(o.monto));
     if (o.monto === '0') return toast('Ingresa el monto.', true);
     if ((o.forma === 'TRANSFERENCIA' || o.forma === 'DEP_EFECTIVO') && 'banco' in o && !o.banco) return toast('Indica el banco.', true);
-    await api('guardarMov', S.sess.token, tabla, S.fecha, o); toast('Agregado');
-    $$('input', $('#fm')).forEach(x => x.value = ''); lista(await api('listarMov', S.sess.token, tabla, S.fecha));
+    const b = $('#ad'); b.disabled = true;
+    try {
+      const nuevo = await api('guardarMov', S.sess.token, tabla, S.fecha, o); toast('Agregado');
+      const fs = conAdj ? [...$('#mf').files] : [];
+      if (fs.length) { try { await subirArchivos(tabla, nuevo.id, fs); } catch (e) { toast('El registro quedó guardado, pero el archivo no subió. Usa "Adjuntar" en la fila.', true); } }
+      $$('input', $('#fm')).forEach(x => x.value = ''); if (conAdj) $('#mf').onchange();
+      await recargar();
+    } finally { b.disabled = false; }
   };
 }
 

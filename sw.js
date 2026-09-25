@@ -2,7 +2,7 @@
 // Cachea solo el "esqueleto" de la app para que abra rápido. Los datos siempre van a Apps Script en vivo.
 // Estrategia NETWORK-FIRST: con internet siempre se usa la versión más nueva subida a GitHub.
 // Al cambiar archivos, subir el número de versión de CACHE_NAME.
-const CACHE_NAME = 'naranjo-shell-v4';
+const CACHE_NAME = 'naranjo-shell-v6';
 const APP_SHELL = ['./', './index.html', './style.css', './config.js', './app.js', './manifest.json',
   './logo.png', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 
