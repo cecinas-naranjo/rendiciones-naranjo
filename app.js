@@ -85,7 +85,7 @@ function salir(expirada) {
 /* ---------- ingreso ---------- */
 async function pantallaLogin() {
   const app = $('#app');
-  render(app, `<div class="login"><img class="logo" src="logo.png" alt="Cecinas Naranjo">
+  render(app, `<div class="login"><img class="logo" src="icon-512.png" alt="Cecinas Naranjo">
     <h1>Rendiciones</h1><p class="lead">Elige tu nombre e ingresa tu PIN.</p>
     <div class="who" id="who">${skeleton(1)}</div>
     <label class="sr" for="pin">PIN</label>
@@ -538,7 +538,7 @@ async function vMov(m, tabla) {
 
 /* ---------- arranque ---------- */
 if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.indexOf('PEGA_AQUI') >= 0)
-  $('#app').innerHTML = '<div class="login"><img class="logo" src="logo.png" alt=""><h1>Falta configurar</h1><p class="lead">Pega la URL de la implementación de Apps Script en <b>config.js</b>.</p></div>';
+  $('#app').innerHTML = '<div class="login"><img class="logo" src="icon-512.png" alt=""><h1>Falta configurar</h1><p class="lead">Pega la URL de la implementación de Apps Script en <b>config.js</b>.</p></div>';
 else S.sess ? iniciar().catch(() => salir(true)) : pantallaLogin();
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
