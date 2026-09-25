@@ -131,7 +131,7 @@ function setup() {
 const API = {
   listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  borrarMov, getResumen, cerrarRendicion, reabrirRendicion, historial
+  borrarMov, getResumen, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -628,8 +628,9 @@ function resumen_(fecha) {
       salida: k.filter(x => x.unidad !== 'UN').reduce((a, x) => a + num_(x.salida), 0),
       retorno: k.filter(x => x.unidad !== 'UN').reduce((a, x) => a + num_(x.retorno), 0)
     };
-    tot.kilos.vendido = tot.kilos.salida - tot.kilos.retorno;
-    tot.kilos.facturado = detV.filter(x => x.vendedor === v && unidad[codeKey_(x.codigo)] !== 'UN').reduce((a, x) => a + num_(x.cantidad), 0);
+    tot.kilos.vendido = Math.round((tot.kilos.salida - tot.kilos.retorno) * 1000) / 1000;
+    tot.kilos.facturado = Math.round(detV.filter(x => x.vendedor === v && unidad[codeKey_(x.codigo)] !== 'UN').reduce((a, x) => a + num_(x.cantidad), 0) * 1000) / 1000;
+    tot.kilos.salida = Math.round(tot.kilos.salida * 1000) / 1000; tot.kilos.retorno = Math.round(tot.kilos.retorno * 1000) / 1000;
     tot.kilos.diferencia = Math.round((tot.kilos.vendido - tot.kilos.facturado) * 1000) / 1000;
     tot.sinRetorno = k.filter(x => x.salida !== '' && x.retorno === '').length;
     // la diferencia de kilos solo se evalúa cuando ya se registró todo el retorno
@@ -679,6 +680,12 @@ function cerrarRendicion(token, fecha, forzar) {
   });
 }
 
+/** Genera el archivo tal como quedaría, sin cerrar el día. */
+function vistaPreviaRendicion(token, fecha) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => ({ url: generarArchivo_(fecha, resumen_(fecha), true) }));
+}
+
 function reabrirRendicion(token, fecha) {
   auth_(token, ['ADMIN']);
   return withLock_(() => {
@@ -689,14 +696,19 @@ function reabrirRendicion(token, fecha) {
 }
 
 /** Crea el archivo de rendición del día con el mismo formato de columnas que usa la empresa hoy. */
-function generarArchivo_(fecha, r) {
-  const f = fecha.split('-'), nombre = 'Rendición ' + f[2] + '-' + f[1] + '-' + f[0];
+function generarArchivo_(fecha, r, borrador) {
+  const f = fecha.split('-'), nombre = (borrador ? 'BORRADOR ' : '') + 'Rendición ' + f[2] + '-' + f[1] + '-' + f[0];
   const ss = SpreadsheetApp.create(nombre);
   const file = DriveApp.getFileById(ss.getId());
   try {
     const root = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID);
-    const anio = sub_(root, f[0]), mes = sub_(anio, f[1]);
-    file.moveTo(mes);
+    let destino;
+    if (borrador) {            // los borradores van aparte y se reemplazan: solo queda el último de cada día
+      destino = sub_(root, 'Borradores');
+      const prev = destino.getFilesByName(nombre);
+      while (prev.hasNext()) prev.next().setTrashed(true);
+    } else destino = sub_(sub_(root, f[0]), f[1]);
+    file.moveTo(destino);
   } catch (e) { /* si no hay acceso a la carpeta queda en Mi unidad */ }
 
   const put = (titulo, head, rows) => {
@@ -713,7 +725,14 @@ function generarArchivo_(fecha, r) {
   put('RESUMEN', ['VENDEDOR','DOCS','VENTA','CONTADO','CREDITO','DESCUENTOS','EFECTIVO','TRANSFERENCIA','DEP. EFECTIVO','CHEQUE','NC','COBRANZA','GASTOS','EFECTIVO A ENTREGAR','KG SALIDA','KG RETORNO','KG VENDIDOS','KG FACTURADOS','DIF. KG'],
     r.porVendedor.map(t => [t.vendedor, t.documentos, t.venta, t.contado, t.credito, t.descuentos, t.EFECTIVO, t.TRANSFERENCIA,
       t.DEP_EFECTIVO, t.CHEQUE, t.NOTA_CREDITO, t.cobranza, t.gastos, t.efectivoEntregar, t.kilos.salida, t.kilos.retorno, t.kilos.vendido,
-      t.kilos.facturado, t.kilos.diferencia]));
+      t.kilos.facturado, t.kilos.salida ? t.kilos.diferencia : '']));
+  // fila de totales con fórmulas, para que la planilla siga cuadrando si alguien corrige un valor a mano
+  const rs = ss.getSheetByName('RESUMEN'), nV = r.porVendedor.length;
+  if (nV) {
+    const fila = ['TOTAL'];
+    for (let c = 2; c <= 19; c++) { const L = String.fromCharCode(64 + c); fila.push('=SUM(' + L + '2:' + L + (nV + 1) + ')'); }
+    rs.getRange(nV + 2, 1, 1, 19).setValues([fila]).setFontWeight('bold').setBackground('#FAF3EC');
+  }
 
   // Igual a la hoja "VENTA Y CREDITO" actual
   put('VENTA Y CREDITO', ['CLIENTES','DOCUMENTO','FOLIO','FECHA','MONTO','CONDICION','CONTADO','CREDITO','N.CREDITO','FORMA DE PAGO','NC CREDITOS','EFECTIVO','TRANSFERENCIA','CHEQUE','VENDEDOR','DESCUENTO'],
@@ -736,7 +755,8 @@ function generarArchivo_(fecha, r) {
     const k = x.vendedor + '|' + codeKey_(x.codigo); fact[k] = (fact[k] || 0) + num_(x.cantidad); });
   put('KILOS', ['VENDEDOR','CODIGO','PRODUCTO','UNIDAD','SALIDA','RETORNO','VENDIDO','FACTURADO','DIFERENCIA'],
     byFecha_('DESPACHO', fecha).map(k => { const v = num_(k.salida) - num_(k.retorno), f = fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0;
-      return [k.vendedor, k.codigo, k.producto, k.unidad, num_(k.salida), num_(k.retorno), v, f, v - f]; }));
+      const r3 = x => Math.round(x * 1000) / 1000;
+      return [k.vendedor, k.codigo, k.producto, k.unidad, num_(k.salida), num_(k.retorno), r3(v), r3(f), r3(v - f)]; }));
   put('PROVEEDORES', ['PROVEEDOR','DOCUMENTO','FOLIO','MONTO','FORMA','OBS'],
     byFecha_('PROVEEDORES', fecha).map(x => [x.proveedor, x.documento, x.folio, num_(x.monto), x.forma, x.obs]));
   put('CONSUMO', ['CLIENTE','FOLIO','MONTO','FORMA','OBS'],

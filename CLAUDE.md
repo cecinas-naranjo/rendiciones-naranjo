@@ -39,6 +39,8 @@ Cualquier bug se nota en producción. Idioma de la interfaz: español de Chile. 
 7. Cierre: genera una Google Sheet en la carpeta "Resumen Rendición/AAAA/MM" con hojas RESUMEN,
    VENTA Y CREDITO y COBRANZA (mismas columnas que la planilla manual histórica), KILOS, PROVEEDORES,
    CONSUMO, GASTOS, DESCUENTOS. Día cerrado = bloqueado; solo ADMIN reabre.
+   Botón "Ver cómo quedaría" (vistaPreviaRendicion) genera el mismo archivo como BORRADOR en Resumen Rendición/Borradores
+   sin cerrar el día; se reemplaza el borrador anterior de esa fecha. RESUMEN lleva fila TOTAL con fórmulas SUM.
    Efectivo a entregar por vendedor = efectivo de ventas + cobranza en efectivo − gastos.
 
 ## Roles
@@ -50,6 +52,7 @@ USUARIOS, PRODUCTOS, DESPACHO, DOCUMENTOS, VENTAS_DETALLE, PAGOS, DESCUENTOS, CO
 RENDICIONES, SESIONES. Las filas se leen por encabezado; no depender de números de fila guardados en el cliente.
 
 ## Pendientes
+- Sin modo sin conexión: si se corta internet, lo no guardado se pierde (evaluar cola offline en localStorage).
 - Confirmar unidades de Cárnicos (se asumió UN salvo Chuleta vetada en KG).
 - Confirmar si SUPERMERCADO (distribuidor) y BODEGA (venta en bodega = consumo) deben rendirse como vendedores.
 - Módulo de gastos definitivo.

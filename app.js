@@ -455,7 +455,17 @@ async function vResumen(m) {
       <p class="muted">Si todos vienen del mismo terminal, es más rápido asignarlo una vez en Importar Mi DTE → Terminales.</p>` : ''}
     <h3>Otros movimientos</h3><div class="kpis"><div><span>Proveedores</span><b>${clp(t.proveedores)}</b></div><div><span>Consumo (venta en bodega)</span><b>${clp(t.consumo)}</b></div></div>
     <div class="row" style="margin-top:18px;justify-content:flex-end">
-      ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '') : '<button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>`);
+      ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
+        : '<button class="btn ghost" id="pv">Ver cómo quedaría</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
+    <div id="lnk"></div>`);
+  const enlace = (url, txt) => { $('#lnk').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span class="grow">${txt}</span><a class="btn cu sm" href="${esc(url)}" target="_blank" rel="noopener">Abrir archivo</a></div>`;
+    $('#lnk').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+  const pv = $('#pv'); if (pv) pv.onclick = async () => {
+    pv.disabled = true;
+    try { const r2 = await api('vistaPreviaRendicion', S.sess.token, S.fecha);
+      enlace(r2.url, 'Borrador generado en la carpeta Resumen Rendición / Borradores. El día sigue abierto.'); }
+    finally { pv.disabled = false; } };
   $$('select[data-fk]', m).forEach(s => s.onchange = async () => { if (!s.value) return;
     await api('asignarVendedor', S.sess.token, s.dataset.fk, s.value); toast('Asignado'); ir('resumen'); });
   const re = $('#re'); if (re) re.onclick = async () => { if (!confirm('¿Reabrir la rendición de este día?')) return; await api('reabrirRendicion', S.sess.token, S.fecha); ir('resumen'); };
@@ -467,7 +477,8 @@ async function vResumen(m) {
         if (!confirm('Hay pendientes:\n\n• ' + res.alertas.join('\n• ') + '\n\n¿Cerrar de todas formas?')) { cl.disabled = false; return; }
         res = await api('cerrarRendicion', S.sess.token, S.fecha, true);
       }
-      toast('Rendición cerrada'); window.open(res.url, '_blank'); ir('resumen');
+      toast('Rendición cerrada'); await vResumen(m); $('#lnk') && (() => { $('#lnk').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <span class="grow">Rendición cerrada y guardada en Resumen Rendición.</span><a class="btn cu sm" href="${esc(res.url)}" target="_blank" rel="noopener">Abrir archivo</a></div>`; })();
     } catch (e) { cl.disabled = false; }
   };
 }
