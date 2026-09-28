@@ -94,6 +94,7 @@ const PRODUCTOS_BASE = [
 
 /** Crea o actualiza las hojas. Se puede ejecutar de nuevo sin perder datos. */
 function setup() {
+  Object.keys(CACHEADAS_).forEach(limpiarCache_);
   const ss = SpreadsheetApp.getActive();
   Object.keys(SCHEMA).forEach(name => {
     let sh = ss.getSheetByName(name);
@@ -139,6 +140,7 @@ function setup() {
   }
   prepararProductosInventario_();
   ['Hoja 1','Sheet1'].forEach(n => { const d = ss.getSheetByName(n); if (d && ss.getSheets().length > 1) ss.deleteSheet(d); });
+  Object.keys(CACHEADAS_).forEach(limpiarCache_);
   return 'Listo';
 }
 
@@ -155,6 +157,7 @@ function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
 
 // Cuerpo: {"fn":"nombre","args":[...]} enviado como text/plain (evita el preflight CORS)
 function doPost(e) {
+  MEMO_ = {};
   try {
     const req = JSON.parse(e.postData.contents);
     const fn = API[req.fn];
@@ -164,11 +167,27 @@ function doPost(e) {
     return json_({ ok: false, error: String(err.message || err) });
   }
 }
+
+/* ---------- velocidad ----------
+   1) Dentro de una misma petición cada hoja se lee una sola vez (MEMO_), y cualquier escritura la invalida.
+   2) USUARIOS y PRODUCTOS (casi no cambian) quedan además en CacheService 10 minutos; se limpian solos
+      al escribir desde la app y, con onEdit, cuando alguien edita esas hojas a mano. */
+let MEMO_ = {};
+let SS_ = null;
+const CACHEADAS_ = { USUARIOS: 1, PRODUCTOS: 1 };
+function limpiarCache_(name) {
+  delete MEMO_[name];
+  if (CACHEADAS_[name]) try { CacheService.getScriptCache().remove('tbl_' + name); } catch (e) {}
+}
+/** Disparador simple: si alguien edita USUARIOS o PRODUCTOS directo en la planilla, se refresca la caché. */
+function onEdit(e) {
+  try { const n = e.range.getSheet().getName(); if (CACHEADAS_[n]) CacheService.getScriptCache().remove('tbl_' + n); } catch (err) {}
+}
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
 /* ============================ HELPERS ============================ */
 
-function sh_(name) { return SpreadsheetApp.getActive().getSheetByName(name); }
+function sh_(name) { SS_ = SS_ || SpreadsheetApp.getActive(); return SS_.getSheetByName(name); }
 function now_() { return Utilities.formatDate(new Date(), CFG.TZ, 'yyyy-MM-dd HH:mm:ss'); }
 function hoy_() { return Utilities.formatDate(new Date(), CFG.TZ, 'yyyy-MM-dd'); }
 function uid_() { return Utilities.getUuid().slice(0, 8); }
@@ -201,11 +220,21 @@ function normFecha_(v) {
   return m ? m[0] : s;
 }
 
-function read_(name) {
-  const sh = sh_(name), last = sh.getLastRow();
-  if (last < 2) return [];
+function valores_(name) {
   const head = SCHEMA[name];
-  return sh.getRange(2, 1, last - 1, head.length).getValues().map((r, i) => {
+  if (CACHEADAS_[name]) {
+    try { const c = CacheService.getScriptCache().get('tbl_' + name); if (c) return JSON.parse(c); } catch (e) {}
+  }
+  const sh = sh_(name), last = sh.getLastRow();
+  const vals = last < 2 ? [] : sh.getRange(2, 1, last - 1, head.length).getValues();
+  if (CACHEADAS_[name]) try { const j = JSON.stringify(vals); if (j.length < 90000) CacheService.getScriptCache().put('tbl_' + name, j, 600); } catch (e) {}
+  return vals;
+}
+function read_(name) {
+  if (!MEMO_[name]) MEMO_[name] = valores_(name);
+  const head = SCHEMA[name];
+  // copia nueva de los objetos en cada llamada: quien los modifica no afecta a otras lecturas
+  return MEMO_[name].map((r, i) => {
     const o = { _row: i + 2 };
     head.forEach((h, j) => o[h] = r[j] instanceof Date && h === 'fecha' ? normFecha_(r[j]) : r[j]);
     if (o.fecha !== undefined) o.fecha = normFecha_(o.fecha);
@@ -216,17 +245,28 @@ function byFecha_(name, fecha) { return read_(name).filter(r => r.fecha === fech
 
 function append_(name, objs) {
   if (!objs.length) return;
+  limpiarCache_(name);
   const head = SCHEMA[name], sh = sh_(name);
   sh.getRange(sh.getLastRow() + 1, 1, objs.length, head.length)
     .setValues(objs.map(o => head.map(h => o[h] === undefined ? '' : o[h])));
 }
 function updateRow_(name, row, obj) {
+  limpiarCache_(name);
   const head = SCHEMA[name];
   sh_(name).getRange(row, 1, 1, head.length).setValues([head.map(h => obj[h] === undefined ? '' : obj[h])]);
 }
 function deleteRows_(name, rows) {
+  if (!rows.length) return;
+  limpiarCache_(name);
   const sh = sh_(name);
-  rows.sort((a, b) => b - a).forEach(r => sh.deleteRow(r));
+  // filas seguidas se borran de una vez (borrar fila por fila era lo más lento al guardar)
+  const r = [...new Set(rows)].sort((a, b) => b - a);
+  let fin = r[0], ini = r[0];
+  for (let i = 1; i <= r.length; i++) {
+    if (i < r.length && r[i] === ini - 1) { ini = r[i]; continue; }
+    sh.deleteRows(ini, fin - ini + 1);
+    if (i < r.length) { fin = ini = r[i]; }
+  }
 }
 
 function withLock_(fn) {
@@ -607,7 +647,7 @@ function borrarMov(token, tabla, id) {
     if (!r) return true;
     assertAbierta_(r.fecha);
     if (u.rol === 'VENDEDOR' && r.registrado_por !== u.usuario) throw new Error('Solo puedes borrar tus registros.');
-    sh_(tabla).deleteRow(r._row); return true;
+    deleteRows_(tabla, [r._row]); return true;
   });
 }
 
@@ -1145,7 +1185,7 @@ function borrarDeposito(token, id) {
     if (!d) return true;
     assertAbierta_(d.fecha);
     if (u.rol === 'VENDEDOR' && d.vendedor !== u.usuario) throw new Error('Solo puedes borrar tus depósitos.');
-    sh_('DEPOSITOS').deleteRow(d._row); return true;
+    deleteRows_('DEPOSITOS', [d._row]); return true;
   });
 }
 

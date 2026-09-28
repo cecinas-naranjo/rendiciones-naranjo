@@ -44,8 +44,12 @@ function toast(msg, err) {
   const t = document.createElement('div'); t.className = 'toast' + (err ? ' e' : ''); t.setAttribute('role', 'status');
   t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), err ? 5500 : 2600);
 }
-const skeleton = n => Array.from({ length: n }, () => '<div class="sk"></div>').join('');
-function render(el, html) { el.innerHTML = html; el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter'); }
+const skeleton = n => '<div class="sk t"></div><div class="sk s"></div>' + Array.from({ length: n }, () => '<div class="sk"></div>').join('');
+function render(el, html) {
+  el.innerHTML = html;
+  if (S.silencio) return;                       // actualización por detrás: sin animación ni salto
+  el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
+}
 
 /* ---------- fotos y archivos de respaldo ---------- */
 const ADJ = { GASTOS: 1, COBRANZA: 1, PROVEEDORES: 1, DEPOSITOS: 1 };
@@ -95,26 +99,147 @@ function enlazarCampoArchivos(id) {
   i.onchange = () => { $('#' + id + 'L').textContent = i.files.length ? (i.files.length === 1 ? i.files[0].name : i.files.length + ' archivos listos') : 'Tomar foto o elegir archivo'; };
 }
 
-async function api(fn, ...args) {
+/* ---------- conexión con el servidor ----------
+   Velocidad: las consultas (no los guardados) se guardan en el teléfono. Al volver a una pantalla se muestra
+   al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
+   (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
+const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
+  'getResumen', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov']);
+const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
+  cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
+  subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
+  misDocumentos: 'Cargando folios…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', historial: 'Cargando historial…' };
+const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
+  : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
+
+const CACHE = new Map();
+try { Object.entries(JSON.parse(localStorage.getItem('rn_cache') || '{}')).forEach(([k, v]) => CACHE.set(k, v)); } catch (e) {}
+let tGuardarCache = 0;
+function guardarCache() {
+  clearTimeout(tGuardarCache);
+  tGuardarCache = setTimeout(() => {
+    const ult = [...CACHE.entries()].sort((a, b) => b[1].t - a[1].t).slice(0, 30);
+    try { localStorage.setItem('rn_cache', JSON.stringify(Object.fromEntries(ult))); }
+    catch (e) { try { localStorage.removeItem('rn_cache'); } catch (e2) {} }
+  }, 400);
+}
+function olvidarCache(todo) {
+  [...CACHE.keys()].forEach(k => { if (todo || !/^listaUsuarios\|/.test(k)) CACHE.delete(k); });
+  guardarCache();
+}
+
+// indicador "trabajando": barra arriba + aviso abajo con el mensaje; el botón tocado muestra su propio "Guardando…"
+let ultimoClic = null;
+document.addEventListener('click', e => { const b = e.target.closest('button, .btn'); if (b) ultimoClic = { el: b, t: Date.now() }; }, true);
+const AVISOS = new Map(); let nAviso = 0;
+function pintarAviso() {
+  let p = $('.working');
+  const txt = [...AVISOS.values()].pop();
+  if (!txt) { if (p) { p.classList.add('out'); setTimeout(() => p.isConnected && !AVISOS.size && p.remove(), 180); } return; }
+  if (!p) { p = document.createElement('div'); p.className = 'working'; p.setAttribute('role', 'status'); p.innerHTML = '<span class="spin"></span><span></span>'; document.body.appendChild(p); }
+  p.classList.remove('out'); p.lastChild.textContent = txt;
+}
+function trabajando(fn, escritura) {
   busy(true);
+  const id = ++nAviso, timers = [];
+  const decir = t => { AVISOS.set(id, t); pintarAviso(); };
+  let btn = null;
+  if (escritura && ultimoClic && Date.now() - ultimoClic.t < 900 && ultimoClic.el.isConnected && !ultimoClic.el.classList.contains('busy')) {
+    btn = ultimoClic.el; ultimoClic = null;
+    btn._html = btn.innerHTML; btn._w = btn.style.minWidth;
+    btn.style.minWidth = btn.offsetWidth + 'px';
+    btn.classList.add('busy'); btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span>' + textoBoton(fn);
+  }
+  // si el botón ya muestra "Guardando…", el aviso de abajo solo aparece si se demora
+  if (!btn || MSG[fn]) timers.push(setTimeout(() => decir(MSG[fn] || (escritura ? textoBoton(fn) : 'Cargando…')), btn ? 1500 : escritura ? 150 : 500));
+  timers.push(setTimeout(() => decir('Sigue trabajando… Google a veces tarda unos segundos.'), 6000));
+  timers.push(setTimeout(() => decir('Está tardando más de lo normal. No cierres la app.'), 16000));
+  return () => {
+    busy(false); timers.forEach(clearTimeout); AVISOS.delete(id); pintarAviso();
+    if (btn && btn.classList.contains('busy')) { btn.innerHTML = btn._html; btn.style.minWidth = btn._w || ''; btn.classList.remove('busy'); btn.disabled = false; }
+  };
+}
+
+async function llamar(fn, args) {
+  let r;
   try {
-    let r;
-    try {
-      const res = await fetch(CONFIG.APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn, args }) });
-      r = await res.json();
-    } catch (e) { throw new Error('Sin conexión con el servidor. Revisa tu internet e intenta de nuevo.'); }
-    if (!r.ok) throw new Error(r.error);
-    return r.data;
-  } catch (e) {
-    const m = String(e.message || e);
-    if (m.indexOf('SESION') >= 0) salir(true);
-    toast(m.replace('SESION: ', ''), true);
-    throw e;
-  } finally { busy(false); }
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn, args }) });
+    r = await res.json();
+  } catch (e) { throw new Error('Sin conexión con el servidor. Revisa tu internet e intenta de nuevo.'); }
+  if (!r.ok) throw new Error(r.error);
+  return r.data;
+}
+const EN_CURSO = new Map();
+function pedir(fn, args, key) {                    // si ya se está pidiendo lo mismo, se reutiliza esa respuesta
+  if (EN_CURSO.has(key)) return EN_CURSO.get(key);
+  const p = llamar(fn, args).then(d => { if (LECTURA.has(fn)) { CACHE.set(key, { t: Date.now(), d }); guardarCache(); } return d; })
+    .finally(() => EN_CURSO.delete(key));
+  EN_CURSO.set(key, p); return p;
+}
+const copia = d => JSON.parse(JSON.stringify(d));
+function errorApi(e) {
+  const m = String(e.message || e);
+  if (m.indexOf('SESION') >= 0) salir(true);
+  toast(m.replace('SESION: ', ''), true);
+}
+
+async function api(fn, ...args) {
+  const lectura = LECTURA.has(fn), key = fn + '|' + JSON.stringify(args);
+  if (lectura && CACHE.has(key) && Date.now() - CACHE.get(key).t < 12 * 3600e3) {
+    revalidar(fn, args, key);
+    return copia(CACHE.get(key).d);
+  }
+  if (!lectura) olvidarCache(false);
+  const fin = trabajando(fn, !lectura);
+  try { return copia(await pedir(fn, args, key)); }
+  catch (e) { errorApi(e); throw e; }
+  finally { fin(); }
+}
+/** Pide por detrás la versión nueva de algo que se mostró desde la memoria del teléfono. */
+function revalidar(fn, args, key) {
+  const antes = JSON.stringify(CACHE.get(key).d), vista = S.vistaId;
+  busy(true);
+  pedir(fn, args, key).then(d => {
+    if (JSON.stringify(d) === antes) return;
+    if (fn === 'catalogo') { S.cat = copia(d); return; }
+    if (vista === S.vistaId && !S.tocado && !$('.ov') && S.sess && fn !== 'listaUsuarios') ir(S.tab, true);
+  }).catch(e => { if (String(e.message).indexOf('SESION') >= 0) errorApi(e); })
+    .finally(() => busy(false));
+}
+/** Deja listas en memoria las pantallas vecinas para que abran al instante. */
+function precargar(tabs) {
+  const tok = S.sess && S.sess.token, F = S.fecha, esV = S.sess && S.sess.rol === 'VENDEDOR';
+  const q = { folios: ['misDocumentos', [tok, F, S.vend]], inventario: ['getInventario', [tok, F]], resumen: ['getResumen', [tok, F]],
+    saldos: ['getSaldosClientes', [tok]], descuentos: ['descuentosPendientes', [tok]], depositos: ['efectivoParaDepositar', [tok, F, esV ? '' : S.vend]],
+    despacho: S.vend ? ['getDespacho', [tok, F, S.vend]] : null };
+  let cadena = Promise.resolve();
+  tabs.forEach(t => {
+    const x = q[t] || (/^[A-Z]+$/.test(t) ? ['listarMov', [tok, t, F]] : null);
+    if (!x) return;
+    const key = x[0] + '|' + JSON.stringify(x[1]);
+    if (CACHE.has(key) && Date.now() - CACHE.get(key).t < 120e3) return;
+    cadena = cadena.then(() => pedir(x[0], x[1], key)).catch(() => {});
+  });
+}
+
+/** El lector de Excel pesa ~900 KB: se descarga solo cuando alguien va a importar. */
+let xlsxP = null;
+function cargarXLSX() {
+  if (typeof XLSX !== 'undefined') return Promise.resolve();
+  if (!xlsxP) xlsxP = new Promise((ok, mal) => {
+    const fin = trabajando('xlsx', false);
+    const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = () => { fin(); ok(); };
+    sc.onerror = () => { fin(); xlsxP = null; mal(new Error('No se pudo descargar el lector de Excel. Revisa tu internet.')); };
+    document.head.appendChild(sc);
+  });
+  return xlsxP;
 }
 
 /* ---------- estado ---------- */
-const S = { sess: null, cat: null, fecha: null, tab: null, vend: '', filtro: 'pend' };
+const S = { sess: null, cat: null, fecha: null, tab: null, vend: '', filtro: 'pend', vistaId: 0, tocado: false, silencio: false };
+const hoyCL = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' });
 try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e) {}
 
 const TABS = {
@@ -125,10 +250,16 @@ const TABS = {
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR;
+// En oficina, las pestañas se agrupan en 5 secciones para no tener 12 opciones a la vista
+const GRUPOS = [['g-rend', 'Rendición', ['resumen']], ['g-ventas', 'Ventas', ['importar', 'folios', 'descuentos']],
+  ['g-bodega', 'Bodega', ['despacho', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
+  ['g-hist', 'Historial', ['historial']]];
+const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
 function salir(expirada) {
   if (!expirada && S.sess) api('logout', S.sess.token).catch(() => {});
   S.sess = null; S.cat = null; S.tab = null;
+  olvidarCache(false);
   try { localStorage.removeItem('rn_sess'); } catch (e) {}
   document.body.classList.remove('has-bottom');
   pantallaLogin();
@@ -137,7 +268,7 @@ function salir(expirada) {
 /* ---------- ingreso ---------- */
 async function pantallaLogin() {
   const app = $('#app');
-  render(app, `<div class="login"><img class="logo" src="icon-512.png" alt="Cecinas Naranjo">
+  render(app, `<div class="login"><img class="logo" src="icon-192.png" alt="Cecinas Naranjo" width="96" height="96">
     <h1>Rendiciones</h1><p class="lead">Elige tu nombre e ingresa tu PIN.</p>
     <div class="who" id="who">${skeleton(1)}</div>
     <label class="sr" for="pin">PIN</label>
@@ -164,19 +295,23 @@ async function iniciar() {
   const app = $('#app');
   app.innerHTML = `<main>${skeleton(4)}</main>`;
   S.cat = await api('catalogo', S.sess.token);
-  S.fecha = S.fecha || S.cat.hoy;
+  S.fecha = S.fecha || hoyCL();
   const tabs = TABS[S.sess.rol] || [];
   S.tab = S.tab && tabs.some(t => t[0] === S.tab) ? S.tab : tabs[0][0];
-  const unica = tabs.length === 1;          // bodega: una sola pantalla, sin menú
+  const unica = tabs.length === 1;          // una sola pantalla, sin menú
   const abajo = !unica && tabs.length <= 4;
+  const grupos = !unica && !abajo ? GRUPOS.map(g => [g[0], g[1], g[2].filter(t => tabs.some(x => x[0] === t))]).filter(g => g[2].length) : null;
+  S.grupos = grupos; S.ultimoDeGrupo = S.ultimoDeGrupo || {};
   document.body.classList.toggle('has-bottom', abajo);
   app.innerHTML = `<header>
-      <div class="hbar"><div class="brand"><img src="logo.png" alt=""><div><b>Naranjo</b><small>${esc(S.sess.nombre)}</small></div></div>
+      <div class="hbar"><div class="brand"><img src="logo-96.png" alt="" width="42" height="42"><div><b>Naranjo</b><small>${esc(S.sess.nombre)}</small></div></div>
         <div class="sp"></div>
         <div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha">
           <button id="next" aria-label="Día siguiente">›</button></div>
         <button class="icon-btn" id="out">Salir</button></div>
-      ${abajo || unica ? '<div class="progress" aria-hidden="true"><i id="prog"></i></div>' : `<nav class="top" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${t[1]}</button>`).join('')}</nav>`}
+      ${abajo || unica ? '<div class="progress" aria-hidden="true"><i id="prog"></i></div>'
+        : `<nav class="top" id="nav">${grupos.map(g => `<button data-g="${g[0]}">${g[1]}</button>`).join('')}</nav><nav class="sub" id="sub"></nav>`}
+      <div class="otrodia" id="otrodia" hidden><span></span><button type="button" id="hoyBtn">Volver a hoy</button></div>
     </header>
     <main id="main"></main>
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
@@ -185,15 +320,43 @@ async function iniciar() {
   $('#fecha').onchange = e => e.target.value && cambiarFecha(e.target.value);
   $('#prev').onclick = () => cambiarFecha(sumarDias(S.fecha, -1));
   $('#next').onclick = () => cambiarFecha(sumarDias(S.fecha, 1));
-  if ($('#nav')) $('#nav').onclick = e => { const b = e.target.closest('button'); if (b) ir(b.dataset.t); };
+  $('#hoyBtn').onclick = () => cambiarFecha(hoyCL());
+  if ($('#nav')) $('#nav').onclick = e => { const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.t) return ir(b.dataset.t);
+    const g = grupos.find(x => x[0] === b.dataset.g); ir(S.ultimoDeGrupo[g[0]] || g[2][0]); };
+  if ($('#sub')) $('#sub').onclick = e => { const b = e.target.closest('button'); if (b) ir(b.dataset.t); };
+  // si la persona escribe algo, no se le cambia la pantalla por una actualización de fondo
+  $('#main').addEventListener('input', () => { S.tocado = true; });
   ir(S.tab);
 }
-function ir(t) {
+function ir(t, silencioso) {
   S.tab = t;
-  $$('#nav button').forEach(b => { b.classList.toggle('on', b.dataset.t === t); if (b.dataset.t === t) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
-  const m = $('#main'); m.onclick = null; m.innerHTML = skeleton(4);
+  const tabs = TABS[S.sess.rol] || [];
+  if (S.grupos) {
+    const g = S.grupos.find(x => x[2].indexOf(t) >= 0);
+    S.ultimoDeGrupo[g[0]] = t;
+    $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.g === g[0]));
+    const sub = $('#sub');
+    sub.hidden = g[2].length < 2;
+    sub.innerHTML = g[2].map(x => `<button data-t="${x}" class="${x === t ? 'on' : ''}">${(tabs.find(y => y[0] === x) || [])[1]}</button>`).join('');
+    const on = $('#sub .on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  } else $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  const od = $('#otrodia'), hoy = hoyCL();
+  if (od) { od.hidden = S.fecha === hoy; if (S.fecha !== hoy) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(S.fecha)}</b>`; }
+  const m = $('#main'); m.onclick = null;
+  S.vistaId++; S.tocado = false;
+  const y = window.scrollY;
+  if (!silencioso) m.innerHTML = skeleton(4);
+  S.silencio = !!silencioso;
   const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
-  v(m, t);
+  Promise.resolve(v(m, t)).catch(() => {
+    if (!silencioso && m.querySelector('.sk')) m.innerHTML = `<div class="empty"><b>No se pudo cargar</b>Revisa tu conexión.<br><button class="btn ghost sm" style="margin-top:10px" onclick="ir(S.tab)">Reintentar</button></div>`;
+  }).finally(() => {
+    S.silencio = false;
+    if (silencioso) window.scrollTo(0, y);
+    else setTimeout(() => precargar((S.grupos ? (S.grupos.find(x => x[2].indexOf(t) >= 0) || [0, 0, []])[2] : tabs.map(x => x[0]))
+      .filter(x => x !== t).concat(t === 'resumen' ? ['folios', 'despacho'] : [])), 800);
+  });
 }
 const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(p * 100) + '%'; };
 const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores</option>' : '') +
@@ -404,8 +567,8 @@ async function vInventario(m) {
   const nombreSec = id => (inv.secciones.find(x => x.id === id) || {}).nombre || id;
   render(m, `<div class="row"><div class="grow"><h2>Inventario de bodega</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
       <button class="btn ghost sm" id="plan">Planilla del día</button></div>
-    <p class="muted">Las salidas y retornos de los vendedores vienen solos desde Despacho. Aquí se anota el ingreso de fábrica, las otras salidas y, si se cuenta, el stock físico.</p>
-    <div class="seg" id="sec" style="margin:4px 0 12px;flex-wrap:wrap">${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
+    <p class="muted">Lo de los vendedores llega solo desde Despacho. Aquí anota lo que entra de fábrica y lo que sale a otros lados.</p>
+    <div class="seg secs" id="sec">${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
     <div id="alertInv"></div><div id="lista"></div>
     <div class="card" style="margin-top:12px"><b>¿Falta un producto?</b><div class="row" style="margin-top:8px">
       <input class="in grow" id="npN" placeholder="Nombre, como en la planilla"><select class="in" id="npU" style="width:auto"><option>KG</option><option>UN</option></select>
@@ -574,6 +737,7 @@ function leerLibro(buf) {
 }
 
 async function vImportar(m) {
+  cargarXLSX().catch(() => {});                 // se empieza a descargar mientras la encargada elige los archivos
   render(m, `<h2>Importar desde Mi DTE</h2>
     <p class="lead">Sube los dos informes del día: <b>Ventas Diarias</b> (los folios y sus totales) y el <b>Informe de ventas</b> (kilos por producto). Puedes subirlos juntos. Los documentos repetidos se ignoran.</p>
     <label class="drop" id="drop"><input type="file" id="fi" accept=".xlsx,.xls,.csv" multiple class="sr">
@@ -589,7 +753,7 @@ async function vImportar(m) {
   cargarTerminales();
 
   async function procesar(files) {
-    if (typeof XLSX === 'undefined') return toast('Cargando el lector de Excel, intenta en unos segundos.', true);
+    await cargarXLSX();
     const leidos = [];
     for (const f of files) {
       try { leidos.push(Object.assign({ nombre: f.name }, leerLibro(await f.arrayBuffer()))); }
@@ -649,12 +813,22 @@ async function vResumen(m) {
   const r = await api('getResumen', S.sess.token, S.fecha);
   const t = r.totales, cerrada = r.estado === 'CERRADA';
   const difCls = v => !v.kilos.salida || !r.hayDetalle ? '' : v.kilos.alerta ? (v.kilos.diferencia > 0 ? 'pos' : 'neg') : '';
+  // pasos del día: qué está listo y qué falta, en orden
+  const docs = r.porVendedor.reduce((a, v) => a + v.documentos, 0), pend = r.porVendedor.reduce((a, v) => a + v.pendientes, 0);
+  const pasos = [
+    ['Importar ventas', docs ? docs + ' documentos' : 'Sube los Excel de Mi DTE', docs > 0, 'importar'],
+    ['Vendedores detallan', docs ? (pend ? `Faltan ${pend} de ${docs}` : 'Todos listos') : 'Después de importar', docs > 0 && !pend, 'folios'],
+    ['Revisar avisos', !docs ? '—' : r.alertas.length ? r.alertas.length + ' por revisar' : 'Sin avisos', docs > 0 && !r.alertas.length, 'avisos'],
+    ['Cerrar el día', cerrada ? 'Archivo generado' : 'Genera el archivo', cerrada, 'cerrar']];
+  const actual = pasos.findIndex(p => !p[2]);
   render(m, `<div class="row"><div class="grow"><h2>Rendición</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
       <span class="chip ${cerrada ? 'ok' : 'cu'}">${cerrada ? 'Cerrada' : 'Abierta'}</span></div>
+    <ol class="pasos">${pasos.map((p, i) => `<li class="${p[2] ? 'ok' : i === actual ? 'now' : ''}"><button type="button" data-paso="${p[3]}">
+      <i>${p[2] ? '✓' : i + 1}</i><b>${p[0]}</b><small>${esc(p[1])}</small></button></li>`).join('')}</ol>
     <div class="kpis" style="margin-top:14px"><div><span>Venta documentada</span><b>${clp(t.venta)}</b></div><div><span>A crédito</span><b>${clp(t.credito)}</b></div>
       <div><span>Cobranza</span><b>${clp(t.cobranza)}</b></div><div><span>Gastos</span><b>${clp(t.gastos)}</b></div>
       <div class="cash"><span>Efectivo a recibir</span><b>${clp(t.efectivo)}</b></div></div>
-    ${r.alertas.length ? `<div class="alert"><b>Antes de cerrar</b><ul>${r.alertas.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`
+    ${r.alertas.length ? `<div class="alert" id="avisos"><b>Antes de cerrar</b><ul>${r.alertas.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`
       : r.porVendedor.length ? '<div class="alert ok">Todo cuadra. Puedes cerrar la rendición.</div>' : ''}
     <h3>Por vendedor</h3>
     ${r.porVendedor.length ? `<div class="vcards">${r.porVendedor.map(v => `<div class="vcard">
@@ -678,6 +852,12 @@ async function vResumen(m) {
       ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
         : '<button class="btn ghost" id="pv">Ver cómo quedaría</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
     <div id="lnk"></div>`);
+  $$('[data-paso]', m).forEach(b => b.onclick = () => {
+    const p = b.dataset.paso;
+    if (p === 'importar' || p === 'folios') return ir(p);
+    const el = p === 'avisos' ? $('#avisos') : ($('#cl') || $('#lnk'));
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  });
   const enlace = (url, txt) => { $('#lnk').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <span class="grow">${txt}</span><a class="btn cu sm" href="${esc(url)}" target="_blank" rel="noopener">Abrir archivo</a></div>`;
     $('#lnk').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
@@ -841,7 +1021,18 @@ async function vMov(m, tabla) {
 
 /* ---------- arranque ---------- */
 if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.indexOf('PEGA_AQUI') >= 0)
-  $('#app').innerHTML = '<div class="login"><img class="logo" src="icon-512.png" alt=""><h1>Falta configurar</h1><p class="lead">Pega la URL de la implementación de Apps Script en <b>config.js</b>.</p></div>';
+  $('#app').innerHTML = '<div class="login"><img class="logo" src="icon-192.png" alt=""><h1>Falta configurar</h1><p class="lead">Pega la URL de la implementación de Apps Script en <b>config.js</b>.</p></div>';
 else S.sess ? iniciar().catch(() => salir(true)) : pantallaLogin();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => {
+  const habia = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+  // cuando se instala una versión nueva, se ofrece recargar (no se recarga sola para no perder lo que se está escribiendo)
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!habia || $('.nuevaver')) return;
+    const b = document.createElement('div'); b.className = 'nuevaver'; b.setAttribute('role', 'status');
+    b.innerHTML = '<span>Hay una versión nueva de la app.</span><button type="button">Actualizar</button>';
+    b.querySelector('button').onclick = () => location.reload();
+    document.body.appendChild(b);
+  });
+});

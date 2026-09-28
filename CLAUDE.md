@@ -76,6 +76,14 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 ## Saldos de clientes
 `getSaldosClientes`: facturas con líneas CREDITO en PAGOS menos pagos de COBRANZA. Pago con folio → esa factura; sin folio o sobrante → facturas más antiguas del cliente (nombre normalizado o RUT); lo que no calza queda como abono sin factura. Pantalla "Saldos clientes" para RENDICION/SUPERVISOR/ADMIN.
 
+## Velocidad y cargas
+- Servidor: `MEMO_` (cada hoja se lee una vez por petición; se invalida al escribir), USUARIOS y PRODUCTOS en CacheService 10 min (`onEdit` limpia si se editan a mano; `setup` también), `deleteRows_` borra bloques seguidos de una vez.
+- App: consultas (`LECTURA`) guardadas en localStorage (`rn_cache`, 30 entradas): se muestran al instante y se revalidan por detrás; si cambió, `ir(tab, true)` re-dibuja sin animación, salvo que el usuario esté escribiendo (`S.tocado`) o haya una hoja abierta. Cualquier escritura borra la caché. `precargar()` trae las pestañas vecinas. El lector de Excel se descarga solo en Importar (`cargarXLSX`).
+- Indicadores: barra superior + aviso abajo (`trabajando()`, mensajes en `MSG`, escalan a los 6 s y 16 s); el botón tocado muestra spinner y "Guardando…".
+- Service worker: cache-first con actualización por detrás; aviso "Hay una versión nueva" al instalarse otra.
+- Navegación de oficina en 5 grupos (`GRUPOS`) con sub-pestañas; aviso "Estás viendo…" si la fecha no es hoy; Rendición muestra los 4 pasos del día.
+- `.enter` usa fill `backwards`: con `both` quedaba un transform en #app y la barra inferior dejaba de estar fija.
+
 ## Roles
 ADMIN (todo, reabre días), SUPERVISOR (rendición + autoriza descuentos), RENDICION, BODEGA, VENDEDOR
 (solo ve sus folios, su cobranza, sus depósitos y sus gastos). BODEGA solo ve Despacho y retorno; Consumo lo registra la encargada de rendición.
