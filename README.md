@@ -43,6 +43,11 @@ detalle de pago por folio, retorno, cobranza, proveedores, consumo, gastos y cie
 5. **Administración**: autoriza descuentos.
 6. **Encargada**: Rendición → revisa alertas → Cerrar y generar archivo.
 
+## Inventario (una sola vez)
+Después de `setup`, carga los saldos reales desde la planilla de inventario que usan hoy. En el editor de Apps Script ejecuta, con la última hoja cerrada y el primer día con la app:
+`cargarSaldoDesdePlanilla('1oU6LF2pfHlrVIBJmL89XaeBrF1IKXuGZJZyQ0HDb5y0', '25-09', '2026-09-29')`
+El registro de ejecución dice cuántos productos cargó y cuáles no encontró.
+
 ## Actualizar
 - Cambios en la app (pantallas): subir los archivos nuevos a GitHub y aumentar la versión en `sw.js` (`CACHE_NAME`).
 - Cambios en `APPS_SCRIPT.js`: pegar el archivo completo, **ejecutar `setup` otra vez** (actualiza las hojas sin borrar datos) y luego en Apps Script → Implementar → Administrar implementaciones → editar →

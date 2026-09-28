@@ -15,7 +15,7 @@ const fechaLarga = iso => { const d = new Date(iso + 'T12:00:00'); return d.toLo
 const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const FL = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', DEP_EFECTIVO: 'Depósito en efectivo', CHEQUE: 'Cheque', CREDITO: 'Crédito', NOTA_CREDITO: 'Nota de crédito' };
-const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 'Congelados', LACTEOS: 'Lácteos', REVISAR: 'Por clasificar' };
+const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 'Congelados', LACTEOS: 'Lácteos', LAMINADOS: 'Laminados, quesos y verduras', REVISAR: 'Por clasificar' };
 const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor' };
 
 const IC = {
@@ -24,6 +24,7 @@ const IC = {
   receipt: '<path d="M5 3v18l2-1.5L9 21l2-1.5L13 21l2-1.5L17 21l2-1.5V3l-2 1.5L15 3l-2 1.5L11 3 9 4.5 7 3z"/><path d="M9 9h6M9 13h6"/>',
   box: '<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
   bank: '<path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18"/>',
+  stack: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/><path d="M3 17.5l9 5 9-5" opacity=".5"/>',
   clip: '<path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/>',
   camera: '<path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/>',
   store: '<path d="M3 9l1.5-5h15L21 9M4 9v11h16V9M3 9h18M9 20v-6h6v6"/>',
@@ -118,8 +119,8 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 
 const TABS = {
   VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
-  BODEGA: [['despacho', 'Despacho', 'box']],
-  RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Folios'], ['despacho', 'Kilos'], ['COBRANZA', 'Cobranza'],
+  BODEGA: [['despacho', 'Despacho', 'box'], ['inventario', 'Inventario', 'stack']],
+  RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Folios'], ['despacho', 'Kilos'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
     ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
@@ -191,7 +192,7 @@ function ir(t) {
   S.tab = t;
   $$('#nav button').forEach(b => { b.classList.toggle('on', b.dataset.t === t); if (b.dataset.t === t) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
   const m = $('#main'); m.onclick = null; m.innerHTML = skeleton(4);
-  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   v(m, t);
 }
 const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(p * 100) + '%'; };
@@ -380,6 +381,172 @@ async function vDespacho(m) {
     const datos = filas.map(el => ({ codigo: el.dataset.c, salida: $('[data-k=salida]', el).value.replace(',', '.'), retorno: $('[data-k=retorno]', el).value.replace(',', '.') }));
     await api('saveDespacho', S.sess.token, S.fecha, S.vend, datos); toast('Despacho de ' + S.vend + ' guardado');
   };
+}
+
+/* ============ INVENTARIO DE BODEGA ============ */
+async function vInventario(m) {
+  const inv = await api('getInventario', S.sess.token, S.fecha);
+  S.secInv = S.secInv || 'TERMINADOS';
+  const sum = o => Object.keys(o || {}).reduce((a, k) => a + (Number(o[k]) || 0), 0);
+  // estado editable por producto
+  const est = {};
+  inv.filas.forEach(f => {
+    const desp = {}; Object.keys(f.otras).forEach(k => { const d = (f.otras[k] || 0) - ((f.otrasManual || {})[k] || 0); if (Math.abs(d) > 1e-9) desp[k] = d; });
+    est[f.codigo] = { f, ingreso: f.ingreso || '', otras: Object.assign({}, f.otrasManual || {}), desp, conteo: f.conteo === null ? '' : f.conteo,
+      inicial: f.inicial, inicialEditable: !f.conHistoria || f.inicialManual, cambio: false };
+  });
+  const calc = e => {
+    const f = e.f, ini = e.inicialEditable ? dec(e.inicial) : f.inicial;
+    const t = ini - sum(f.salVend) - sum(e.desp) - sum(e.otras) + dec(e.ingreso) + sum(f.retVend);
+    const final = e.conteo === '' ? t : dec(e.conteo);
+    return { t, final, ajuste: e.conteo === '' ? 0 : final - t };
+  };
+  const nombreSec = id => (inv.secciones.find(x => x.id === id) || {}).nombre || id;
+  render(m, `<div class="row"><div class="grow"><h2>Inventario de bodega</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
+      <button class="btn ghost sm" id="plan">Planilla del día</button></div>
+    <p class="muted">Las salidas y retornos de los vendedores vienen solos desde Despacho. Aquí se anota el ingreso de fábrica, las otras salidas y, si se cuenta, el stock físico.</p>
+    <div class="seg" id="sec" style="margin:4px 0 12px;flex-wrap:wrap">${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
+    <div id="alertInv"></div><div id="lista"></div>
+    <div class="card" style="margin-top:12px"><b>¿Falta un producto?</b><div class="row" style="margin-top:8px">
+      <input class="in grow" id="npN" placeholder="Nombre, como en la planilla"><select class="in" id="npU" style="width:auto"><option>KG</option><option>UN</option></select>
+      <button class="btn ghost sm" id="npA">Agregar a esta sección</button></div></div>
+    <div id="lnkInv"></div>
+    <div class="sticky-foot"><div class="card"><div><div class="muted" id="cambios">Sin cambios</div></div><button class="btn cu" id="gi">Guardar</button></div></div>`);
+  const lista = $('#lista');
+  function pintar() {
+    $$('#sec button').forEach(b => b.classList.toggle('on', b.dataset.s === S.secInv));
+    const cam = S.secInv === 'CAMARA';
+    const filas = inv.filas.filter(f => f.seccion === S.secInv);
+    const negativos = inv.filas.filter(f => calc(est[f.codigo]).final < -0.001);
+    $('#alertInv').innerHTML = negativos.length ? `<div class="alert"><b>${negativos.length} producto(s) con stock negativo:</b> ${negativos.slice(0, 6).map(f => esc(f.nombre)).join(', ')}${negativos.length > 6 ? '…' : ''}. Revisa ingresos o registra un conteo.</div>` : '';
+    lista.innerHTML = filas.length ? filas.map(f => {
+      const e = est[f.codigo], c = calc(e), u = f.unidad === 'UN' ? 'un.' : 'kg';
+      const detalle = cam ? '' : [
+        sum(f.salVend) ? `Vendedores −${kg(sum(f.salVend))}` : '', sum(f.retVend) ? `Retorno +${kg(sum(f.retVend))}` : '',
+        sum(e.desp) ? `Supermercado/otros −${kg(sum(e.desp))}` : ''].filter(Boolean).join(' · ');
+      return `<div class="inv" data-c="${esc(f.codigo)}">
+        <div class="pn">${esc(f.nombre)}<small>${e.inicialEditable ? 'Inventario inicial' : 'Inicial ' + kg(f.inicial) + ' ' + u}${detalle ? ' · ' + detalle : ''}</small></div>
+        <div class="fin ${c.final < -0.001 ? 'neg' : ''}"><span>Final</span><b>${kg(c.final)}</b>${e.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${kg(c.ajuste)}</em>` : ''}</div>
+        <div class="campos">
+          ${e.inicialEditable ? `<label>Inicial<input class="in n" data-k="inicial" inputmode="decimal" value="${e.inicial}"></label>` : ''}
+          <label>${cam ? 'Ingreso producto' : 'Ingreso fábrica'}<input class="in n" data-k="ingreso" inputmode="decimal" value="${e.ingreso}"></label>
+          ${cam ? `<label>Salida fábrica<input class="in n" data-k="o:FABRICA" inputmode="decimal" value="${e.otras.FABRICA || ''}"></label>
+                   <label>Salida vendedores<input class="in n" data-k="o:VENDEDORES" inputmode="decimal" value="${e.otras.VENDEDORES || ''}"></label>`
+                : `<label>Otras salidas<button type="button" class="in otras" data-otras="1">${sum(e.otras) ? kg(sum(e.otras)) + ' · ' + Object.keys(e.otras).filter(k => e.otras[k]).length + ' destino(s)' : 'Agregar'}</button></label>`}
+          <label>Conteo físico<input class="in n" data-k="conteo" inputmode="decimal" placeholder="—" value="${e.conteo}"></label>
+        </div></div>`; }).join('') : '<div class="empty">No hay productos en esta sección.</div>';
+    const n = Object.values(est).filter(e => e.cambio).length;
+    $('#cambios').textContent = n ? n + ' producto(s) con cambios sin guardar' : 'Sin cambios';
+  }
+  lista.oninput = e => {
+    const box = e.target.closest('.inv'); const k = e.target.dataset.k; if (!box || !k) return;
+    const st = est[box.dataset.c];
+    if (k.startsWith('o:')) st.otras[k.slice(2)] = e.target.value; else st[k] = e.target.value;
+    st.cambio = true;
+    const c = calc(st), fin = $('.fin', box);
+    fin.classList.toggle('neg', c.final < -0.001);
+    fin.innerHTML = `<span>Final</span><b>${kg(c.final)}</b>${st.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${kg(c.ajuste)}</em>` : ''}`;
+    const n = Object.values(est).filter(x => x.cambio).length;
+    $('#cambios').textContent = n + ' producto(s) con cambios sin guardar';
+  };
+  lista.onclick = e => { const b = e.target.closest('[data-otras]'); if (!b) return; abrirOtras(est[b.closest('.inv').dataset.c]); };
+  function abrirOtras(st) {
+    const lista2 = inv.destinos.filter(d => d !== 'SUPERMERCADO' || !st.desp.SUPERMERCADO);
+    const dist = inv.distribuidores || [];
+    const extras = Object.keys(st.otras).filter(k => lista2.indexOf(k) < 0 && dist.indexOf(k) < 0);
+    const campo = d => `<label class="f" style="margin:0">${esc(d === 'SUPERMERCADO' ? 'Supermercado' : d.charAt(0) + d.slice(1).toLowerCase())}
+        <input class="in n" data-d="${esc(d)}" inputmode="decimal" value="${st.otras[d] || ''}"></label>`;
+    const ov = document.createElement('div'); ov.className = 'ov';
+    ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div><div class="body">
+      <div class="muted">Otras salidas</div><div style="font-weight:700;font-size:18px">${esc(st.f.nombre)}</div>
+      ${Object.keys(st.desp).length ? `<p class="muted">Desde Despacho: ${Object.keys(st.desp).map(k => esc(k) + ' ' + kg(st.desp[k])).join(', ')}</p>` : ''}
+      <div class="muted" style="margin-top:12px;font-weight:700">Distribuidores</div>
+      <div class="grid g2" style="margin-top:6px">${dist.map(campo).join('')}</div>
+      <div class="muted" style="margin-top:14px;font-weight:700">Otros destinos</div>
+      <div class="grid g2" style="margin-top:6px" id="ods">${lista2.concat(extras).map(campo).join('')}</div>
+      <div class="row" style="margin-top:12px"><input class="in grow" id="odN" placeholder="Otro destino o distribuidor nuevo"><input class="in n" id="odQ" style="width:110px" inputmode="decimal" placeholder="Cantidad"></div>
+      </div><div class="foot"><button class="btn ghost grow" id="odX">Cancelar</button><button class="btn cu grow" id="odOk">Listo</button></div></div>`;
+    document.body.appendChild(ov);
+    $('#odX', ov).onclick = () => cerrarHoja(ov); ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
+    $('#odOk', ov).onclick = () => {
+      const o = {}; $$('[data-d]', ov).forEach(i => { if (i.value !== '' && dec(i.value)) o[i.dataset.d] = i.value; });
+      const n = $('#odN', ov).value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase(), q = $('#odQ', ov).value;
+      if (n && q) o[n] = String(dec(q) + dec(o[n] || 0));
+      st.otras = o; st.cambio = true; cerrarHoja(ov); pintar();
+    };
+  }
+  $('#sec').onclick = e => { const b = e.target.closest('button'); if (b) { S.secInv = b.dataset.s; pintar(); } };
+  $('#gi').onclick = async () => {
+    const cambiados = Object.values(est).filter(e => e.cambio);
+    if (!cambiados.length) return toast('No hay cambios que guardar.');
+    const b = $('#gi'); b.disabled = true;
+    try {
+      const nuevo = await api('guardarInventario', S.sess.token, S.fecha, cambiados.map(e => {
+        const o = {}; Object.keys(e.otras).forEach(k => { if (e.otras[k] !== '' && dec(e.otras[k])) o[k] = dec(e.otras[k]); });
+        const r = { codigo: e.f.codigo, ingreso: e.ingreso === '' ? '' : dec(e.ingreso), otras: o, conteo: e.conteo === '' ? '' : dec(e.conteo) };
+        if (e.inicialEditable && String(e.inicial) !== String(e.f.inicial)) r.inicial = dec(e.inicial);
+        return r; }));
+      toast('Inventario guardado');
+      inv.filas = nuevo.filas; nuevo.filas.forEach(f => { est[f.codigo].f = f; est[f.codigo].cambio = false; });
+      pintar();
+    } finally { b.disabled = false; }
+  };
+  $('#plan').onclick = async () => {
+    if (Object.values(est).some(e => e.cambio) && !confirm('Hay cambios sin guardar que no saldrán en la planilla. ¿Generarla igual?')) return;
+    const r = await api('generarPlanillaInventario', S.sess.token, S.fecha);
+    $('#lnkInv').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span class="grow">Hoja ${esc(r.hoja)} lista en ${esc(r.nombre)} (carpeta Inventario).</span><a class="btn cu sm" href="${esc(r.url)}" target="_blank" rel="noopener">Abrir planilla</a></div>`;
+    $('#lnkInv').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+  $('#npA').onclick = async () => {
+    const n = $('#npN').value.trim(); if (!n) return toast('Escribe el nombre del producto.', true);
+    await api('agregarProductoInv', S.sess.token, { nombre: n, seccion: S.secInv, unidad: $('#npU').value });
+    toast('Producto agregado a ' + nombreSec(S.secInv)); ir('inventario');
+  };
+  pintar();
+}
+
+/* ============ SALDOS DE CLIENTES ============ */
+async function vSaldos(m) {
+  const r = await api('getSaldosClientes', S.sess.token);
+  const fc = iso => { const [a, mm, d] = String(iso).split('-'); return d + '-' + mm + '-' + a.slice(2); };
+  const edad = d => d > 60 ? 'bad' : d > 30 ? 'warn' : 'ok';
+  const vends = [...new Set(r.clientes.flatMap(c => c.vendedores))].sort();
+  const conDeuda = r.clientes.filter(c => c.deuda > 0);
+  render(m, `<h2>Saldos de clientes</h2>
+    <p class="lead" style="margin:0 0 12px">Facturas a crédito menos los pagos anotados en Cobranza.</p>
+    <div class="kpis"><div><span>Total adeudado</span><b>${clp(r.total)}</b></div>
+      <div><span>Clientes con deuda</span><b>${conDeuda.length}</b></div>
+      <div><span>Con facturas de más de 30 días</span><b>${conDeuda.filter(c => c.diasMax > 30).length}</b></div></div>
+    <div class="row" style="margin:14px 0 10px;flex-wrap:wrap">
+      <input class="in grow" id="bq" placeholder="Buscar cliente o RUT" style="min-width:200px">
+      <select class="in" id="bv" style="width:auto"><option value="">Todos los vendedores</option>${vends.map(v => `<option>${esc(v)}</option>`).join('')}</select>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="bp"> Ver también los al día</label></div>
+    <div id="sl"></div>
+    <p class="muted" style="margin-top:14px">Al registrar un pago en Cobranza, anota el folio de la factura para que se descuente de esa. Sin folio, se descuenta de la factura más antigua del cliente.</p>`);
+  const abiertos = {};
+  const pintar = () => {
+    const q = normTxt($('#bq').value), v = $('#bv').value, todos = $('#bp').checked;
+    const lista = r.clientes.filter(c => (todos || c.deuda > 0) && (!v || c.vendedores.indexOf(v) >= 0) &&
+      (!q || normTxt(c.cliente).indexOf(q) >= 0 || String(c.rut).replace(/\W/g, '').indexOf(q.replace(/\W/g, '')) >= 0));
+    $('#sl').innerHTML = lista.length ? lista.map(c => `<div class="card sc" data-k="${esc(c.clave)}" style="margin-bottom:8px;cursor:pointer">
+      <div class="row"><div class="grow"><b>${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')} · ${esc(c.vendedores.join(', '))}</div></div>
+        <div style="text-align:right"><b style="font-size:20px">${clp(c.deuda)}</b><div>${c.pendientes
+          ? `<span class="chip ${edad(c.diasMax)}">${c.pendientes} pendiente${c.pendientes > 1 ? 's' : ''} · ${c.diasMax} días</span>` : '<span class="chip ok">Al día</span>'}</div></div></div>
+      ${abiertos[c.clave] ? `<div style="margin-top:10px;border-top:1px solid var(--line-2);padding-top:8px">
+        ${c.facturas.map(f => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line-2)">
+          <div class="grow">${esc(f.tipo)} N° ${esc(f.folio)} <span class="muted">· ${fc(f.fecha)} · ${esc(f.vendedorNombre)}</span>
+            ${f.pagos.length ? `<div class="muted">Pagado: ${f.pagos.map(p => fc(p.fecha) + ' ' + clp(p.monto) + ' ' + esc(String(p.forma || '').toLowerCase())).join(' · ')}</div>` : ''}</div>
+          <div style="text-align:right">${f.saldo > 0 ? `<b>${clp(f.saldo)}</b><div><span class="chip ${edad(f.dias)}">${f.dias} días</span></div>` : '<span class="chip ok">Pagada</span>'}
+            <div class="muted">de ${clp(f.credito)}</div></div></div>`).join('')}
+        ${c.abonos.length ? `<div class="alert" style="margin-top:8px">Abonos sin factura asociada: ${c.abonos.map(a => fc(a.fecha) + ' ' + clp(a.monto)).join(', ')}. Ya están descontados del total.</div>` : ''}
+        ${c.ultimoPago ? `<div class="muted" style="margin-top:6px">Último pago: ${fc(c.ultimoPago)}</div>` : ''}</div>` : ''}
+    </div>`).join('') : `<div class="empty">${r.clientes.length ? 'Ningún cliente coincide con el filtro.' : 'Todavía no hay facturas a crédito. Aparecerán cuando se marque CREDITO al detallar un folio.'}</div>`;
+  };
+  const normTxt = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+  $('#bq').oninput = pintar; $('#bv').onchange = pintar; $('#bp').onchange = pintar;
+  $('#sl').onclick = e => { const c = e.target.closest('.sc'); if (!c) return; abiertos[c.dataset.k] = !abiertos[c.dataset.k]; pintar(); };
+  pintar();
 }
 
 /* ============ IMPORTAR MI DTE ============ */

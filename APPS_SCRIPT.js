@@ -18,12 +18,21 @@ const CFG = {
   RESPALDOS_FOLDER_ID: '',
   APP_NAME: 'Rendiciones Naranjo',
   // Diferencia de kilos (vendido según bodega vs facturado) desde la cual se alerta, por vendedor
-  TOLERANCIA_KG: 1
+  TOLERANCIA_KG: 1,
+  // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
+  INVENTARIO_FOLDER_ID: '',
+  // Vendedores cuyo despacho no va en columna propia sino como destino (igual que en la planilla de inventario)
+  DESTINO_DE_VENDEDOR: { DISTRIBUIDOR: 'SUPERMERCADO', SALA: 'CONSUMO EXTERNO' },
+  // Destinos de "otras salidas". Los 4 primeros siempre tienen columna en la planilla; el resto aparece si se usa ese día.
+  DESTINOS: ['REPROCESO','CONSUMO','CONSUMO EXTERNO','LAMINADO','MERMA','DEGUSTACION','MUESTRA','OTRAS SALIDAS CON GUIA','SUPERMERCADO'],
+  // Distribuidores: en la planilla de inventario cada uno tiene su columna de salida (aparece si retiró ese día)
+  DISTRIBUIDORES: ['PATRICIO','CESAR','JUAN CARLOS','AMIR','OSCAR','CHILOE']
 };
 
 const SCHEMA = {
   USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo'],
-  PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo'],
+  PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo','seccion','nombre_inv'],
+  INVENTARIO_MOV: ['key','fecha','codigo','tipo','destino','cantidad','obs','registrado_por','registrado'],
   DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado'],
   DOCUMENTOS:  ['folio_key','fecha','tipo','folio','rut','cliente','total','condicion_dte','terminal','vendedor','estado','importado'],
   VENTAS_DETALLE: ['linea_key','fecha','folio_key','tipo','folio','codigo','producto','cantidad','precio','total','neto','terminal','vendedor','categoria','pago','es_guia','importado'],
@@ -92,9 +101,10 @@ function setup() {
     const head = SCHEMA[name];
     const actual = sh.getLastRow() ? sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0] : [];
     const igual = head.every((h, i) => actual[i] === h);
+    const soloAgrega = actual.filter(String).length > 0 && actual.filter(String).every((h, i) => head[i] === h);
     if (!igual) {
-      // PRODUCTOS cambió de estructura en la v2: se reemplaza por la lista de precios 2026
-      if (name === 'PRODUCTOS' || sh.getLastRow() <= 1) sh.clear();
+      // Si solo se agregaron columnas al final, se conservan los datos. PRODUCTOS v1 (otra estructura) se reemplaza.
+      if (!soloAgrega && (name === 'PRODUCTOS' || sh.getLastRow() <= 1)) sh.clear();
       sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
       sh.setFrozenRows(1);
     }
@@ -124,9 +134,10 @@ function setup() {
   }
   const ps = ss.getSheetByName('PRODUCTOS');
   if (ps.getLastRow() === 1) {
-    const base = PRODUCTOS_BASE.map((r, i) => r.concat([i + 1, true]));
+    const base = PRODUCTOS_BASE.map((r, i) => r.concat([i + 1, true, '', '']));
     ps.getRange(2, 1, base.length, SCHEMA.PRODUCTOS.length).setValues(base);
   }
+  prepararProductosInventario_();
   ['Hoja 1','Sheet1'].forEach(n => { const d = ss.getSheetByName(n); if (d && ss.getSheets().length > 1) ss.deleteSheet(d); });
   return 'Listo';
 }
@@ -137,7 +148,7 @@ function setup() {
 const API = {
   listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  borrarMov, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -278,7 +289,7 @@ function catalogo(token) {
   auth_(token);
   return {
     hoy: hoy_(),
-    productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE')
+    productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA')
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
       .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio) })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales })),
@@ -680,6 +691,371 @@ function borrarAdjunto(token, tabla, id, fileId) {
     try { DriveApp.getFileById(fileId).setTrashed(true); } catch (e) {}
     return true;
   });
+}
+
+/* ============================ INVENTARIO DE BODEGA ============================ */
+// Mismo esquema que la planilla "INVENTARIO SEPTIEMBRE": por día y producto
+//   inicial − salidas (vendedores + otros destinos) + ingreso fábrica + retornos = final
+// Cámara de carnes: inicial − salida fábrica − salida vendedores + ingreso producto = final
+// Movimientos en INVENTARIO_MOV (una fila por fecha|código|tipo|destino):
+//   SALDO_INICIAL (stock al comenzar el día), INGRESO, SALIDA (destino), CONTEO (stock físico al cierre del día)
+// Salidas y retornos de vendedores se leen de DESPACHO (no se ingresan dos veces).
+
+const SECCIONES_INV = [['TERMINADOS', 'Productos terminados', 'KG'], ['CAMARA', 'Cámara de carnes', 'KG'],
+  ['CONGELADOS', 'Congelados y cárnicos', 'UN'], ['LAMINADOS', 'Laminados, quesos y verduras', 'UN']];
+
+// nombre en la planilla de inventario → [sección, nombre del producto de venta (si ya existe)]
+const INV_ITEMS = [
+  ['TERMINADOS', 'LONGANIZA CORTA', 'LONGANIZA'], ['TERMINADOS', 'LONGANIZA LARGA', 'LONGANIZA LARGA'], ['TERMINADOS', 'PATE CERDO', 'PATE DE CERDO'],
+  ['TERMINADOS', 'ARROLLADO C/AJI', 'ARROLLADO C/AJI'], ['TERMINADOS', 'ARROLLADO SIN CUERO', 'ARROLLADO'], ['TERMINADOS', 'Q. CABEZA', 'QUESO DE CABEZA'],
+  ['TERMINADOS', 'COSTILLAR', 'COSTILLAR DE CERDO AHUMADO ENV.'], ['TERMINADOS', 'S. CERVEZA', 'SALCHICHON CERVECERO'], ['TERMINADOS', 'M. LISA', 'MORTADELA LISA'],
+  ['TERMINADOS', 'M. JAMONADA', 'MORTADELA JAMONADA'], ['TERMINADOS', 'JAMON SANDWICH', 'JAMON SANDWICH'], ['TERMINADOS', 'TAPABARRIGA', ''],
+  ['TERMINADOS', 'CHULETA AHUMADA', ''], ['TERMINADOS', 'JAMON ACARAMELADO', ''], ['TERMINADOS', 'JAMON AHUMADO', ''],
+  ['TERMINADOS', 'CAZUELA', 'CAZUELA AHUMADA'], ['TERMINADOS', 'ARROLLADO CON CUERO', 'ARROLLADO CON CUERO'],
+  ['CAMARA', 'PULPA PALETA'], ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'PULPA AURORA'], ['CAMARA', 'PULPA SEARA'], ['CAMARA', 'PULPA ECOFRIGO'],
+  ['CAMARA', 'PULPA PAMPLONA'], ['CAMARA', 'TOCINO FRIVAR'], ['CAMARA', 'TRUTRO ENTERO POLLO'], ['CAMARA', 'PANA AGROSUPER'], ['CAMARA', 'CUERO'],
+  ['CAMARA', 'GORDURA CHICA'], ['CAMARA', 'CHULETA VETADA'], ['CAMARA', 'CAZUELA'], ['CAMARA', 'CARNE LONGA'], ['CAMARA', 'FORRO FRICASA'],
+  ['CONGELADOS', 'EMPANADA QUESO 16X600', ''], ['CONGELADOS', 'EMPANADA PINO 16X600', ''], ['CONGELADOS', 'EMPANADA QUESO 14X24', 'EMP QUESO 14X24X25G ESTUCHE'],
+  ['CONGELADOS', 'SOPAIPILLA 20X12', 'SOPAIPILLA 20X12X420G'], ['CONGELADOS', 'SOPAIPILLA 20X48', 'SOPAIPILLA 20X48X500G'],
+  ['CONGELADOS', 'PASTA CHOCLO 15X1', 'PASTA CHOCLO 1 KILO'], ['CONGELADOS', 'PAPAS FRITAS', 'PAPAS PRE FRITAS 4X2.5KG SUPER CAPITAN'],
+  ['CONGELADOS', 'EMPANADA QUESO 3X3', 'EMP MED LUNA QUESO GRANEL 3X3 9KG'], ['CONGELADOS', 'CARNE MOLIDA 10', 'CARNE MOLIDA VACUNO 500G - 10 PORCIENTO'],
+  ['CONGELADOS', 'CARNE MOLIDA 5', ''], ['CONGELADOS', 'MECHADA CAMPESTRE', 'CARNE DE VACUNO DESMECHADO CAMESTRE 1KG'],
+  ['CONGELADOS', 'MECHADA CERDO BBQ', 'CERDO BBQ DESMECHADA 1KG'],
+  ['LAMINADOS', 'P.LAM-JAMONADA 150G'], ['LAMINADOS', 'P.LAM-LISA 150G'], ['LAMINADOS', 'P.LAM-CERVECERO 150G'], ['LAMINADOS', 'P.LAM-ARROLLADO CON AJI 150G'],
+  ['LAMINADOS', 'P.LAM-ARROLLADO 150G'], ['LAMINADOS', 'P.LAM-QUESO CABEZA 150G'], ['LAMINADOS', 'GAUDA LAM. 30X400G HUILCO'],
+  ['LAMINADOS', 'GAUDA LAM. RIG. 24X500G HUILCO'], ['LAMINADOS', 'GAUDA BAR. 4X3.5KG NOAL CL'], ['LAMINADOS', 'GAUDA LAM. 30X200G HUILCO'],
+  ['LAMINADOS', 'MANTECOSO LAM. 24X500G HUILCO'], ['LAMINADOS', 'MANTECOSO LAM. 30X400G HUILCO'], ['LAMINADOS', 'MANTECOSO LAM. 30X200G HUILCO'],
+  ['LAMINADOS', 'QUESO CREMA 36X190G HUILCO'], ['LAMINADOS', 'MANTEQUILLA PAN 10X250GR HUILCO'],
+  ['LAMINADOS', 'CHOCLO M.V', 'CHOCLO 10X200G M. VERDE'], ['LAMINADOS', 'ARVEJA M.V', 'ARVEJAS 10X200G M. VERDE'], ['LAMINADOS', 'PRIMAVERA M.V', 'PRIMAVERA 10X200G M. VERDE'],
+  ['LAMINADOS', 'POROTO VERDE M.V', 'POROTO VERDE 10X150G M. VERDE'], ['LAMINADOS', 'SOFRITO M.V', 'SOFRITO CON AJO 12X150G M. VERDE'],
+  ['LAMINADOS', 'CHOCLO TROZITO', 'CHOCLO TROCITO M. VERDE 20X180G']
+];
+// nombre "suelto" para comparar nombres escritos de distintas formas (P-LAM -ARROLLADO vs P.LAM-ARROLLADO, dobles espacios, etc.)
+const claveInv_ = t => normTxt_(t).replace(/[^A-Z0-9]/g, '').replace(/^PILPA/, 'PULPA').replace(/^PULKPA/, 'PULPA');
+
+/** Marca la sección y el nombre de inventario de los productos, y crea los que faltan. Se llama desde setup(). */
+function prepararProductosInventario_() {
+  const prods = read_('PRODUCTOS');
+  const porNombre = {}, porInv = {};
+  prods.forEach(p => { porNombre[normTxt_(p.nombre)] = p; if (p.nombre_inv) porInv[p.seccion + '|' + claveInv_(p.nombre_inv)] = p; });
+  const nuevos = []; let orden = 1000;
+  const usados = {}; prods.forEach(p => usados[codeKey_(p.codigo)] = 1);
+  const codigoLibre = base => { let c = base, n = 2; while (usados[codeKey_(c)]) c = base + n++; usados[codeKey_(c)] = 1; return c; };
+  INV_ITEMS.forEach(([sec, inv, venta]) => {
+    if (porInv[sec + '|' + claveInv_(inv)]) return;
+    const p = sec !== 'CAMARA' && venta ? porNombre[normTxt_(venta)] : null;
+    if (p && !p.seccion) { p.seccion = sec; p.nombre_inv = inv; updateRow_('PRODUCTOS', p._row, p); return; }
+    const unidad = (SECCIONES_INV.find(x => x[0] === sec) || [])[2] || 'UN';
+    nuevos.push({ codigo: codigoLibre((sec === 'CAMARA' ? '?CAM-' : '?') + claveInv_(inv).slice(0, 18)), nombre: inv, categoria: sec === 'CAMARA' ? 'MATERIA PRIMA' : sec === 'TERMINADOS' ? 'PROPIOS' : sec,
+      unidad, precio: '', orden: orden++, activo: true, seccion: sec, nombre_inv: inv });
+  });
+  append_('PRODUCTOS', nuevos);
+}
+
+function productosInv_() {
+  const orden = {}; INV_ITEMS.forEach((x, i) => orden[x[0] + '|' + claveInv_(x[1])] = i);
+  return read_('PRODUCTOS').filter(p => p.seccion && String(p.activo).toUpperCase() !== 'FALSE')
+    .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre_inv || p.nombre, seccion: p.seccion, unidad: p.unidad,
+      orden: orden[p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre)] !== undefined ? orden[p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre)] : 500 + num_(p.orden) }))
+    .sort((a, b) => a.orden - b.orden);
+}
+
+const r3_ = x => Math.round(x * 1000) / 1000;
+
+/** Calcula el inventario de un día para todos los productos (recorre la historia desde el último saldo o conteo). */
+function inventarioDia_(fecha) {
+  const prods = productosInv_();
+  const vend = vendedores_(), colVend = vend.filter(v => !CFG.DESTINO_DE_VENDEDOR[v.usuario]).map(v => v.usuario);
+  const movs = read_('INVENTARIO_MOV').filter(m => m.fecha <= fecha);
+  const desp = read_('DESPACHO').filter(d => d.fecha <= fecha);
+  // por producto → por fecha
+  const dia = {};
+  const D = (c, f) => { const k = c + '|' + f; return dia[k] = dia[k] || { saldo: null, ingreso: 0, salVend: {}, retVend: {}, otras: {}, otrasMan: {}, conteo: null }; };
+  const fechas = {};
+  movs.forEach(m => { const c = codeKey_(m.codigo), x = D(c, m.fecha), q = num_(m.cantidad); fechas[m.fecha] = 1;
+    if (m.tipo === 'SALDO_INICIAL') x.saldo = q;
+    else if (m.tipo === 'INGRESO') x.ingreso += q;
+    else if (m.tipo === 'SALIDA') { x.otras[m.destino] = (x.otras[m.destino] || 0) + q; x.otrasMan[m.destino] = (x.otrasMan[m.destino] || 0) + q; }
+    else if (m.tipo === 'CONTEO') x.conteo = q; });
+  desp.forEach(d => { const c = codeKey_(d.codigo), x = D(c, d.fecha); fechas[d.fecha] = 1;
+    const dest = CFG.DESTINO_DE_VENDEDOR[d.vendedor];
+    if (dest) { x.otras[dest] = (x.otras[dest] || 0) + num_(d.salida) - num_(d.retorno); return; }
+    x.salVend[d.vendedor] = (x.salVend[d.vendedor] || 0) + num_(d.salida);
+    x.retVend[d.vendedor] = (x.retVend[d.vendedor] || 0) + num_(d.retorno); });
+  const orden = Object.keys(fechas).filter(f => f < fecha).sort();
+  const sum = o => Object.keys(o).reduce((a, k) => a + o[k], 0);
+  const cierre = x => { // devuelve [teórico, final] de un día dado su inicial
+    return ini => { const t = ini - sum(x.salVend) - sum(x.otras) + x.ingreso + sum(x.retVend); return [t, x.conteo !== null ? x.conteo : t]; };
+  };
+  const filas = prods.map(p => {
+    let stock = 0, conHistoria = false;
+    orden.forEach(f => { const x = dia[p.codigo + '|' + f]; if (!x) return;
+      conHistoria = true;
+      const ini = x.saldo !== null ? x.saldo : stock;
+      stock = cierre(x)(ini)[1]; });
+    const x = dia[p.codigo + '|' + fecha] || D(p.codigo, fecha);
+    const inicial = x.saldo !== null ? x.saldo : stock;
+    const [teorico, final] = cierre(x)(inicial);
+    return Object.assign({}, p, { inicial: r3_(inicial), inicialManual: x.saldo !== null, conHistoria: conHistoria || x.saldo !== null,
+      salVend: x.salVend, retVend: x.retVend, otras: x.otras, otrasManual: x.otrasMan, ingreso: r3_(x.ingreso), conteo: x.conteo,
+      teorico: r3_(teorico), final: r3_(final), ajuste: x.conteo !== null ? r3_(x.conteo - teorico) : 0 });
+  });
+  return { fecha, vendedores: colVend.map(u => ({ usuario: u, nombre: (vend.find(v => v.usuario === u) || {}).nombre || u })),
+    destinos: CFG.DESTINOS, distribuidores: CFG.DISTRIBUIDORES, secciones: SECCIONES_INV.map(x => ({ id: x[0], nombre: x[1] })), filas };
+}
+
+function getInventario(token, fecha) {
+  auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
+  return inventarioDia_(fecha);
+}
+
+/**
+ * filas: [{codigo, inicial?, ingreso, otras:{destino: cantidad}, conteo}]  — reemplaza lo registrado ese día para esos productos.
+ * inicial solo se guarda si viene informado (primer día o corrección del administrador).
+ */
+function guardarInventario(token, fecha, filas) {
+  const u = auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
+  return withLock_(() => {
+    const codigos = {}; filas.forEach(f => codigos[codeKey_(f.codigo)] = f);
+    const quitar = read_('INVENTARIO_MOV').filter(m => m.fecha === fecha && codigos[codeKey_(m.codigo)] &&
+      (m.tipo !== 'SALDO_INICIAL' || codigos[codeKey_(m.codigo)].inicial !== undefined)).map(m => m._row);
+    deleteRows_('INVENTARIO_MOV', quitar);
+    const nuevos = [], ts = now_();
+    const add = (c, tipo, destino, q) => { if (q === '' || q === null || q === undefined || isNaN(num_(q))) return;
+      if (tipo !== 'CONTEO' && tipo !== 'SALDO_INICIAL' && num_(q) === 0) return;
+      nuevos.push({ key: [fecha, c, tipo, destino].join('|'), fecha, codigo: c, tipo, destino, cantidad: num_(q), obs: '', registrado_por: u.usuario, registrado: ts }); };
+    filas.forEach(f => {
+      const c = codeKey_(f.codigo);
+      if (f.inicial !== undefined && f.inicial !== '') {
+        if (u.rol === 'BODEGA' && inventarioDia_(fecha).filas.find(x => x.codigo === c && x.conHistoria && !x.inicialManual))
+          throw new Error('El inventario inicial de ' + c + ' viene del día anterior. Si no calza, registra un conteo físico.');
+        add(c, 'SALDO_INICIAL', '', f.inicial);
+      }
+      add(c, 'INGRESO', '', f.ingreso);
+      Object.keys(f.otras || {}).forEach(d => add(c, 'SALIDA', normTxt_(d), f.otras[d]));
+      add(c, 'CONTEO', '', f.conteo);
+    });
+    append_('INVENTARIO_MOV', nuevos);
+    return inventarioDia_(fecha);
+  });
+}
+
+function agregarProductoInv(token, p) {
+  auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
+  const sec = SECCIONES_INV.find(x => x[0] === p.seccion);
+  if (!sec) throw new Error('Sección inválida.');
+  const nombre = String(p.nombre || '').trim().toUpperCase();
+  if (!nombre) throw new Error('Escribe el nombre del producto.');
+  return withLock_(() => {
+    const ex = read_('PRODUCTOS').find(x => x.seccion === p.seccion && claveInv_(x.nombre_inv || x.nombre) === claveInv_(nombre));
+    if (ex) { ex.activo = true; updateRow_('PRODUCTOS', ex._row, ex); return true; }
+    const usados = {}; read_('PRODUCTOS').forEach(x => usados[codeKey_(x.codigo)] = 1);
+    let codigo = (p.seccion === 'CAMARA' ? '?CAM-' : '?') + claveInv_(nombre).slice(0, 18), n = 2; const b0 = codigo;
+    while (usados[codeKey_(codigo)]) codigo = b0 + n++;
+    append_('PRODUCTOS', [{ codigo, nombre, categoria: p.seccion === 'CAMARA' ? 'MATERIA PRIMA' : p.seccion,
+      unidad: p.unidad || sec[2], precio: '', orden: 900, activo: true, seccion: p.seccion, nombre_inv: nombre }]);
+    return true;
+  });
+}
+
+/* ---------- planilla mensual de inventario, con el formato actual ---------- */
+
+function carpetaInventario_() {
+  if (CFG.INVENTARIO_FOLDER_ID) return DriveApp.getFolderById(CFG.INVENTARIO_FOLDER_ID);
+  let base;
+  try { const rf = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), ps = rf.getParents(); base = ps.hasNext() ? ps.next() : rf; }
+  catch (e) { base = DriveApp.getRootFolder(); }
+  return sub_(base, 'Inventario');
+}
+const MESES_ = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+/** Crea o actualiza la hoja DD-MM del día en "INVENTARIO <MES> <AÑO>". */
+function generarPlanillaInventario(token, fecha) {
+  auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
+  return withLock_(() => {
+    const [a, m, d] = fecha.split('-');
+    const nombre = 'INVENTARIO ' + MESES_[Number(m) - 1] + ' ' + a;
+    const carpeta = carpetaInventario_();
+    const it = carpeta.getFilesByName(nombre);
+    let ss;
+    if (it.hasNext()) ss = SpreadsheetApp.openById(it.next().getId());
+    else { ss = SpreadsheetApp.create(nombre); DriveApp.getFileById(ss.getId()).moveTo(carpeta); }
+    const hoja = d + '-' + m;
+    const vieja = ss.getSheetByName(hoja);
+    // la hoja nueva se inserta en orden de fecha
+    const hojas = ss.getSheets().map(h => h.getName()).filter(n => /^\d\d-\d\d$/.test(n) && n !== hoja);
+    const pos = hojas.filter(n => n.split('-').reverse().join('') < m + d).length;
+    if (vieja) ss.deleteSheet(vieja);
+    const sh = ss.insertSheet(hoja, pos);
+    escribirHojaInventario_(sh, inventarioDia_(fecha));
+    ['Hoja 1', 'Sheet1'].forEach(n => { const x = ss.getSheetByName(n); if (x && ss.getSheets().length > 1) ss.deleteSheet(x); });
+    return { url: ss.getUrl() + '#gid=' + sh.getSheetId(), nombre, hoja };
+  });
+}
+
+function escribirHojaInventario_(sh, inv) {
+  const rojo = '#FF0000', borde = SpreadsheetApp.BorderStyle.SOLID;
+  const vend = inv.vendedores;
+  const FIJOS = CFG.DESTINOS.slice(0, 4);
+  // otros destinos usados ese día (en el orden de CFG.DESTINOS), supermercado siempre al final
+  const usados = {}; inv.filas.filter(f => f.seccion !== 'CAMARA').forEach(f => Object.keys(f.otras).forEach(k => { if (f.otras[k]) usados[k] = 1; }));
+  const conocidos = CFG.DESTINOS.concat(CFG.DISTRIBUIDORES);
+  const extra = conocidos.filter(x => FIJOS.indexOf(x) < 0 && x !== 'SUPERMERCADO' && usados[x])
+    .concat(Object.keys(usados).filter(x => conocidos.indexOf(x) < 0));
+  const destinos = FIJOS.concat(extra, ['SUPERMERCADO']);
+  const etiqueta = x => x === 'SUPERMERCADO' ? 'SALIDAS SUPERMERCADO' : x;
+  const hayAjuste = inv.filas.some(f => f.conteo !== null && f.conteo !== undefined);
+  const head = ['PRODUCTOS', 'INVENTARIO INICIAL'].concat(vend.map(v => String(v.nombre).toUpperCase()), destinos.map(etiqueta),
+    ['TOTAL SALIDA', 'TOTAL INICIAL - SALIDAS', 'INGRESO FABRICA'], vend.map(v => 'RETORNO ' + String(v.usuario).toUpperCase()),
+    ['TOTAL RETORNO'], hayAjuste ? ['AJUSTE CONTEO'] : [], ['INVENTARIO FINAL']);
+  const W = head.length, L = colL_;
+  const cSal0 = 3, cSal1 = 2 + vend.length + destinos.length, cTot = cSal1 + 1, cDif = cTot + 1, cIng = cDif + 1;
+  const cRet0 = cIng + 1, cRet1 = cIng + vend.length, cTotR = cRet1 + 1, cAj = hayAjuste ? cTotR + 1 : 0, cFin = W;
+  const g = [], ops = [];
+  const fila = v => { const r = (v || []).slice(); while (r.length < W) r.push(''); g.push(r); return g.length; };
+  const fechaD = new Date(inv.fecha + 'T12:00:00');
+  let r = fila(['FECHA', fechaD]); ops.push([r, 1, 1, 2, x => x.setFontWeight('bold').setFontColor(rojo)]); ops.push([r, 2, 1, 1, x => x.setNumberFormat('dd-mm-yyyy')]);
+  fila([]); fila([]);
+  const v0 = x => x ? r3_(x) : '';
+  const bloque = sec => {
+    const filas = inv.filas.filter(f => f.seccion === sec);
+    const h = fila(head); ops.push([h, 1, 1, W, x => x.setFontWeight('bold').setHorizontalAlignment('center').setWrap(true).setVerticalAlignment('middle')]);
+    filas.forEach(f => {
+      const n = g.length + 1;
+      const row = [f.nombre, f.inicial]
+        .concat(vend.map(v => v0(f.salVend[v.usuario])), destinos.map(dd => v0(f.otras[dd])),
+          ['=SUM(' + L(cSal0) + n + ':' + L(cSal1) + n + ')', '=B' + n + '-' + L(cTot) + n, v0(f.ingreso)],
+          vend.map(v => v0(f.retVend[v.usuario])), ['=SUM(' + L(cRet0) + n + ':' + L(cRet1) + n + ')'],
+          hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
+          ['=' + L(cDif) + n + '+' + L(cIng) + n + '+' + L(cTotR) + n + (hayAjuste ? '+' + L(cAj) + n : '')]);
+      fila(row);
+    });
+    const ini = h + 1, fin = g.length;
+    if (fin >= ini) {
+      ops.push([ini, 2, fin - ini + 1, W - 1, x => x.setNumberFormat('0.00').setHorizontalAlignment('right')]);
+      ops.push([ini, 2, fin - ini + 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
+      ops.push([ini, cFin, fin - ini + 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
+    }
+    ops.push([h, 1, Math.max(fin, h) - h + 1, W, x => x.setBorder(true, true, true, true, true, true, '#000000', borde)]);
+    fila([]);
+  };
+  bloque('TERMINADOS');
+  // cámara de carnes
+  r = fila(['INVENTARIO DE CARNES', fechaD]); ops.push([r, 1, 1, 2, x => x.setFontWeight('bold').setFontColor(rojo)]); ops.push([r, 2, 1, 1, x => x.setNumberFormat('dd-mm-yyyy')]);
+  fila([]);
+  const camH = ['CAMARA 1', 'STOCK INICIAL', 'SALIDA FABRICA', 'SALIDA VENDEDORES', 'INGRESO PRODUCTO'].concat(hayAjuste ? ['AJUSTE CONTEO'] : [], ['STOCK FINAL']);
+  const hc = fila(camH); ops.push([hc, 1, 1, camH.length, x => x.setFontWeight('bold').setHorizontalAlignment('center').setWrap(true)]);
+  inv.filas.filter(f => f.seccion === 'CAMARA').forEach(f => {
+    const n = g.length + 1, sf = f.otras.FABRICA || 0, sv = f.otras.VENDEDORES || 0;
+    fila([f.nombre, f.inicial, v0(sf), v0(sv), v0(f.ingreso)].concat(hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
+      ['=B' + n + '-C' + n + '-D' + n + '+E' + n + (hayAjuste ? '+F' + n : '')]));
+    ops.push([n, 2, 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
+    ops.push([n, camH.length, 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
+  });
+  ops.push([hc, 1, g.length - hc + 1, camH.length, x => x.setBorder(true, true, true, true, true, true, '#000000', borde)]);
+  fila([]);
+  bloque('CONGELADOS');
+  bloque('LAMINADOS');
+  sh.getRange(1, 1, g.length, W).setValues(g);
+  sh.getRange(1, 1, g.length, W).setFontFamily('Calibri').setFontSize(11);
+  ops.forEach(o => o[4](sh.getRange(o[0], o[1], o[2], o[3])));
+  sh.setColumnWidth(1, 150); for (let c = 2; c <= W; c++) sh.setColumnWidth(c, 78);
+  sh.setFrozenColumns(1);
+}
+
+/**
+ * Carga única, desde el editor de Apps Script: toma el INVENTARIO FINAL de una hoja de la planilla actual
+ * (ej. "INVENTARIO SEPTIEMBRE", hoja "25-09") y lo deja como inventario inicial del día en que parte la app.
+ * Ejemplo: cargarSaldoDesdePlanilla('1oU6LF2pfHlrVIBJmL89XaeBrF1IKXuGZJZyQ0HDb5y0', '25-09', '2026-09-28')
+ */
+function cargarSaldoDesdePlanilla(idPlanilla, nombreHoja, fechaInicio) {
+  prepararProductosInventario_();
+  const sh = SpreadsheetApp.openById(idPlanilla).getSheetByName(nombreHoja);
+  if (!sh) throw new Error('No existe la hoja ' + nombreHoja);
+  const v = sh.getDataRange().getValues();
+  const prods = read_('PRODUCTOS');
+  const buscar = (sec, nombre) => prods.find(p => p.seccion === sec && claveInv_(p.nombre_inv || p.nombre) === claveInv_(nombre));
+  let sec = null, colFin = -1; const saldos = {}, faltan = [];
+  // en la planilla hay dos filas "CARNE MOLIDA": la primera es la de 10% y la segunda la de 5%
+  const repetidos = { 'CARNE MOLIDA': ['CARNE MOLIDA 10', 'CARNE MOLIDA 5'] }, vistos = {};
+  v.forEach(row => {
+    const a = String(row[0] || '').trim(), A = a.toUpperCase();
+    if (A === 'PRODUCTOS') { sec = sec === null ? 'TERMINADOS' : sec === 'CAMARA' ? 'CONGELADOS' : 'LAMINADOS';
+      colFin = row.map(x => String(x).trim().toUpperCase()).indexOf('INVENTARIO FINAL'); return; }
+    if (A === 'CAMARA 1') { sec = 'CAMARA'; colFin = row.map(x => String(x).trim().toUpperCase()).indexOf('STOCK FINAL'); return; }
+    if (!a || !sec || colFin < 0 || A.indexOf('INVENTARIO DE') === 0 || A === 'FECHA') return;
+    let nom = a;
+    if (repetidos[A]) { vistos[A] = (vistos[A] || 0) + 1; nom = repetidos[A][Math.min(vistos[A], repetidos[A].length) - 1]; }
+    const p = buscar(sec, nom);
+    const q = num_(row[colFin]);
+    if (!p) { faltan.push(sec + ': ' + a); return; }
+    saldos[codeKey_(p.codigo)] = (saldos[codeKey_(p.codigo)] || 0) + q;   // filas repetidas (ej. CARNE MOLIDA) se suman
+  });
+  deleteRows_('INVENTARIO_MOV', read_('INVENTARIO_MOV').filter(m => m.fecha === fechaInicio && m.tipo === 'SALDO_INICIAL').map(m => m._row));
+  append_('INVENTARIO_MOV', Object.keys(saldos).map(c => ({ key: [fechaInicio, c, 'SALDO_INICIAL', ''].join('|'), fecha: fechaInicio, codigo: c,
+    tipo: 'SALDO_INICIAL', destino: '', cantidad: r3_(saldos[c]), obs: 'Desde ' + nombreHoja, registrado_por: 'CARGA', registrado: now_() })));
+  Logger.log('Cargados ' + Object.keys(saldos).length + ' productos. No encontrados: ' + (faltan.join(' | ') || 'ninguno'));
+  return { cargados: Object.keys(saldos).length, faltan };
+}
+
+/* ============================ SALDOS DE CLIENTES (CRÉDITO) ============================ */
+// Deuda por cliente = facturas marcadas CREDITO en la rendición − pagos registrados en COBRANZA.
+// Un pago con folio se descuenta de esa factura; sin folio (o si sobra) se aplica a las facturas más antiguas del cliente.
+// Lo que no se puede asociar a ninguna factura queda como "abono sin factura" del cliente.
+function getSaldosClientes(token) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
+  const nombres = {}; vendedores_().forEach(v => nombres[v.usuario] = v.nombre);
+  const hoy = hoy_(), dias = f => Math.max(0, Math.round((new Date(hoy + 'T12:00:00') - new Date(String(f) + 'T12:00:00')) / 864e5));
+  const clientes = {};
+  const clave = (rut, nom) => rut ? 'R' + String(rut).replace(/[^0-9kK]/g, '').toUpperCase() : 'N' + normTxt_(nom);
+  const cli = (rut, nom) => { const k = clave(rut, nom); return clientes[k] = clientes[k] || { clave: k, cliente: String(nom || 'SIN NOMBRE').trim(), rut: rut || '',
+    facturas: [], abonos: [], vendedores: {} }; };
+  // 1) facturas a crédito
+  const cred = {};
+  read_('PAGOS').filter(p => p.forma === 'CREDITO').forEach(p => cred[p.folio_key] = (cred[p.folio_key] || 0) + num_(p.monto));
+  const porFolio = {};
+  Object.keys(cred).forEach(fk => {
+    const d = docs[fk]; if (!d || cred[fk] <= 0) return;
+    const c = cli(d.rut, d.cliente);
+    const f = { folio_key: fk, fecha: d.fecha, tipo: d.tipo, folio: String(d.folio), total: num_(d.total), credito: cred[fk], pagado: 0,
+      vendedor: d.vendedor, vendedorNombre: nombres[d.vendedor] || d.vendedor, pagos: [] };
+    c.facturas.push(f); c.vendedores[f.vendedorNombre] = 1;
+    (porFolio[String(d.folio).trim()] = porFolio[String(d.folio).trim()] || []).push({ c, f });
+  });
+  const buscarCliente = nom => {
+    const n = normTxt_(nom); if (!n) return null;
+    const lista = Object.keys(clientes).map(k => clientes[k]);
+    return lista.find(c => normTxt_(c.cliente) === n) || lista.find(c => { const m = normTxt_(c.cliente); return m.indexOf(n) >= 0 || n.indexOf(m) >= 0; }) || null;
+  };
+  const aplicar = (f, monto, pago) => { const q = Math.min(monto, f.credito - f.pagado); if (q <= 0) return 0; f.pagado += q; f.pagos.push({ fecha: pago.fecha, monto: q, forma: pago.forma }); return q; };
+  // 2) pagos: primero los que traen folio, después el resto (en orden de fecha)
+  const cobros = read_('COBRANZA').map(x => ({ fecha: x.fecha, cliente: x.cliente, folio: String(x.folio || '').replace(/[^0-9]/g, ''), monto: num_(x.monto), forma: x.forma }))
+    .sort((a, b) => (a.folio ? 0 : 1) - (b.folio ? 0 : 1) || String(a.fecha).localeCompare(String(b.fecha)));
+  cobros.forEach(p => {
+    let resto = p.monto, c = null;
+    if (p.folio && porFolio[p.folio]) {
+      const cands = porFolio[p.folio];
+      const m = cands.find(x => buscarCliente(p.cliente) === x.c && x.f.pagado < x.f.credito) || cands.find(x => x.f.pagado < x.f.credito) || cands[0];
+      c = m.c; resto -= aplicar(m.f, resto, p);
+    }
+    c = c || buscarCliente(p.cliente);
+    if (!c) return;                                  // pago de un cliente sin créditos registrados en la app: no afecta saldos
+    c.facturas.slice().sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))).forEach(f => { if (resto > 0) resto -= aplicar(f, resto, p); });
+    if (resto > 0.5) c.abonos.push({ fecha: p.fecha, monto: Math.round(resto), forma: p.forma, folio: p.folio });
+    c.ultimoPago = !c.ultimoPago || p.fecha > c.ultimoPago ? p.fecha : c.ultimoPago;
+  });
+  // 3) resumen por cliente
+  const lista = Object.keys(clientes).map(k => {
+    const c = clientes[k];
+    c.facturas.forEach(f => { f.saldo = Math.round(f.credito - f.pagado); f.dias = dias(f.fecha); });
+    const pend = c.facturas.filter(f => f.saldo > 0).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+    const abonos = c.abonos.reduce((a, x) => a + x.monto, 0);
+    return { clave: c.clave, cliente: c.cliente, rut: c.rut, vendedores: Object.keys(c.vendedores),
+      deuda: pend.reduce((a, f) => a + f.saldo, 0) - abonos, abonos: c.abonos, pendientes: pend.length, diasMax: pend.length ? pend[0].dias : 0,
+      ultimoPago: c.ultimoPago || '', facturas: c.facturas.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))) };
+  }).sort((a, b) => b.deuda - a.deuda);
+  return { hoy, clientes: lista, total: lista.reduce((a, c) => a + Math.max(0, c.deuda), 0) };
 }
 
 /* ============================ DEPÓSITOS DE EFECTIVO ============================ */

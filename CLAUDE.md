@@ -66,9 +66,19 @@ CONSUMO, GASTOS y al final VENTA Y CREDITO y COBRANZA con las columnas exactas d
 Se arma con la clase Hoja_ (grilla en memoria + lista de operaciones de formato, una sola escritura).
 Fuente Calibri como la planilla actual; encabezados gris #D9D9D9.
 
+## Inventario de bodega (hoja INVENTARIO_MOV)
+Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedores + destinos + distribuidores) + ingreso fábrica + retornos (+ ajuste por conteo) = final. Cámara: inicial − salida fábrica − salida vendedores + ingreso = final.
+- Movimientos: SALDO_INICIAL, INGRESO, SALIDA (destino), CONTEO. Salidas/retornos de vendedores se leen de DESPACHO. `CFG.DESTINO_DE_VENDEDOR` manda DISTRIBUIDOR → SUPERMERCADO y SALA → CONSUMO EXTERNO.
+- Secciones en PRODUCTOS.seccion (TERMINADOS, CAMARA, CONGELADOS, LAMINADOS) y nombre de planilla en PRODUCTOS.nombre_inv. `INV_ITEMS` define orden y equivalencias; `prepararProductosInventario_()` (desde setup) completa lo que falte. Productos CAMARA no salen en Despacho.
+- `CFG.DESTINOS` (otros destinos) y `CFG.DISTRIBUIDORES` (Patricio, César, Juan Carlos, Amir, Oscar, Chiloé: distribuidores que retiran en bodega, facturados desde el terminal BODEGA = usuario SALA).
+- `generarPlanillaInventario` crea la hoja DD-MM en "INVENTARIO <MES> <AÑO>" (carpeta Inventario). `cargarSaldoDesdePlanilla(id, hoja, fecha)` es la carga única de saldos desde la planilla antigua.
+
+## Saldos de clientes
+`getSaldosClientes`: facturas con líneas CREDITO en PAGOS menos pagos de COBRANZA. Pago con folio → esa factura; sin folio o sobrante → facturas más antiguas del cliente (nombre normalizado o RUT); lo que no calza queda como abono sin factura. Pantalla "Saldos clientes" para RENDICION/SUPERVISOR/ADMIN.
+
 ## Roles
 ADMIN (todo, reabre días), SUPERVISOR (rendición + autoriza descuentos), RENDICION, BODEGA, VENDEDOR
-(solo ve sus folios, su cobranza y sus gastos).
+(solo ve sus folios, su cobranza, sus depósitos y sus gastos). BODEGA solo ve Despacho y retorno; Consumo lo registra la encargada de rendición.
 
 ## Hojas (nombres exactos, definidos en SCHEMA)
 USUARIOS, PRODUCTOS, DESPACHO, DOCUMENTOS, VENTAS_DETALLE, PAGOS, DESCUENTOS, COBRANZA, PROVEEDORES, CONSUMO, GASTOS,
