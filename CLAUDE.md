@@ -71,7 +71,7 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - Movimientos: SALDO_INICIAL, INGRESO, SALIDA (destino), CONTEO. Salidas/retornos de vendedores se leen de DESPACHO. `CFG.DESTINO_DE_VENDEDOR` manda DISTRIBUIDOR → SUPERMERCADO y SALA → CONSUMO EXTERNO.
 - Secciones en PRODUCTOS.seccion (TERMINADOS, CAMARA, CONGELADOS, LAMINADOS) y nombre de planilla en PRODUCTOS.nombre_inv. `INV_ITEMS` define orden y equivalencias; `prepararProductosInventario_()` (desde setup) completa lo que falte. Productos CAMARA no salen en Despacho.
 - `CFG.DESTINOS` (otros destinos) y `CFG.DISTRIBUIDORES` (Patricio, César, Juan Carlos, Amir, Oscar, Chiloé: distribuidores que retiran en bodega, facturados desde el terminal BODEGA = usuario SALA).
-- `generarPlanillaInventario` crea la hoja DD-MM en "INVENTARIO <MES> <AÑO>" (carpeta Inventario). `cargarSaldoDesdePlanilla(id, hoja, fecha)` es la carga única de saldos desde la planilla antigua.
+- `generarPlanillaInventario` crea la hoja DD-MM en "INVENTARIO <MES> <AÑO>" (carpeta Inventario). El inicial se enlaza con fórmula al final de la hoja del día anterior del mismo archivo (`mapaFinales_`), y si existe un día posterior se re-enlaza (`reenlazarInicial_`). El primer día del mes va como valor. `cargarSaldoDesdePlanilla(id, hoja, fecha)` es la carga única de saldos desde la planilla antigua.
 
 ## Saldos de clientes
 `getSaldosClientes`: facturas con líneas CREDITO en PAGOS menos pagos de COBRANZA. Pago con folio → esa factura; sin folio o sobrante → facturas más antiguas del cliente (nombre normalizado o RUT); lo que no calza queda como abono sin factura. Pantalla "Saldos clientes" para RENDICION/SUPERVISOR/ADMIN.

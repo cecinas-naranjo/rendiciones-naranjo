@@ -885,15 +885,51 @@ function generarPlanillaInventario(token, fecha) {
     // la hoja nueva se inserta en orden de fecha
     const hojas = ss.getSheets().map(h => h.getName()).filter(n => /^\d\d-\d\d$/.test(n) && n !== hoja);
     const pos = hojas.filter(n => n.split('-').reverse().join('') < m + d).length;
+    // hoja del día anterior en el mismo archivo: el inicial se enlaza a su final, como en la planilla original
+    const previa = hojas.filter(n => n.split('-').reverse().join('') < m + d).sort((x, y) => x.split('-').reverse().join('').localeCompare(y.split('-').reverse().join(''))).pop();
+    const enlaces = previa ? mapaFinales_(ss.getSheetByName(previa)) : null;
     if (vieja) ss.deleteSheet(vieja);
     const sh = ss.insertSheet(hoja, pos);
-    escribirHojaInventario_(sh, inventarioDia_(fecha));
+    escribirHojaInventario_(sh, inventarioDia_(fecha), enlaces);
+    // si ya existen días posteriores, se enlaza el siguiente a esta hoja (para que una corrección se arrastre)
+    const siguiente = hojas.filter(n => n.split('-').reverse().join('') > m + d).sort((x, y) => x.split('-').reverse().join('').localeCompare(y.split('-').reverse().join('')))[0];
+    if (siguiente) reenlazarInicial_(ss.getSheetByName(siguiente), mapaFinales_(sh));
     ['Hoja 1', 'Sheet1'].forEach(n => { const x = ss.getSheetByName(n); if (x && ss.getSheets().length > 1) ss.deleteSheet(x); });
     return { url: ss.getUrl() + '#gid=' + sh.getSheetId(), nombre, hoja };
   });
 }
 
-function escribirHojaInventario_(sh, inv) {
+/** Lee una hoja de inventario y devuelve {hoja, celdas: {SECCION|clave producto: 'Y12'}} con la celda del final de cada producto. */
+function mapaFinales_(sh) {
+  const v = sh.getDataRange().getValues(), celdas = {};
+  let sec = null, col = -1;
+  v.forEach((row, i) => {
+    const A = String(row[0] || '').trim().toUpperCase();
+    const cabecera = t => row.map(x => String(x).trim().toUpperCase()).indexOf(t);
+    if (A === 'PRODUCTOS') { sec = sec === null ? 'TERMINADOS' : sec === 'CAMARA' ? 'CONGELADOS' : 'LAMINADOS'; col = cabecera('INVENTARIO FINAL'); return; }
+    if (A === 'CAMARA 1') { sec = 'CAMARA'; col = cabecera('STOCK FINAL'); return; }
+    if (!A || !sec || col < 0 || A === 'FECHA' || A.indexOf('INVENTARIO DE') === 0) return;
+    celdas[sec + '|' + claveInv_(A)] = colL_(col + 1) + (i + 1);
+  });
+  return { hoja: sh.getName(), celdas };
+}
+const refInicial_ = (enl, sec, nombre) => enl && enl.celdas[sec + '|' + claveInv_(nombre)] ? "='" + enl.hoja + "'!" + enl.celdas[sec + '|' + claveInv_(nombre)] : null;
+
+/** Cambia la columna INVENTARIO INICIAL / STOCK INICIAL de una hoja existente para que apunte a la hoja anterior. */
+function reenlazarInicial_(sh, enl) {
+  const v = sh.getDataRange().getValues();
+  let sec = null;
+  v.forEach((row, i) => {
+    const A = String(row[0] || '').trim().toUpperCase();
+    if (A === 'PRODUCTOS') { sec = sec === null ? 'TERMINADOS' : sec === 'CAMARA' ? 'CONGELADOS' : 'LAMINADOS'; return; }
+    if (A === 'CAMARA 1') { sec = 'CAMARA'; return; }
+    if (!A || !sec || A === 'FECHA' || A.indexOf('INVENTARIO DE') === 0) return;
+    const f = refInicial_(enl, sec, A);
+    if (f) sh.getRange(i + 1, 2).setFormula(f);
+  });
+}
+
+function escribirHojaInventario_(sh, inv, enlaces) {
   const rojo = '#FF0000', borde = SpreadsheetApp.BorderStyle.SOLID;
   const vend = inv.vendedores;
   const FIJOS = CFG.DESTINOS.slice(0, 4);
@@ -922,7 +958,7 @@ function escribirHojaInventario_(sh, inv) {
     const h = fila(head); ops.push([h, 1, 1, W, x => x.setFontWeight('bold').setHorizontalAlignment('center').setWrap(true).setVerticalAlignment('middle')]);
     filas.forEach(f => {
       const n = g.length + 1;
-      const row = [f.nombre, f.inicial]
+      const row = [f.nombre, f.inicialManual ? f.inicial : (refInicial_(enlaces, sec, f.nombre) || f.inicial)]
         .concat(vend.map(v => v0(f.salVend[v.usuario])), destinos.map(dd => v0(f.otras[dd])),
           ['=SUM(' + L(cSal0) + n + ':' + L(cSal1) + n + ')', '=B' + n + '-' + L(cTot) + n, v0(f.ingreso)],
           vend.map(v => v0(f.retVend[v.usuario])), ['=SUM(' + L(cRet0) + n + ':' + L(cRet1) + n + ')'],
@@ -947,7 +983,7 @@ function escribirHojaInventario_(sh, inv) {
   const hc = fila(camH); ops.push([hc, 1, 1, camH.length, x => x.setFontWeight('bold').setHorizontalAlignment('center').setWrap(true)]);
   inv.filas.filter(f => f.seccion === 'CAMARA').forEach(f => {
     const n = g.length + 1, sf = f.otras.FABRICA || 0, sv = f.otras.VENDEDORES || 0;
-    fila([f.nombre, f.inicial, v0(sf), v0(sv), v0(f.ingreso)].concat(hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
+    fila([f.nombre, f.inicialManual ? f.inicial : (refInicial_(enlaces, 'CAMARA', f.nombre) || f.inicial), v0(sf), v0(sv), v0(f.ingreso)].concat(hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
       ['=B' + n + '-C' + n + '-D' + n + '+E' + n + (hayAjuste ? '+F' + n : '')]));
     ops.push([n, 2, 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
     ops.push([n, camH.length, 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
