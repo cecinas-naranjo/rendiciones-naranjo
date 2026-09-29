@@ -149,7 +149,7 @@ function setup() {
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
   listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
-  misDocumentos, guardarDetalle, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
+  misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
   borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
@@ -584,6 +584,43 @@ function guardarDetalle(token, fecha, folio_key, pagos, descuento) {
     }
     d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d);
     return docsDelDia_(d.fecha, d.vendedor).find(x => x.folio_key === folio_key);
+  });
+}
+
+/**
+ * Detalla varios folios de una vez, cada uno pagado completo con una sola forma.
+ * items: [{folio_key, forma, banco}] — se usa para "marcar el resto" (efectivo / crédito según Mi DTE).
+ * Solo toma folios sin detallar y sin descuento pendiente; los demás se saltan.
+ */
+function guardarVarios(token, fecha, items) {
+  const u = auth_(token);
+  assertAbierta_(fecha);
+  return withLock_(() => {
+    const docs = {}; read_('DOCUMENTOS').forEach(d => { if (d.fecha === fecha) docs[d.folio_key] = d; });
+    const descs = byFecha_('DESCUENTOS', fecha);
+    const ok = [], saltados = [];
+    (items || []).forEach(it => {
+      const d = docs[it.folio_key];
+      if (!d || (u.rol === 'VENDEDOR' && d.vendedor !== u.usuario)) return saltados.push(it.folio_key);
+      if (FORMAS.indexOf(it.forma) < 0) throw new Error('Forma de pago inválida: ' + it.forma);
+      if ((it.forma === 'TRANSFERENCIA' || it.forma === 'DEP_EFECTIVO') && !it.banco) throw new Error('Falta el banco de la transferencia.');
+      const ds = descs.filter(x => x.folio_key === d.folio_key);
+      if (d.estado === 'DETALLADO' || ds.some(x => x.estado === 'PENDIENTE')) return saltados.push(it.folio_key);
+      const aprob = ds.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + num_(x.monto), 0);
+      ok.push({ d, forma: it.forma, banco: it.banco || '', monto: num_(d.total) - aprob });
+    });
+    const keys = {}; ok.forEach(x => keys[x.d.folio_key] = 1);
+    deleteRows_('PAGOS', read_('PAGOS').filter(x => keys[x.folio_key]).map(x => x._row));
+    append_('PAGOS', ok.filter(x => x.monto > 0).map(x => ({ id: uid_(), folio_key: x.d.folio_key, fecha: x.d.fecha, vendedor: x.d.vendedor, forma: x.forma,
+      banco: x.banco, monto: x.monto, referencia: '', registrado_por: u.usuario, registrado: now_() })));
+    // el estado se escribe en una sola operación sobre la columna
+    if (ok.length) {
+      const sh = sh_('DOCUMENTOS'), col = SCHEMA.DOCUMENTOS.indexOf('estado') + 1;
+      const rng = sh.getRange(2, col, sh.getLastRow() - 1, 1), vals = rng.getValues();
+      ok.forEach(x => vals[x.d._row - 2][0] = 'DETALLADO');
+      rng.setValues(vals); limpiarCache_('DOCUMENTOS');
+    }
+    return { guardados: ok.length, saltados: saltados.length, docs: docsDelDia_(fecha, u.rol === 'VENDEDOR' ? u.usuario : '') };
   });
 }
 

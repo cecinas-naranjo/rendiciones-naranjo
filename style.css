@@ -183,6 +183,32 @@ td.neg{color:var(--bad);font-weight:700} td.pos{color:var(--warn);font-weight:70
 .sticky-foot{position:sticky;bottom:calc(var(--bar-h) + 8px);display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
 .sticky-foot .card{padding:10px 12px;display:flex;gap:16px;align-items:center;box-shadow:0 6px 24px rgba(42,31,26,.12)}
 
+/* con una hoja abierta, los avisos van arriba para no tapar los botones */
+body:has(.ov) .toast{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto}
+/* ---------- detalle rápido de folios ---------- */
+.acciones{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.acciones .btn{flex:1;min-width:170px;min-height:52px;font-size:16.5px}
+.acciones .cnt{background:rgba(255,255,255,.25);border-radius:99px;padding:1px 9px;font-size:14px}
+.pregunta{font-weight:700;font-size:16px;margin:18px 0 8px}
+.formas{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.formas button{min-height:78px;border:1.5px solid var(--line);background:#fff;border-radius:var(--r);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  font-weight:700;font-size:16px;color:var(--ink);transition:border-color var(--t),background var(--t),transform 90ms}
+.formas button:active{transform:scale(.97)}
+.formas svg{width:26px;height:26px;color:var(--cu)}
+.formas small{font-size:11.5px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.formas .sug{border-color:var(--cu);background:var(--cu-soft)}
+.formas .on{border-color:var(--cu);background:var(--cu);color:#fff}.formas .on svg,.formas .on small{color:#fff}
+.bancos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.bancos button{min-height:56px;border:1.5px solid var(--line);background:#fff;border-radius:var(--r);font-weight:700;font-size:16px}
+.bancos .sug{border-color:var(--cu)}
+.link{background:none;border:0;color:var(--cu-2);font-weight:700;text-decoration:underline;text-underline-offset:3px;padding:16px 0 4px;text-align:left;font-size:15px}
+.sheet.rapido .foot{align-items:center}
+.vrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-2);cursor:pointer}
+.vrow.off{opacity:.55}
+.vrow .ck{width:30px;height:30px;border-radius:8px;border:2px solid var(--line);background:#fff;font-weight:700;color:#fff;flex:none;display:grid;place-items:center}
+.vrow:not(.off) .ck{background:var(--cu);border-color:var(--cu)}
+.vrow .chip{font-size:13.5px;padding:6px 12px}
+
 /* ---------- inventario ---------- */
 .seg.secs{display:grid;grid-template-columns:repeat(4,1fr);width:100%;margin:4px 0 12px}
 .seg.secs button{padding:9px 8px;line-height:1.2}

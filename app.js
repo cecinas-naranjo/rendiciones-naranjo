@@ -374,7 +374,8 @@ async function vFolios(m) {
       <div class="seg" id="seg"><button data-f="pend">Por detallar</button><button data-f="det">Detallados</button><button data-f="todos">Todos</button></div>
       <div class="search grow" style="min-width:180px">${icon('search')}<input class="in" id="q" placeholder="Cliente o folio" type="search"></div>
     </div>
-    <div class="meter" id="meter"><div class="bar"><i></i></div><b></b></div><div id="fl"></div>`);
+    <div class="meter" id="meter"><div class="bar"><i></i></div><b></b></div>
+    <div id="acc"></div><div id="fl"></div>`);
   if (!esV) $('#fv').onchange = e => { S.vend = e.target.value; ir('folios'); };
   $('#seg').onclick = e => { const b = e.target.closest('button'); if (b) { S.filtro = b.dataset.f; pintar(); } };
   $('#q').oninput = e => { q = norm(e.target.value); pintar(); };
@@ -385,6 +386,10 @@ async function vFolios(m) {
     const p = docs.length ? hechos / docs.length : 0;
     progreso(p);
     const mt = $('#meter'); mt.classList.toggle('done', docs.length > 0 && hechos === docs.length);
+    const pendientes = docs.length - hechos;
+    $('#acc').innerHTML = pendientes && estadoDia !== 'CERRADA' ? `<div class="acciones">
+      <button class="btn cu" id="emp">${hechos ? 'Seguir detallando' : 'Empezar a detallar'} <span class="cnt">${pendientes}</span></button>
+      ${pendientes > 1 ? '<button class="btn ghost" id="var">Marcar varios de una vez</button>' : ''}</div>` : '';
     $('.bar i', mt).style.width = (p * 100) + '%';
     $('b', mt).textContent = docs.length ? `${hechos} de ${docs.length} detallados · ${clp(docs.reduce((a, d) => a + d.total, 0))}` : '';
     const el = $('#fl');
@@ -403,9 +408,22 @@ async function vFolios(m) {
         <div class="chips">${chipsEstado(d)}</div></div>
       <div class="t">${clp(d.total)}</div></button>`).join('');
     el.onclick = e => { const b = e.target.closest('.folio'); if (!b) return;
-      const d = docs.find(x => x.folio_key === b.dataset.k);
-      abrirDetalle(d, estadoDia, nuevo => { const i = docs.findIndex(x => x.folio_key === nuevo.folio_key); docs[i] = nuevo; pintar(nuevo.folio_key); }); };
+      abrirDetalle(docs.find(x => x.folio_key === b.dataset.k), estadoDia, actualizar, recorrido); };
   }
+  const actualizar = nuevo => { const i = docs.findIndex(x => x.folio_key === nuevo.folio_key); docs[i] = nuevo; S.tocado = true; pintar(nuevo.folio_key); };
+  // recorrido: después de guardar un folio se abre el siguiente pendiente (en orden de folio)
+  const ordenados = () => docs.slice().sort((a, b) => String(a.folio).localeCompare(String(b.folio), 'es', { numeric: true }));
+  const recorrido = {
+    cuantos: () => docs.filter(d => d.estado !== 'DETALLADO').length,
+    proximo: key => { const l = ordenados(), i = l.findIndex(d => d.folio_key === key);
+      return l.slice(i + 1).concat(l.slice(0, i)).find(d => d.estado !== 'DETALLADO') || null; }
+  };
+  m.onclick = e => {
+    if (e.target.closest('#emp')) { const p = ordenados().find(d => d.estado !== 'DETALLADO'); if (p) abrirDetalle(p, estadoDia, actualizar, recorrido); }
+    if (e.target.closest('#var')) marcarVarios(docs, nuevos => {
+      const vis = {}; nuevos.forEach(n => vis[n.folio_key] = n);
+      docs = docs.map(d => vis[d.folio_key] || d); S.tocado = true; pintar(); });
+  };
   pintar();
 }
 function chipsEstado(d) {
@@ -417,7 +435,7 @@ function chipsEstado(d) {
 
 function cerrarHoja(ov) { ov.classList.add('closing'); setTimeout(() => ov.remove(), 190); }
 
-function abrirDetalle(d, estadoDia, alGuardar) {
+function abrirDetalleCompleto(d, estadoDia, alGuardar) {
   const cerrada = estadoDia === 'CERRADA';
   let lineas = d.pagos.length ? d.pagos.map(p => Object.assign({}, p))
     : [{ forma: /cr[ée]dito/i.test(d.condicion_dte) ? 'CREDITO' : 'EFECTIVO', banco: '', monto: d.total }];
@@ -488,6 +506,110 @@ function abrirDetalle(d, estadoDia, alGuardar) {
     } catch (e) { ok.disabled = false; }
   };
   dibujar();
+}
+
+/* ---------- detalle rápido: un toque por folio ----------
+   La mayoría de los folios se pagan de una sola forma. Se toca cómo pagó el cliente (y el banco si fue transferencia)
+   y se guarda solo; enseguida se abre el siguiente pendiente. Pagos mixtos, abonos y descuentos van al detalle completo. */
+const FORMAS_RAPIDAS = [['EFECTIVO', 'Efectivo', 'cash'], ['TRANSFERENCIA', 'Transferencia', 'bank'], ['CREDITO', 'Crédito', 'receipt'], ['CHEQUE', 'Cheque', 'list']];
+const esCreditoDTE = d => /cr[ée]dito/i.test(d.condicion_dte);
+function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
+  const cerrada = estadoDia === 'CERRADA';
+  const descPend = d.descuentos.some(x => x.estado === 'PENDIENTE');
+  if (cerrada || descPend || d.pagos.length > 1) { if (ovPrevio) ovPrevio.remove(); return abrirDetalleCompleto(d, estadoDia, alGuardar); }
+  const aprob = d.descuentos.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + x.monto, 0);
+  const monto = d.total - aprob;
+  const actual = d.pagos[0] ? d.pagos[0].forma : '';
+  const sugerida = actual || (esCreditoDTE(d) ? 'CREDITO' : '');
+  let bancoPref = ''; try { bancoPref = localStorage.getItem('rn_banco_' + S.sess.usuario) || ''; } catch (e) {}
+  const ov = ovPrevio || document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet rapido" role="dialog" aria-modal="true" aria-label="Folio ${esc(d.folio)}"><div class="grip"></div><div class="body">
+    <div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)}${esCreditoDTE(d) ? ' · <b style="color:var(--warn)">Mi DTE dice crédito</b>' : ''}</div>
+    <div style="font-weight:700;font-size:18px;line-height:1.25;margin:2px 0 2px">${esc(d.cliente)}</div>
+    <div class="big">${clp(monto)}</div>${aprob ? `<div class="muted">Total ${clp(d.total)} − descuento autorizado ${clp(aprob)}</div>` : ''}
+    <div class="pregunta">¿Cómo te pagó?</div>
+    <div class="formas" id="fz">${FORMAS_RAPIDAS.map(f => `<button type="button" data-f="${f[0]}" class="${f[0] === sugerida ? 'sug' : ''}">${icon(f[2])}<span>${f[1]}</span>
+      ${f[0] === actual ? '<small>Marcado</small>' : f[0] === sugerida ? '<small>Sugerido</small>' : ''}</button>`).join('')}</div>
+    <div id="bz" hidden><div class="pregunta" id="bzT">¿A qué banco llegó?</div>
+      <div class="bancos">${S.cat.bancos.map(b => `<button type="button" data-b="${esc(b)}" class="${b === ((d.pagos[0] || {}).banco || bancoPref) ? 'sug' : ''}">${esc(b)}</button>`).join('')}</div></div>
+    <button type="button" class="link" id="mix">Pagó de dos formas, abonó una parte o hubo descuento</button>
+    </div><div class="foot"><span class="muted grow" id="qd"></span><button class="btn ghost" id="cx">Cerrar</button></div></div>`;
+  if (!ovPrevio) document.body.appendChild(ov);
+  const quedan = siguiente ? siguiente.cuantos() : 0;
+  $('#qd', ov).textContent = quedan ? (quedan === 1 && d.estado !== 'DETALLADO' ? 'Es el último por detallar' : `Quedan ${quedan} por detallar`) : '';
+  let forma = null;
+  const guardar = async (f, banco) => {
+    try {
+      const nuevo = await api('guardarDetalle', S.sess.token, S.fecha, d.folio_key, [{ forma: f, banco: banco || '', monto, referencia: '' }], null);
+      if (banco) try { localStorage.setItem('rn_banco_' + S.sess.usuario, banco); } catch (e) {}
+      alGuardar(nuevo);
+      const sig = siguiente && d.estado !== 'DETALLADO' && siguiente.proximo(d.folio_key);   // solo encadena si venía de un pendiente
+      if (sig) { toast(`Folio ${d.folio}: ${FL[f].toLowerCase()} ✓`); abrirDetalle(sig, estadoDia, alGuardar, siguiente, ov); }
+      else { cerrarHoja(ov); toast(siguiente ? '¡Listo! Todos tus folios están detallados.' : 'Folio ' + d.folio + ' guardado'); }
+    } catch (e) { /* el error ya se mostró */ }
+  };
+  $('#fz', ov).onclick = e => {
+    const b = e.target.closest('[data-f]'); if (!b) return;
+    forma = b.dataset.f;
+    $$('#fz button', ov).forEach(x => x.classList.toggle('on', x === b));
+    if (forma === 'TRANSFERENCIA' || forma === 'CHEQUE') {
+      $('#bzT', ov).textContent = forma === 'CHEQUE' ? '¿De qué banco es el cheque?' : '¿A qué banco llegó?';
+      $('#bz', ov).hidden = false; $('#bz', ov).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      return;
+    }
+    $('#bz', ov).hidden = true; guardar(forma);
+  };
+  $('.bancos', ov).onclick = e => { const b = e.target.closest('[data-b]'); if (b && forma) guardar(forma, b.dataset.b); };
+  $('#mix', ov).onclick = () => { ov.remove(); abrirDetalleCompleto(d, estadoDia, alGuardar); };
+  $('#cx', ov).onclick = () => cerrarHoja(ov);
+  ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
+}
+
+/** Marca varios folios de una vez: efectivo o crédito (según lo que dice Mi DTE), con opción de cambiar cada uno. */
+function marcarVarios(docs, alGuardar) {
+  const pend = docs.filter(d => d.estado !== 'DETALLADO');
+  const bloqueado = d => d.descuentos.some(x => x.estado === 'PENDIENTE');
+  const sel = {}; pend.forEach(d => { if (!bloqueado(d)) sel[d.folio_key] = esCreditoDTE(d) ? 'CREDITO' : 'EFECTIVO'; });
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Marcar varios folios"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Marcar varios de una vez</div>
+    <p class="muted" style="margin:4px 0 10px">Toca la forma de pago para cambiarla, o quita el ✓ a los que quieras detallar aparte (por ejemplo, las transferencias).</p>
+    <div class="row" style="margin-bottom:8px"><button type="button" class="btn ghost sm" id="tE">Todos en efectivo</button><button type="button" class="btn ghost sm" id="tM">Según Mi DTE</button></div>
+    <div id="vl"></div></div>
+    <div class="foot"><button class="btn ghost" id="cx">Cancelar</button><button class="btn cu grow" id="ok"></button></div></div>`;
+  document.body.appendChild(ov);
+  const pintar = () => {
+    $('#vl', ov).innerHTML = pend.map(d => { const f = sel[d.folio_key], b = bloqueado(d);
+      return `<div class="vrow ${f ? '' : 'off'}" data-k="${esc(d.folio_key)}">
+        <button type="button" class="ck" data-ck ${b ? 'disabled' : ''} aria-label="Incluir">${f ? '✓' : ''}</button>
+        <div class="grow"><b>${esc(d.cliente)}</b><div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)} · ${clp(d.total)}${b ? ' · tiene descuento pendiente' : ''}</div></div>
+        ${f ? `<button type="button" class="chip ${f === 'CREDITO' ? 'warn' : 'ok'}" data-sw>${FL[f]}</button>` : ''}</div>`; }).join('');
+    const ks = Object.keys(sel).filter(k => sel[k]);
+    const tot = f => pend.filter(d => sel[d.folio_key] === f).reduce((a, d) => a + d.total, 0);
+    $('#ok', ov).disabled = !ks.length;
+    $('#ok', ov).innerHTML = ks.length ? `Guardar ${ks.length} folio${ks.length > 1 ? 's' : ''}` : 'Elige al menos uno';
+    $('#ok', ov).title = `Efectivo ${clp(tot('EFECTIVO'))} · Crédito ${clp(tot('CREDITO'))}`;
+  };
+  $('#vl', ov).onclick = e => {
+    const r = e.target.closest('.vrow'); if (!r) return; const k = r.dataset.k, d = pend.find(x => x.folio_key === k);
+    if (bloqueado(d)) return;
+    if (e.target.closest('[data-sw]')) sel[k] = sel[k] === 'EFECTIVO' ? 'CREDITO' : 'EFECTIVO';
+    else sel[k] = sel[k] ? '' : (esCreditoDTE(d) ? 'CREDITO' : 'EFECTIVO');
+    pintar();
+  };
+  $('#tE', ov).onclick = () => { Object.keys(sel).forEach(k => { if (sel[k]) sel[k] = 'EFECTIVO'; }); pintar(); };
+  $('#tM', ov).onclick = () => { pend.forEach(d => { if (sel[d.folio_key]) sel[d.folio_key] = esCreditoDTE(d) ? 'CREDITO' : 'EFECTIVO'; }); pintar(); };
+  $('#cx', ov).onclick = () => cerrarHoja(ov);
+  ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
+  $('#ok', ov).onclick = async () => {
+    const items = Object.keys(sel).filter(k => sel[k]).map(k => ({ folio_key: k, forma: sel[k], banco: '' }));
+    try {
+      const r = await api('guardarVarios', S.sess.token, S.fecha, items);
+      cerrarHoja(ov); alGuardar(r.docs);
+      toast(`${r.guardados} folio${r.guardados === 1 ? '' : 's'} guardado${r.guardados === 1 ? '' : 's'}${r.saltados ? ` · ${r.saltados} ya estaban detallados` : ''}`);
+    } catch (e) {}
+  };
+  pintar();
 }
 
 /* ============ DESPACHO Y RETORNO ============ */
