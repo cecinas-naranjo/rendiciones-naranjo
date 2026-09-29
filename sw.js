@@ -2,7 +2,7 @@
 // Guarda el "esqueleto" de la app en el teléfono para que abra al instante, sin esperar a internet.
 // Al subir una versión nueva a GitHub, se descarga por detrás y queda activa la siguiente vez que se abre la app.
 // Al cambiar archivos, subir el número de versión de CACHE_NAME.
-const CACHE_NAME = 'naranjo-shell-v13';
+const CACHE_NAME = 'naranjo-shell-v14';
 const APP_SHELL = ['./', './index.html', './style.css', './config.js', './app.js', './manifest.json',
   './logo-96.png', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 

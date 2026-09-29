@@ -245,13 +245,13 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 const TABS = {
   VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
   BODEGA: [['despacho', 'Despacho', 'box'], ['inventario', 'Inventario', 'stack']],
-  RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Folios'], ['despacho', 'Kilos'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
+  RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
     ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR;
 // En oficina, las pestañas se agrupan en 5 secciones para no tener 12 opciones a la vista
-const GRUPOS = [['g-rend', 'Rendición', ['resumen']], ['g-ventas', 'Ventas', ['importar', 'folios', 'descuentos']],
+const GRUPOS = [['g-rend', 'Rendición', ['resumen']], ['g-ventas', 'Ventas', ['folios', 'importar', 'descuentos']],
   ['g-bodega', 'Bodega', ['despacho', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
   ['g-hist', 'Historial', ['historial']]];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
@@ -368,7 +368,7 @@ async function vFolios(m) {
   let docs = [], estadoDia = '', q = '';
   const r = await api('misDocumentos', S.sess.token, S.fecha, S.vend);
   docs = r.docs; estadoDia = r.estadoDia;
-  render(m, `<h2>${esV ? 'Mis folios' : 'Folios'}</h2><p class="lead">${fechaLarga(S.fecha)}</p>
+  render(m, `<h2>${esV ? 'Mis folios' : 'Detallar ventas'}</h2><p class="lead">${fechaLarga(S.fecha)}${esV ? '' : ' · Puedes detallar los folios de cualquier vendedor; quedará registrado que lo hiciste tú.'}</p>
     <div class="row">
       ${esV ? '' : `<select class="in" style="width:auto" id="fv">${opcVend(S.vend, true)}</select>`}
       <div class="seg" id="seg"><button data-f="pend">Por detallar</button><button data-f="det">Detallados</button><button data-f="todos">Todos</button></div>
@@ -389,7 +389,8 @@ async function vFolios(m) {
     const pendientes = docs.length - hechos;
     $('#acc').innerHTML = pendientes && estadoDia !== 'CERRADA' ? `<div class="acciones">
       <button class="btn cu" id="emp">${hechos ? 'Seguir detallando' : 'Empezar a detallar'} <span class="cnt">${pendientes}</span></button>
-      ${pendientes > 1 ? '<button class="btn ghost" id="var">Marcar varios de una vez</button>' : ''}</div>` : '';
+      ${pendientes > 1 ? (esV || S.vend ? '<button class="btn ghost" id="var">Marcar varios de una vez</button>'
+        : '<button class="btn ghost" disabled title="Elige un vendedor arriba">Elige un vendedor para marcar varios</button>') : ''}</div>` : '';
     $('.bar i', mt).style.width = (p * 100) + '%';
     $('b', mt).textContent = docs.length ? `${hechos} de ${docs.length} detallados · ${clp(docs.reduce((a, d) => a + d.total, 0))}` : '';
     const el = $('#fl');
@@ -427,7 +428,7 @@ async function vFolios(m) {
   pintar();
 }
 function chipsEstado(d) {
-  let h = d.estado === 'DETALLADO' ? '<span class="chip ok">Detallado</span>' : '<span class="chip cu">Por detallar</span>';
+  let h = d.estado === 'DETALLADO' ? `<span class="chip ok">Detallado${d.detalladoPor ? ' por ' + esc(d.detalladoPor.split(' ')[0]) : ''}</span>` : '<span class="chip cu">Por detallar</span>';
   h += d.pagos.map(p => `<span class="chip">${FL[p.forma]}${p.banco ? ' ' + esc(p.banco) : ''}</span>`).join('');
   d.descuentos.forEach(x => h += `<span class="chip ${x.estado === 'APROBADO' ? 'ok' : x.estado === 'RECHAZADO' ? 'bad' : 'warn'}">Desc. ${clp(x.monto)} ${x.estado.toLowerCase()}</span>`);
   return h;
@@ -954,7 +955,7 @@ async function vResumen(m) {
       : r.porVendedor.length ? '<div class="alert ok">Todo cuadra. Puedes cerrar la rendición.</div>' : ''}
     <h3>Por vendedor</h3>
     ${r.porVendedor.length ? `<div class="vcards">${r.porVendedor.map(v => `<div class="vcard">
-      <div class="row"><b class="grow" style="font-size:17px">${esc(v.vendedor)}</b>${v.pendientes ? `<span class="chip cu">${v.pendientes} por detallar</span>` : '<span class="chip ok">Detallado</span>'}</div>
+      <div class="row"><b class="grow" style="font-size:17px">${esc(v.vendedor)}</b>${v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar · Detallar ›</button>` : '<span class="chip ok">Detallado</span>'}</div>
       <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.venta)}</dd><dt>Crédito</dt><dd>${clp(v.credito)}</dd>
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>${v.CHEQUE ? `<dt>Cheques</dt><dd>${clp(v.CHEQUE)}</dd>` : ''}
         ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
@@ -974,6 +975,7 @@ async function vResumen(m) {
       ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
         : '<button class="btn ghost" id="pv">Ver cómo quedaría</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
     <div id="lnk"></div>`);
+  $$('[data-detallar]', m).forEach(b => b.onclick = () => { S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
   $$('[data-paso]', m).forEach(b => b.onclick = () => {
     const p = b.dataset.paso;
     if (p === 'importar' || p === 'folios') return ir(p);

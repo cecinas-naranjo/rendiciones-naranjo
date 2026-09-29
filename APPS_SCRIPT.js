@@ -530,6 +530,7 @@ function asignarTerminal(token, terminal, vendedor) {
 
 function docsDelDia_(fecha, vendedor) {
   const pagos = byFecha_('PAGOS', fecha), descs = byFecha_('DESCUENTOS', fecha);
+  const nombres = {}; read_('USUARIOS').forEach(u => nombres[u.usuario] = u.nombre);
   return byFecha_('DOCUMENTOS', fecha).filter(d => !vendedor || d.vendedor === vendedor).map(d => {
     const p = pagos.filter(x => x.folio_key === d.folio_key);
     const ds = descs.filter(x => x.folio_key === d.folio_key);
@@ -540,7 +541,9 @@ function docsDelDia_(fecha, vendedor) {
       condicion_dte: d.condicion_dte, terminal: d.terminal, vendedor: d.vendedor, estado: d.estado,
       pagos: p.map(x => ({ forma: x.forma, banco: x.banco, monto: num_(x.monto), referencia: x.referencia })),
       descuentos: ds.map(x => ({ id: x.id, monto: num_(x.monto), motivo: x.motivo, estado: x.estado, autorizado_por: x.autorizado_por })),
-      pagado, descAprob, diferencia: num_(d.total) - pagado - descAprob
+      pagado, descAprob, diferencia: num_(d.total) - pagado - descAprob,
+      // si lo detalló otra persona (encargada o administración), se muestra para que el vendedor lo sepa
+      detalladoPor: p[0] && p[0].registrado_por && p[0].registrado_por !== d.vendedor ? (nombres[p[0].registrado_por] || p[0].registrado_por) : ''
     };
   });
 }

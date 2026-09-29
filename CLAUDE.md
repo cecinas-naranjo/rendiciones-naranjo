@@ -79,6 +79,7 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 ## Detalle de folios del vendedor
 - `abrirDetalle`: modo rápido. El vendedor toca la forma (Efectivo/Transferencia/Crédito/Cheque); transferencia y cheque piden banco con 3 botones (se recuerda el último banco por usuario). Guarda al tocar y abre el siguiente pendiente (`recorrido`). Sugiere Crédito si Mi DTE dice crédito.
 - Pago mixto, abono o descuento → `abrirDetalleCompleto` (el editor de líneas de siempre). Folios con varias líneas, descuento pendiente o día cerrado abren directo el completo.
+- Encargada, supervisión y administración también detallan (Ventas → Detallar ventas, o "Detallar ›" en cada vendedor de la Rendición). PAGOS.registrado_por guarda quién fue; `docsDelDia_` devuelve `detalladoPor` y el chip dice "Detallado por …". En oficina, "Marcar varios" pide elegir vendedor.
 - "Marcar varios de una vez" (`marcarVarios` → API `guardarVarios`): lista de pendientes con efectivo/crédito según Mi DTE; se puede cambiar o excluir cada uno. Salta folios ya detallados o con descuento pendiente.
 
 ## Velocidad y cargas
