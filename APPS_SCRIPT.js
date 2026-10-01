@@ -36,9 +36,9 @@ const SCHEMA = {
   DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado'],
   DOCUMENTOS:  ['folio_key','fecha','tipo','folio','rut','cliente','total','condicion_dte','terminal','vendedor','estado','importado'],
   VENTAS_DETALLE: ['linea_key','fecha','folio_key','tipo','folio','codigo','producto','cantidad','precio','total','neto','terminal','vendedor','categoria','pago','es_guia','importado'],
-  PAGOS:       ['id','folio_key','fecha','vendedor','forma','banco','monto','referencia','registrado_por','registrado'],
+  PAGOS:       ['id','folio_key','fecha','vendedor','forma','banco','monto','referencia','registrado_por','registrado','cheque_numero','cheque_fecha','cheque_titular'],
   DESCUENTOS:  ['id','folio_key','fecha','vendedor','cliente','monto','motivo','estado','solicitado_por','autorizado_por','resuelto'],
-  COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado','adjuntos'],
+  COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado','adjuntos','cheque_numero','cheque_fecha','cheque_titular'],
   PROVEEDORES: ['id','fecha','proveedor','documento','folio','monto','forma','obs','registrado_por','registrado','adjuntos'],
   CONSUMO:     ['id','fecha','cliente','folio','monto','forma','obs','registrado_por','registrado'],
   GASTOS:      ['id','fecha','responsable','concepto','monto','respaldo','obs','registrado_por','registrado','adjuntos'],
@@ -50,6 +50,18 @@ const SCHEMA = {
 // Formas de pago estructuradas (reemplazan el texto libre "ESTADO Y EF 20000", etc.)
 const FORMAS = ['EFECTIVO','TRANSFERENCIA','DEP_EFECTIVO','CHEQUE','CREDITO','NOTA_CREDITO'];
 const BANCOS = ['BICE','ESTADO','SANTANDER'];
+// Bancos emisores de cheques (el banco del cliente, no el de la empresa)
+const BANCOS_CHEQUE = ['BANCO DE CHILE','BANCOESTADO','SANTANDER','BCI','ITAU','SCOTIABANK','BICE','SECURITY','FALABELLA','RIPLEY',
+  'CONSORCIO','INTERNACIONAL','COOPEUCH','OTRO'];
+/** Un cheque debe traer número, banco emisor y fecha de cobro; el titular es opcional. Devuelve los campos limpios. */
+function datosCheque_(p) {
+  const numero = String(p.cheque_numero || '').replace(/\D/g, '');
+  const fecha = String(p.cheque_fecha || '').slice(0, 10);
+  if (!numero) throw new Error('Falta el número del cheque.');
+  if (!p.banco) throw new Error('Falta el banco del cheque.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error('Falta la fecha del cheque.');
+  return { cheque_numero: numero, cheque_fecha: fecha, cheque_titular: String(p.cheque_titular || '').trim(), referencia: 'Cheque N° ' + numero };
+}
 // En el detalle de un folio el vendedor ya no usa "depósito en efectivo": marca Efectivo, y si después deposita
 // ese efectivo a la empresa lo registra en DEPOSITOS (un depósito puede cubrir muchos folios).
 const FORMAS_APP = ['EFECTIVO','TRANSFERENCIA','CHEQUE','CREDITO','NOTA_CREDITO'];
@@ -236,7 +248,7 @@ function read_(name) {
   // copia nueva de los objetos en cada llamada: quien los modifica no afecta a otras lecturas
   return MEMO_[name].map((r, i) => {
     const o = { _row: i + 2 };
-    head.forEach((h, j) => o[h] = r[j] instanceof Date && h === 'fecha' ? normFecha_(r[j]) : r[j]);
+    head.forEach((h, j) => o[h] = r[j] instanceof Date && (h === 'fecha' || h === 'cheque_fecha') ? normFecha_(r[j]) : r[j]);
     if (o.fecha !== undefined) o.fecha = normFecha_(o.fecha);
     return o;
   });
@@ -333,7 +345,7 @@ function catalogo(token) {
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
       .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio) })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales })),
-    formas: FORMAS_APP, bancos: BANCOS
+    formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
   };
 }
 
@@ -539,7 +551,8 @@ function docsDelDia_(fecha, vendedor) {
     return {
       folio_key: d.folio_key, tipo: d.tipo, folio: d.folio, cliente: d.cliente, rut: d.rut, total: num_(d.total),
       condicion_dte: d.condicion_dte, terminal: d.terminal, vendedor: d.vendedor, estado: d.estado,
-      pagos: p.map(x => ({ forma: x.forma, banco: x.banco, monto: num_(x.monto), referencia: x.referencia })),
+      pagos: p.map(x => ({ forma: x.forma, banco: x.banco, monto: num_(x.monto), referencia: x.referencia,
+        cheque_numero: x.cheque_numero || '', cheque_fecha: x.cheque_fecha || '', cheque_titular: x.cheque_titular || '' })),
       descuentos: ds.map(x => ({ id: x.id, monto: num_(x.monto), motivo: x.motivo, estado: x.estado, autorizado_por: x.autorizado_por })),
       pagado, descAprob, diferencia: num_(d.total) - pagado - descAprob,
       // si lo detalló otra persona (encargada o administración), se muestra para que el vendedor lo sepa
@@ -565,7 +578,7 @@ function guardarDetalle(token, fecha, folio_key, pagos, descuento) {
     const limpios = (pagos || []).filter(p => num_(p.monto) > 0).map(p => {
       if (FORMAS.indexOf(p.forma) < 0) throw new Error('Forma de pago inválida: ' + p.forma);
       if ((p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO') && !p.banco) throw new Error('Indica el banco de la transferencia/depósito.');
-      return p;
+      return p.forma === 'CHEQUE' ? Object.assign({}, p, datosCheque_(p)) : p;
     });
     const suma = limpios.reduce((a, p) => a + num_(p.monto), 0);
     const descMonto = descuento ? num_(descuento.monto) : 0;
@@ -577,7 +590,8 @@ function guardarDetalle(token, fecha, folio_key, pagos, descuento) {
 
     deleteRows_('PAGOS', read_('PAGOS').filter(x => x.folio_key === folio_key).map(x => x._row));
     append_('PAGOS', limpios.map(p => ({ id: uid_(), folio_key, fecha: d.fecha, vendedor: d.vendedor, forma: p.forma,
-      banco: p.banco || '', monto: num_(p.monto), referencia: p.referencia || '', registrado_por: u.usuario, registrado: now_() })));
+      banco: p.banco || '', monto: num_(p.monto), referencia: p.referencia || '', registrado_por: u.usuario, registrado: now_(),
+      cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' })));
 
     // Descuentos: se reemplaza la solicitud pendiente; uno ya autorizado por el mismo monto se mantiene
     deleteRows_('DESCUENTOS', read_('DESCUENTOS').filter(x => x.folio_key === folio_key && x.estado === 'PENDIENTE').map(x => x._row));
@@ -610,12 +624,13 @@ function guardarVarios(token, fecha, items) {
       const ds = descs.filter(x => x.folio_key === d.folio_key);
       if (d.estado === 'DETALLADO' || ds.some(x => x.estado === 'PENDIENTE')) return saltados.push(it.folio_key);
       const aprob = ds.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + num_(x.monto), 0);
-      ok.push({ d, forma: it.forma, banco: it.banco || '', monto: num_(d.total) - aprob });
+      ok.push({ d, forma: it.forma, banco: it.banco || '', monto: num_(d.total) - aprob, ch: it.forma === 'CHEQUE' ? datosCheque_(it) : {} });
     });
     const keys = {}; ok.forEach(x => keys[x.d.folio_key] = 1);
     deleteRows_('PAGOS', read_('PAGOS').filter(x => keys[x.folio_key]).map(x => x._row));
     append_('PAGOS', ok.filter(x => x.monto > 0).map(x => ({ id: uid_(), folio_key: x.d.folio_key, fecha: x.d.fecha, vendedor: x.d.vendedor, forma: x.forma,
-      banco: x.banco, monto: x.monto, referencia: '', registrado_por: u.usuario, registrado: now_() })));
+      banco: x.banco, monto: x.monto, referencia: x.ch.referencia || '', registrado_por: u.usuario, registrado: now_(),
+      cheque_numero: x.ch.cheque_numero || '', cheque_fecha: x.ch.cheque_fecha || '', cheque_titular: x.ch.cheque_titular || '' })));
     // el estado se escribe en una sola operación sobre la columna
     if (ok.length) {
       const sh = sh_('DOCUMENTOS'), col = SCHEMA.DOCUMENTOS.indexOf('estado') + 1;
@@ -674,6 +689,7 @@ function guardarMov(token, tabla, fecha, obj) {
   if (num_(obj.monto) <= 0) throw new Error('Ingresa un monto mayor a cero.');
   return withLock_(() => {
     const o = Object.assign({}, obj, { id: uid_(), fecha, monto: num_(obj.monto), registrado_por: u.usuario, registrado: now_() });
+    if (tabla === 'COBRANZA' && o.forma === 'CHEQUE') Object.assign(o, datosCheque_(o));
     if (tabla === 'COBRANZA' && u.rol === 'VENDEDOR') o.vendedor = u.usuario;
     if (tabla === 'GASTOS' && u.rol === 'VENDEDOR') o.responsable = u.usuario;
     append_(tabla, [o]); return o;
@@ -1447,6 +1463,15 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
   const D = H.tabla('DEPÓSITOS DE EFECTIVO A LA EMPRESA', [{ h: 'BANCO' }, { h: 'N° OPERACIÓN' }, { h: 'MONTO DEPOSITADO', t: '$', sum: 1 },
     { h: 'EFECTIVO QUE INCLUYE', t: '$', sum: 1 }, { h: 'DIFERENCIA', t: '$', sum: 1 }, { h: 'FOLIOS INCLUIDOS' }, { h: 'COMPROBANTE' }],
     dep.map(x => [x.banco, x.referencia, num_(x.monto), x.incluido, '=C{r}-D{r}', x.foliosTxt, x.link]));
+  // CHEQUES recibidos (ventas y cobranza), con los datos para depositarlos o cobrarlos
+  const fch = f => f ? String(f).split('-').reverse().join('-') : '';
+  const cheques = [];
+  docs.forEach(d => d.pagos.filter(p => p.forma === 'CHEQUE').forEach(p => cheques.push([d.cliente, 'Folio ' + d.folio, p.cheque_numero, p.banco,
+    fch(p.cheque_fecha), p.cheque_fecha && p.cheque_fecha > fecha ? 'A fecha' : 'Al día', p.cheque_titular, p.monto])));
+  cob.filter(c => c.forma === 'CHEQUE').forEach(c => cheques.push([c.cliente, 'Cobranza' + (c.folio ? ' folio ' + c.folio : ''), c.cheque_numero, c.banco,
+    fch(c.cheque_fecha), c.cheque_fecha && c.cheque_fecha > fecha ? 'A fecha' : 'Al día', c.cheque_titular, num_(c.monto)]));
+  if (cheques.length) H.tabla('CHEQUES RECIBIDOS', [{ h: 'CLIENTE' }, { h: 'ORIGEN' }, { h: 'N° CHEQUE' }, { h: 'BANCO' }, { h: 'FECHA DEL CHEQUE' },
+    { h: 'TIPO' }, { h: 'TITULAR / RUT' }, { h: 'MONTO', t: '$', sum: 1 }], cheques);
 
   // CUADRATURA con fórmulas hacia los totales de cada tabla
   const ref = (T, i) => T.tot ? colL_(i + 1) + T.tot : '0';

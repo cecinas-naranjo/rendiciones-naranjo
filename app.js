@@ -467,9 +467,12 @@ function abrirDetalleCompleto(d, estadoDia, alGuardar) {
   function dibujar() {
     ls.innerHTML = lineas.map((l, i) => `<div class="linea" data-i="${i}">
       <select class="in" data-k="forma" aria-label="Forma de pago" ${cerrada ? 'disabled' : ''}>${S.cat.formas.map(f => `<option value="${f}" ${f === l.forma ? 'selected' : ''}>${FL[f]}</option>`).join('')}</select>
-      <select class="in banco" data-k="banco" aria-label="Banco" ${conBanco(l.forma) && !cerrada ? '' : 'disabled'}><option value="">${conBanco(l.forma) ? 'Banco' : '—'}</option>${S.cat.bancos.map(b => `<option ${b === l.banco ? 'selected' : ''}>${b}</option>`).join('')}</select>
+      <select class="in banco" data-k="banco" aria-label="Banco" ${conBanco(l.forma) && l.forma !== 'CHEQUE' && !cerrada ? '' : 'disabled'}><option value="">${l.forma === 'CHEQUE' ? 'Ver abajo' : conBanco(l.forma) ? 'Banco' : '—'}</option>${l.forma === 'CHEQUE' ? '' : S.cat.bancos.map(b => `<option ${b === l.banco ? 'selected' : ''}>${b}</option>`).join('')}</select>
       <input class="in n mto" data-k="monto" inputmode="numeric" aria-label="Monto" value="${l.monto}" ${cerrada ? 'disabled' : ''}>
-      <button class="x" data-del="${i}" aria-label="Quitar" ${cerrada || lineas.length < 2 ? 'disabled' : ''}>×</button></div>`).join('');
+      <button class="x" data-del="${i}" aria-label="Quitar" ${cerrada || lineas.length < 2 ? 'disabled' : ''}>×</button></div>
+      ${l.forma === 'CHEQUE' ? `<div class="lch" data-i="${i}">${camposCheque(l, 'l' + i)}</div>` : ''}`).join('');
+    $$('.lch .cheque', ls).forEach(avisoTipoCheque);
+    if (cerrada) $$('.lch input, .lch select', ls).forEach(x => x.disabled = true);
     saldo();
   }
   function saldo() {
@@ -478,9 +481,11 @@ function abrirDetalleCompleto(d, estadoDia, alGuardar) {
     const ok = $('#ok', ov); if (ok) ok.disabled = dif !== 0;
     return dif;
   }
-  ls.oninput = ls.onchange = e => { const r = e.target.closest('.linea'); if (!r) return; const l = lineas[r.dataset.i];
+  ls.oninput = ls.onchange = e => {
+    const c = e.target.closest('.lch'); if (c) { Object.assign(lineas[c.dataset.i], leerCheque(c).datos); return; }
+    const r = e.target.closest('.linea'); if (!r) return; const l = lineas[r.dataset.i];
     l[e.target.dataset.k] = e.target.value;
-    if (e.target.dataset.k === 'forma') { if (!conBanco(l.forma)) l.banco = ''; dibujar(); } else saldo(); };
+    if (e.target.dataset.k === 'forma') { if (!conBanco(l.forma) || l.forma === 'CHEQUE') l.banco = ''; dibujar(); } else saldo(); };
   ls.onclick = e => { const i = e.target.dataset.del; if (i !== undefined) { lineas.splice(i, 1); dibujar(); } };
   const qk = $('#qk', ov); if (qk) qk.onclick = e => { const f = e.target.dataset.q; if (!f) return;
     lineas = [{ forma: f, banco: '', monto: d.total - descMonto() }]; dibujar(); };
@@ -498,16 +503,47 @@ function abrirDetalleCompleto(d, estadoDia, alGuardar) {
     if (saldo() !== 0) return;
     if (desc.on && !desc.motivo.trim()) return toast('Escribe el motivo del descuento.', true);
     if (lineas.some(l => (l.forma === 'TRANSFERENCIA' || l.forma === 'DEP_EFECTIVO') && !l.banco)) return toast('Indica a qué banco llegó la transferencia o depósito.', true);
+    for (const c of $$('.lch', ls)) { const r = leerCheque(c); if (r.error) return toast(r.error, true); Object.assign(lineas[c.dataset.i], r.datos); }
     ok.disabled = true;
     try {
       const nuevo = await api('guardarDetalle', S.sess.token, S.fecha, d.folio_key,
-        lineas.map(l => ({ forma: l.forma, banco: l.banco, monto: soloDigitos(l.monto), referencia: l.referencia || '' })),
+        lineas.map(l => Object.assign({ forma: l.forma, banco: l.banco, monto: soloDigitos(l.monto), referencia: l.referencia || '' },
+          l.forma === 'CHEQUE' ? { cheque_numero: l.cheque_numero, cheque_fecha: l.cheque_fecha, cheque_titular: l.cheque_titular } : {})),
         desc.on ? { monto: soloDigitos(desc.monto), motivo: desc.motivo } : null);
       toast('Folio ' + d.folio + ' guardado'); cerrarHoja(ov); alGuardar(nuevo);
     } catch (e) { ok.disabled = false; }
   };
   dibujar();
 }
+
+/* ---------- datos del cheque (se piden en todos lados donde se elige cheque) ---------- */
+const NOMBRES_BANCO = { 'BANCO DE CHILE': 'Banco de Chile', BANCOESTADO: 'BancoEstado', SANTANDER: 'Santander', BCI: 'BCI', ITAU: 'Itaú', SCOTIABANK: 'Scotiabank',
+  BICE: 'BICE', SECURITY: 'Security', FALABELLA: 'Falabella', RIPLEY: 'Ripley', CONSORCIO: 'Consorcio', INTERNACIONAL: 'Internacional', COOPEUCH: 'Coopeuch', OTRO: 'Otro' };
+const nombreBanco = b => NOMBRES_BANCO[b] || b;
+function camposCheque(v, id) {
+  v = v || {}; id = id || 'ch';
+  return `<div class="cheque" data-cheque="${id}">
+    <div><label class="f">Banco del cheque</label><select class="in" data-c="banco"><option value="">Elige…</option>${(S.cat.bancosCheque || S.cat.bancos).map(b =>
+      `<option value="${esc(b)}" ${b === v.banco ? 'selected' : ''}>${esc(nombreBanco(b))}</option>`).join('')}</select></div>
+    <div><label class="f">N° de cheque</label><input class="in n" data-c="cheque_numero" inputmode="numeric" value="${esc(v.cheque_numero || '')}" placeholder="Ej: 4512398"></div>
+    <div><label class="f">Fecha del cheque <span class="muted">(desde cuándo se puede cobrar)</span></label><input class="in" type="date" data-c="cheque_fecha" value="${esc(v.cheque_fecha || S.fecha)}"></div>
+    <div><label class="f">Titular o RUT <span class="muted">(opcional)</span></label><input class="in" data-c="cheque_titular" value="${esc(v.cheque_titular || '')}"></div>
+    <div class="muted chtipo"></div></div>`;
+}
+/** Lee los datos del cheque de un contenedor; devuelve {datos} o {error}. */
+function leerCheque(box) {
+  const g = k => ($('[data-c="' + k + '"]', box) || {}).value || '';
+  const datos = { banco: g('banco'), cheque_numero: g('cheque_numero').replace(/\D/g, ''), cheque_fecha: g('cheque_fecha'), cheque_titular: g('cheque_titular').trim() };
+  const error = !datos.banco ? 'Elige el banco del cheque.' : !datos.cheque_numero ? 'Escribe el número del cheque.' : !datos.cheque_fecha ? 'Indica la fecha del cheque.' : '';
+  return { datos, error };
+}
+/** Muestra "Al día" o "A fecha" bajo el formulario, según la fecha de cobro. */
+function avisoTipoCheque(box) {
+  const f = ($('[data-c="cheque_fecha"]', box) || {}).value, t = $('.chtipo', box); if (!t) return;
+  t.textContent = !f ? '' : f > S.fecha ? 'Cheque a fecha: se puede cobrar desde el ' + f.split('-').reverse().join('-') + '.' : 'Cheque al día: se puede cobrar desde ya.';
+}
+document.addEventListener('input', e => { const b = e.target.closest && e.target.closest('.cheque'); if (b) avisoTipoCheque(b); });
+document.addEventListener('change', e => { const b = e.target.closest && e.target.closest('.cheque'); if (b) avisoTipoCheque(b); });
 
 /* ---------- detalle rápido: un toque por folio ----------
    La mayoría de los folios se pagan de una sola forma. Se toca cómo pagó el cliente (y el banco si fue transferencia)
@@ -531,6 +567,8 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
     <div class="pregunta">¿Cómo te pagó?</div>
     <div class="formas" id="fz">${FORMAS_RAPIDAS.map(f => `<button type="button" data-f="${f[0]}" class="${f[0] === sugerida ? 'sug' : ''}">${icon(f[2])}<span>${f[1]}</span>
       ${f[0] === actual ? '<small>Marcado</small>' : f[0] === sugerida ? '<small>Sugerido</small>' : ''}</button>`).join('')}</div>
+    <div id="chz" hidden><div class="pregunta">Datos del cheque</div>${camposCheque((d.pagos[0] || {}).forma === 'CHEQUE' ? d.pagos[0] : null, 'q')}
+      <button type="button" class="btn cu" id="chOk" style="width:100%;margin-top:10px">Guardar cheque</button></div>
     <div id="bz" hidden><div class="pregunta" id="bzT">¿A qué banco llegó?</div>
       <div class="bancos">${S.cat.bancos.map(b => `<button type="button" data-b="${esc(b)}" class="${b === ((d.pagos[0] || {}).banco || bancoPref) ? 'sug' : ''}">${esc(b)}</button>`).join('')}</div></div>
     <button type="button" class="link" id="mix">Pagó de dos formas, abonó una parte o hubo descuento</button>
@@ -540,9 +578,9 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
   $('#qd', ov).textContent = quedan ? (quedan === 1 && d.estado !== 'DETALLADO' ? 'Es el último por detallar' : `Quedan ${quedan} por detallar`) : '';
   let forma = null;
   // Sin esperas: el folio se marca al instante y se guarda por detrás (en orden), mientras ya se detalla el siguiente.
-  const guardar = (f, banco) => {
-    if (banco) try { localStorage.setItem('rn_banco_' + S.sess.usuario, banco); } catch (e) {}
-    const lineas = [{ forma: f, banco: banco || '', monto, referencia: '' }];
+  const guardar = (f, banco, cheque) => {
+    if (banco && f === 'TRANSFERENCIA') try { localStorage.setItem('rn_banco_' + S.sess.usuario, banco); } catch (e) {}
+    const lineas = [Object.assign({ forma: f, banco: banco || '', monto, referencia: '' }, cheque || {})];
     alGuardar(Object.assign({}, d, { estado: 'DETALLADO', pagos: lineas, pagado: monto, diferencia: d.total - monto - aprob, detalladoPor: '' }));
     encolarGuardado(d, lineas, alGuardar);
     const sig = siguiente && d.estado !== 'DETALLADO' && siguiente.proximo(d.folio_key);   // solo encadena si venía de un pendiente
@@ -553,12 +591,15 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
     const b = e.target.closest('[data-f]'); if (!b) return;
     forma = b.dataset.f;
     $$('#fz button', ov).forEach(x => x.classList.toggle('on', x === b));
-    if (forma === 'TRANSFERENCIA' || forma === 'CHEQUE') {
-      $('#bzT', ov).textContent = forma === 'CHEQUE' ? '¿De qué banco es el cheque?' : '¿A qué banco llegó?';
-      $('#bz', ov).hidden = false; $('#bz', ov).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      return;
-    }
-    $('#bz', ov).hidden = true; guardar(forma);
+    $('#bz', ov).hidden = forma !== 'TRANSFERENCIA'; $('#chz', ov).hidden = forma !== 'CHEQUE';
+    if (forma === 'TRANSFERENCIA') { $('#bzT', ov).textContent = '¿A qué banco llegó?'; $('#bz', ov).scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+    if (forma === 'CHEQUE') { avisoTipoCheque($('#chz .cheque', ov)); $('#chz', ov).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const n = $('#chz [data-c="banco"]', ov); if (n && !n.value) n.focus(); return; }
+    guardar(forma);
+  };
+  $('#chOk', ov).onclick = () => {
+    const r = leerCheque($('#chz .cheque', ov)); if (r.error) return toast(r.error, true);
+    const { banco, ...resto } = r.datos; guardar('CHEQUE', banco, resto);
   };
   $('.bancos', ov).onclick = e => { const b = e.target.closest('[data-b]'); if (b && forma) guardar(forma, b.dataset.b); };
   $('#mix', ov).onclick = () => { ov.remove(); abrirDetalleCompleto(d, estadoDia, alGuardar); };
@@ -591,8 +632,9 @@ function marcarVarios(docs, alGuardar) {
   const pend = docs.filter(d => d.estado !== 'DETALLADO');
   const bloqueado = d => d.descuentos.some(x => x.estado === 'PENDIENTE');
   // opciones: forma|banco
-  const OPC = [['EFECTIVO', ''], ['CREDITO', '']].concat(S.cat.bancos.map(b => ['TRANSFERENCIA', b]), S.cat.bancos.map(b => ['CHEQUE', b]));
-  const etiqueta = (f, b) => f === 'TRANSFERENCIA' ? 'Transf. ' + b : f === 'CHEQUE' ? 'Cheque ' + b : FL[f];
+  const OPC = [['EFECTIVO', ''], ['CREDITO', '']].concat(S.cat.bancos.map(b => ['TRANSFERENCIA', b]), [['CHEQUE', '']]);
+  const cheques = {};   // datos de cheque por folio
+  const etiqueta = (f, b, k) => f === 'TRANSFERENCIA' ? 'Transf. ' + b : f === 'CHEQUE' ? (k && cheques[k] && cheques[k].cheque_numero ? 'Cheque N° ' + cheques[k].cheque_numero : 'Cheque…') : FL[f];
   const color = f => f === 'CREDITO' ? 'warn' : f === 'EFECTIVO' ? 'ok' : 'cu';
   const sugerida = d => esCreditoDTE(d) ? ['CREDITO', ''] : ['EFECTIVO', ''];
   const sel = {}; pend.forEach(d => { if (!bloqueado(d)) sel[d.folio_key] = sugerida(d); });
@@ -610,9 +652,11 @@ function marcarVarios(docs, alGuardar) {
       return `<div class="vrow ${s ? '' : 'off'}" data-k="${esc(d.folio_key)}">
         <button type="button" class="ck" data-ck ${b ? 'disabled' : ''} aria-label="Incluir">${s ? '✓' : ''}</button>
         <div class="grow"><b>${esc(d.cliente)}</b><div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)} · ${clp(d.total)}${b ? ' · descuento pendiente: detállalo aparte' : ''}</div></div>
-        ${s ? `<button type="button" class="chip ${color(s[0])}" data-sw>${esc(etiqueta(s[0], s[1]))} ▾</button>` : ''}</div>
+        ${s ? `<button type="button" class="chip ${color(s[0])}" data-sw>${esc(etiqueta(s[0], s[1], d.folio_key))} ▾</button>` : ''}</div>
         ${abierto === d.folio_key && s ? `<div class="vopc" data-k="${esc(d.folio_key)}">${OPC.map(o => `<button type="button" data-o="${o[0]}|${esc(o[1])}"
-          class="${o[0] === s[0] && o[1] === s[1] ? 'on' : ''}">${esc(etiqueta(o[0], o[1]))}</button>`).join('')}</div>` : ''}`; }).join('');
+          class="${o[0] === s[0] && (o[1] === s[1] || o[0] === 'CHEQUE') ? 'on' : ''}">${esc(o[0] === 'CHEQUE' ? 'Cheque…' : etiqueta(o[0], o[1]))}</button>`).join('')}</div>` : ''}
+        ${s && s[0] === 'CHEQUE' ? `<div class="vch" data-k="${esc(d.folio_key)}">${camposCheque(cheques[d.folio_key], 'v' + d.folio_key)}</div>` : ''}`; }).join('');
+    $$('.vch .cheque', ov).forEach(avisoTipoCheque);
     const ks = Object.keys(sel).filter(k => sel[k]);
     const tot = {}; pend.forEach(d => { const s = sel[d.folio_key]; if (s) { const k = s[0] === 'TRANSFERENCIA' ? 'Transferencia' : FL[s[0]]; tot[k] = (tot[k] || 0) + d.total; } });
     $('#vres', ov).textContent = Object.keys(tot).map(k => k + ' ' + clp(tot[k])).join(' · ');
@@ -621,19 +665,32 @@ function marcarVarios(docs, alGuardar) {
   };
   $('#vl', ov).onclick = e => {
     const o = e.target.closest('[data-o]');
-    if (o) { const [f, b] = o.dataset.o.split('|'); sel[o.closest('.vopc').dataset.k] = [f, b]; abierto = null; return pintar(); }
+    if (o) { const [f, b] = o.dataset.o.split('|'), k = o.closest('.vopc').dataset.k; sel[k] = [f, b]; abierto = null; pintar();
+      if (f === 'CHEQUE') { const sb = $('.vch[data-k="' + k + '"] [data-c="banco"]', ov); if (sb) { sb.scrollIntoView({ behavior: 'smooth', block: 'center' }); sb.focus(); } }
+      return; }
     const r = e.target.closest('.vrow'); if (!r) return; const k = r.dataset.k, d = pend.find(x => x.folio_key === k);
     if (bloqueado(d)) return;
     if (e.target.closest('[data-sw]')) { abierto = abierto === k ? null : k; return pintar(); }
     sel[k] = sel[k] ? '' : sugerida(d); if (!sel[k] && abierto === k) abierto = null;
     pintar();
   };
+  // lo que se escribe en los datos del cheque se guarda al momento (para no perderlo al redibujar)
+  $('#vl', ov).addEventListener('input', e => { const c = e.target.closest('.vch'); if (!c) return; cheques[c.dataset.k] = leerCheque(c).datos;
+    const chip = $('.vrow[data-k="' + c.dataset.k + '"] [data-sw]', ov); if (chip) chip.textContent = etiqueta('CHEQUE', '', c.dataset.k) + ' ▾'; });
+  $('#vl', ov).addEventListener('change', e => { const c = e.target.closest('.vch'); if (c) cheques[c.dataset.k] = leerCheque(c).datos; });
   $('#tE', ov).onclick = () => { Object.keys(sel).forEach(k => { if (sel[k]) sel[k] = ['EFECTIVO', '']; }); abierto = null; pintar(); };
   $('#tM', ov).onclick = () => { pend.forEach(d => { if (sel[d.folio_key]) sel[d.folio_key] = sugerida(d); }); abierto = null; pintar(); };
   $('#cx', ov).onclick = () => cerrarHoja(ov);
   ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
   $('#ok', ov).onclick = async () => {
-    const items = Object.keys(sel).filter(k => sel[k]).map(k => ({ folio_key: k, forma: sel[k][0], banco: sel[k][1] }));
+    const ks = Object.keys(sel).filter(k => sel[k]);
+    for (const k of ks.filter(k => sel[k][0] === 'CHEQUE')) {
+      const r = leerCheque($('.vch[data-k="' + k + '"]', ov));
+      if (r.error) { const d = pend.find(x => x.folio_key === k); toast('Folio ' + d.folio + ': ' + r.error.toLowerCase(), true);
+        const c = $('.vch[data-k="' + k + '"]', ov); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+      cheques[k] = r.datos;
+    }
+    const items = ks.map(k => sel[k][0] === 'CHEQUE' ? Object.assign({ folio_key: k, forma: 'CHEQUE' }, cheques[k]) : { folio_key: k, forma: sel[k][0], banco: sel[k][1] });
     try {
       const r = await api('guardarVarios', S.sess.token, S.fecha, items);
       cerrarHoja(ov); alGuardar(r.docs);
@@ -1141,6 +1198,7 @@ async function vMov(m, tabla) {
   const conAdj = !!ADJ[tabla];
   render(m, `<h2>${cfg.t}</h2><p class="lead">${cfg.d}</p>
     <div class="card"><div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}${conAdj ? campoArchivos('mf') : ''}</div>
+      ${tabla === 'COBRANZA' ? `<div id="mch" hidden style="margin-top:12px"><div class="pregunta" style="margin-top:0">Datos del cheque</div>${camposCheque(null, 'mov')}</div>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     <div id="ml" style="margin-top:16px"></div>`);
   function lista(rows) {
@@ -1157,9 +1215,14 @@ async function vMov(m, tabla) {
   if (conAdj) { enlazarCampoArchivos('mf'); activarAdjuntarDespues($('#ml'), recargar); }
   $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
     await api('borrarMov', S.sess.token, tabla, id); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); };
+  // cobranza con cheque: se piden sus datos y el banco pasa a ser el del cheque
+  const mf = $('#m_forma'), mch = $('#mch');
+  if (mf && mch) mf.onchange = () => { const ch = mf.value === 'CHEQUE'; mch.hidden = !ch; const mb = $('#m_banco'); if (mb) { mb.disabled = ch; if (ch) mb.value = ''; }
+    if (ch) avisoTipoCheque($('.cheque', mch)); };
   $('#ad').onclick = async () => {
     const o = {}; $$('[name]', $('#fm')).forEach(x => o[x.name] = x.value);
     o.monto = String(soloDigitos(o.monto));
+    if (mch && o.forma === 'CHEQUE') { const r = leerCheque($('.cheque', mch)); if (r.error) return toast(r.error, true); Object.assign(o, r.datos); }
     if (o.monto === '0') return toast('Ingresa el monto.', true);
     if ((o.forma === 'TRANSFERENCIA' || o.forma === 'DEP_EFECTIVO') && 'banco' in o && !o.banco) return toast('Indica el banco.', true);
     const b = $('#ad'); b.disabled = true;
@@ -1168,6 +1231,7 @@ async function vMov(m, tabla) {
       const fs = conAdj ? [...$('#mf').files] : [];
       if (fs.length) { try { await subirArchivos(tabla, nuevo.id, fs); } catch (e) { toast('El registro quedó guardado, pero el archivo no subió. Usa "Adjuntar" en la fila.', true); } }
       $$('input', $('#fm')).forEach(x => x.value = ''); if (conAdj) $('#mf').onchange();
+      if (mch) { $$('input:not([type=date])', mch).forEach(x => x.value = ''); $('[data-c="banco"]', mch).value = ''; }
       await recargar();
     } finally { b.disabled = false; }
   };

@@ -212,6 +212,12 @@ body:has(.ov) .toast{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto}
 .vopc button{min-height:42px;border:1.5px solid var(--line);background:#fff;border-radius:10px;font-weight:700;font-size:14px}
 .vopc .on{border-color:var(--cu);background:var(--cu);color:#fff}
 
+.cheque{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.cheque .chtipo{grid-column:1/-1;font-weight:600}
+@media(max-width:420px){.cheque{grid-template-columns:1fr}}
+.vch{padding:4px 0 12px 40px;border-bottom:1px solid var(--line-2)}
+.lch{padding:6px 0 10px;border-bottom:1px dashed var(--line)}
+
 /* ---------- inventario ---------- */
 .seg.secs{display:grid;grid-template-columns:repeat(4,1fr);width:100%;margin:4px 0 12px}
 .seg.secs button{padding:9px 8px;line-height:1.2}

@@ -82,6 +82,10 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - Encargada, supervisión y administración también detallan (Ventas → Detallar ventas, o "Detallar ›" en cada vendedor de la Rendición). PAGOS.registrado_por guarda quién fue; `docsDelDia_` devuelve `detalladoPor` y el chip dice "Detallado por …". En oficina, "Marcar varios" pide elegir vendedor.
 - "Detallar varios de una vez" (`marcarVarios` → API `guardarVarios`): lista de pendientes con efectivo/crédito según Mi DTE; tocando la forma se elige efectivo, crédito, transferencia o cheque con banco; se puede excluir cada uno; un solo guardado. Salta folios ya detallados o con descuento pendiente.
 
+## Cheques
+- Al elegir cheque (detalle rápido, detallar varios, detalle completo y Cobranza) se piden: banco emisor (`BANCOS_CHEQUE`, bancos chilenos + Otro), N° de cheque y fecha del cheque, es decir desde cuándo se puede cobrar, no cuándo se cobra (obligatorios) y titular/RUT (opcional). Helpers en app: `camposCheque`, `leerCheque`, `avisoTipoCheque` (al día / a fecha).
+- Servidor: `datosCheque_` valida; columnas `cheque_numero`, `cheque_fecha`, `cheque_titular` en PAGOS y COBRANZA (el banco del cheque va en `banco`; referencia = "Cheque N° …"). El archivo de rendición agrega por vendedor la tabla CHEQUES RECIBIDOS (ventas y cobranza, al día / a fecha).
+
 ## Velocidad y cargas
 - Servidor: `MEMO_` (cada hoja se lee una vez por petición; se invalida al escribir), USUARIOS y PRODUCTOS en CacheService 10 min (`onEdit` limpia si se editan a mano; `setup` también), `deleteRows_` borra bloques seguidos de una vez.
 - App: consultas (`LECTURA`) guardadas en localStorage (`rn_cache`, 30 entradas): se muestran al instante y se revalidan por detrás; si cambió, `ir(tab, true)` re-dibuja sin animación, salvo que el usuario esté escribiendo (`S.tocado`) o haya una hoja abierta. Cualquier escritura borra la caché. `precargar()` trae las pestañas vecinas. El lector de Excel se descarga solo en Importar (`cargarXLSX`).
