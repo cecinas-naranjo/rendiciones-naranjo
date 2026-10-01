@@ -389,8 +389,8 @@ async function vFolios(m) {
     const pendientes = docs.length - hechos;
     $('#acc').innerHTML = pendientes && estadoDia !== 'CERRADA' ? `<div class="acciones">
       <button class="btn cu" id="emp">${hechos ? 'Seguir detallando' : 'Empezar a detallar'} <span class="cnt">${pendientes}</span></button>
-      ${pendientes > 1 ? (esV || S.vend ? '<button class="btn ghost" id="var">Marcar varios de una vez</button>'
-        : '<button class="btn ghost" disabled title="Elige un vendedor arriba">Elige un vendedor para marcar varios</button>') : ''}</div>` : '';
+      ${pendientes > 1 ? (esV || S.vend ? '<button class="btn ghost" id="var">Detallar varios de una vez</button>'
+        : '<button class="btn ghost" disabled title="Elige un vendedor arriba">Elige un vendedor para detallar varios</button>') : ''}</div>` : '';
     $('.bar i', mt).style.width = (p * 100) + '%';
     $('b', mt).textContent = docs.length ? `${hechos} de ${docs.length} detallados · ${clp(docs.reduce((a, d) => a + d.total, 0))}` : '';
     const el = $('#fl');
@@ -539,15 +539,15 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
   const quedan = siguiente ? siguiente.cuantos() : 0;
   $('#qd', ov).textContent = quedan ? (quedan === 1 && d.estado !== 'DETALLADO' ? 'Es el último por detallar' : `Quedan ${quedan} por detallar`) : '';
   let forma = null;
-  const guardar = async (f, banco) => {
-    try {
-      const nuevo = await api('guardarDetalle', S.sess.token, S.fecha, d.folio_key, [{ forma: f, banco: banco || '', monto, referencia: '' }], null);
-      if (banco) try { localStorage.setItem('rn_banco_' + S.sess.usuario, banco); } catch (e) {}
-      alGuardar(nuevo);
-      const sig = siguiente && d.estado !== 'DETALLADO' && siguiente.proximo(d.folio_key);   // solo encadena si venía de un pendiente
-      if (sig) { toast(`Folio ${d.folio}: ${FL[f].toLowerCase()} ✓`); abrirDetalle(sig, estadoDia, alGuardar, siguiente, ov); }
-      else { cerrarHoja(ov); toast(siguiente ? '¡Listo! Todos tus folios están detallados.' : 'Folio ' + d.folio + ' guardado'); }
-    } catch (e) { /* el error ya se mostró */ }
+  // Sin esperas: el folio se marca al instante y se guarda por detrás (en orden), mientras ya se detalla el siguiente.
+  const guardar = (f, banco) => {
+    if (banco) try { localStorage.setItem('rn_banco_' + S.sess.usuario, banco); } catch (e) {}
+    const lineas = [{ forma: f, banco: banco || '', monto, referencia: '' }];
+    alGuardar(Object.assign({}, d, { estado: 'DETALLADO', pagos: lineas, pagado: monto, diferencia: d.total - monto - aprob, detalladoPor: '' }));
+    encolarGuardado(d, lineas, alGuardar);
+    const sig = siguiente && d.estado !== 'DETALLADO' && siguiente.proximo(d.folio_key);   // solo encadena si venía de un pendiente
+    if (sig) { toast(`Folio ${d.folio}: ${FL[f].toLowerCase()} ✓`); abrirDetalle(sig, estadoDia, alGuardar, siguiente, ov); }
+    else { cerrarHoja(ov); toast(siguiente ? '¡Listo! Todos tus folios están detallados.' : 'Folio ' + d.folio + ' guardado'); }
   };
   $('#fz', ov).onclick = e => {
     const b = e.target.closest('[data-f]'); if (!b) return;
@@ -566,48 +566,78 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
   ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
 }
 
-/** Marca varios folios de una vez: efectivo o crédito (según lo que dice Mi DTE), con opción de cambiar cada uno. */
+/* cola de guardado: uno tras otro, sin bloquear la pantalla. Si uno falla, el folio vuelve a "Por detallar". */
+const COLA = [];
+let colaCorriendo = false;
+function encolarGuardado(d, lineas, alGuardar) {
+  COLA.push({ d, lineas, alGuardar, fecha: S.fecha });
+  procesarCola();
+}
+async function procesarCola() {
+  if (colaCorriendo) return;
+  colaCorriendo = true;
+  while (COLA.length) {
+    const x = COLA[0];
+    try { x.alGuardar(await api('guardarDetalle', S.sess.token, x.fecha, x.d.folio_key, x.lineas, null)); }
+    catch (e) { x.alGuardar(x.d); toast(`No se pudo guardar el folio ${x.d.folio}. Quedó como "Por detallar".`, true); }
+    COLA.shift();
+  }
+  colaCorriendo = false;
+}
+window.addEventListener('beforeunload', e => { if (COLA.length) { e.preventDefault(); e.returnValue = ''; } });
+
+/** Detallar varios de una vez: se elige la forma de pago de cada folio (con banco si corresponde) y se guarda todo junto. */
 function marcarVarios(docs, alGuardar) {
   const pend = docs.filter(d => d.estado !== 'DETALLADO');
   const bloqueado = d => d.descuentos.some(x => x.estado === 'PENDIENTE');
-  const sel = {}; pend.forEach(d => { if (!bloqueado(d)) sel[d.folio_key] = esCreditoDTE(d) ? 'CREDITO' : 'EFECTIVO'; });
+  // opciones: forma|banco
+  const OPC = [['EFECTIVO', ''], ['CREDITO', '']].concat(S.cat.bancos.map(b => ['TRANSFERENCIA', b]), S.cat.bancos.map(b => ['CHEQUE', b]));
+  const etiqueta = (f, b) => f === 'TRANSFERENCIA' ? 'Transf. ' + b : f === 'CHEQUE' ? 'Cheque ' + b : FL[f];
+  const color = f => f === 'CREDITO' ? 'warn' : f === 'EFECTIVO' ? 'ok' : 'cu';
+  const sugerida = d => esCreditoDTE(d) ? ['CREDITO', ''] : ['EFECTIVO', ''];
+  const sel = {}; pend.forEach(d => { if (!bloqueado(d)) sel[d.folio_key] = sugerida(d); });
+  let abierto = null;
   const ov = document.createElement('div'); ov.className = 'ov';
-  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Marcar varios folios"><div class="grip"></div><div class="body">
-    <div style="font-weight:700;font-size:19px">Marcar varios de una vez</div>
-    <p class="muted" style="margin:4px 0 10px">Toca la forma de pago para cambiarla, o quita el ✓ a los que quieras detallar aparte (por ejemplo, las transferencias).</p>
-    <div class="row" style="margin-bottom:8px"><button type="button" class="btn ghost sm" id="tE">Todos en efectivo</button><button type="button" class="btn ghost sm" id="tM">Según Mi DTE</button></div>
-    <div id="vl"></div></div>
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Detallar varios folios"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Detallar varios de una vez</div>
+    <p class="muted" style="margin:4px 0 10px">Toca la forma de pago de un folio para cambiarla (efectivo, crédito, transferencia o cheque con su banco). Quita el ✓ a los que quieras dejar para después. Al final, guarda todo junto.</p>
+    <div class="row" style="margin-bottom:8px;flex-wrap:wrap"><button type="button" class="btn ghost sm" id="tE">Todos en efectivo</button><button type="button" class="btn ghost sm" id="tM">Según Mi DTE</button></div>
+    <div id="vl"></div><div class="muted" id="vres" style="margin-top:10px"></div></div>
     <div class="foot"><button class="btn ghost" id="cx">Cancelar</button><button class="btn cu grow" id="ok"></button></div></div>`;
   document.body.appendChild(ov);
   const pintar = () => {
-    $('#vl', ov).innerHTML = pend.map(d => { const f = sel[d.folio_key], b = bloqueado(d);
-      return `<div class="vrow ${f ? '' : 'off'}" data-k="${esc(d.folio_key)}">
-        <button type="button" class="ck" data-ck ${b ? 'disabled' : ''} aria-label="Incluir">${f ? '✓' : ''}</button>
-        <div class="grow"><b>${esc(d.cliente)}</b><div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)} · ${clp(d.total)}${b ? ' · tiene descuento pendiente' : ''}</div></div>
-        ${f ? `<button type="button" class="chip ${f === 'CREDITO' ? 'warn' : 'ok'}" data-sw>${FL[f]}</button>` : ''}</div>`; }).join('');
+    $('#vl', ov).innerHTML = pend.map(d => { const s = sel[d.folio_key], b = bloqueado(d);
+      return `<div class="vrow ${s ? '' : 'off'}" data-k="${esc(d.folio_key)}">
+        <button type="button" class="ck" data-ck ${b ? 'disabled' : ''} aria-label="Incluir">${s ? '✓' : ''}</button>
+        <div class="grow"><b>${esc(d.cliente)}</b><div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)} · ${clp(d.total)}${b ? ' · descuento pendiente: detállalo aparte' : ''}</div></div>
+        ${s ? `<button type="button" class="chip ${color(s[0])}" data-sw>${esc(etiqueta(s[0], s[1]))} ▾</button>` : ''}</div>
+        ${abierto === d.folio_key && s ? `<div class="vopc" data-k="${esc(d.folio_key)}">${OPC.map(o => `<button type="button" data-o="${o[0]}|${esc(o[1])}"
+          class="${o[0] === s[0] && o[1] === s[1] ? 'on' : ''}">${esc(etiqueta(o[0], o[1]))}</button>`).join('')}</div>` : ''}`; }).join('');
     const ks = Object.keys(sel).filter(k => sel[k]);
-    const tot = f => pend.filter(d => sel[d.folio_key] === f).reduce((a, d) => a + d.total, 0);
+    const tot = {}; pend.forEach(d => { const s = sel[d.folio_key]; if (s) { const k = s[0] === 'TRANSFERENCIA' ? 'Transferencia' : FL[s[0]]; tot[k] = (tot[k] || 0) + d.total; } });
+    $('#vres', ov).textContent = Object.keys(tot).map(k => k + ' ' + clp(tot[k])).join(' · ');
     $('#ok', ov).disabled = !ks.length;
     $('#ok', ov).innerHTML = ks.length ? `Guardar ${ks.length} folio${ks.length > 1 ? 's' : ''}` : 'Elige al menos uno';
-    $('#ok', ov).title = `Efectivo ${clp(tot('EFECTIVO'))} · Crédito ${clp(tot('CREDITO'))}`;
   };
   $('#vl', ov).onclick = e => {
+    const o = e.target.closest('[data-o]');
+    if (o) { const [f, b] = o.dataset.o.split('|'); sel[o.closest('.vopc').dataset.k] = [f, b]; abierto = null; return pintar(); }
     const r = e.target.closest('.vrow'); if (!r) return; const k = r.dataset.k, d = pend.find(x => x.folio_key === k);
     if (bloqueado(d)) return;
-    if (e.target.closest('[data-sw]')) sel[k] = sel[k] === 'EFECTIVO' ? 'CREDITO' : 'EFECTIVO';
-    else sel[k] = sel[k] ? '' : (esCreditoDTE(d) ? 'CREDITO' : 'EFECTIVO');
+    if (e.target.closest('[data-sw]')) { abierto = abierto === k ? null : k; return pintar(); }
+    sel[k] = sel[k] ? '' : sugerida(d); if (!sel[k] && abierto === k) abierto = null;
     pintar();
   };
-  $('#tE', ov).onclick = () => { Object.keys(sel).forEach(k => { if (sel[k]) sel[k] = 'EFECTIVO'; }); pintar(); };
-  $('#tM', ov).onclick = () => { pend.forEach(d => { if (sel[d.folio_key]) sel[d.folio_key] = esCreditoDTE(d) ? 'CREDITO' : 'EFECTIVO'; }); pintar(); };
+  $('#tE', ov).onclick = () => { Object.keys(sel).forEach(k => { if (sel[k]) sel[k] = ['EFECTIVO', '']; }); abierto = null; pintar(); };
+  $('#tM', ov).onclick = () => { pend.forEach(d => { if (sel[d.folio_key]) sel[d.folio_key] = sugerida(d); }); abierto = null; pintar(); };
   $('#cx', ov).onclick = () => cerrarHoja(ov);
   ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
   $('#ok', ov).onclick = async () => {
-    const items = Object.keys(sel).filter(k => sel[k]).map(k => ({ folio_key: k, forma: sel[k], banco: '' }));
+    const items = Object.keys(sel).filter(k => sel[k]).map(k => ({ folio_key: k, forma: sel[k][0], banco: sel[k][1] }));
     try {
       const r = await api('guardarVarios', S.sess.token, S.fecha, items);
       cerrarHoja(ov); alGuardar(r.docs);
-      toast(`${r.guardados} folio${r.guardados === 1 ? '' : 's'} guardado${r.guardados === 1 ? '' : 's'}${r.saltados ? ` · ${r.saltados} ya estaban detallados` : ''}`);
+      toast(`${r.guardados} folio${r.guardados === 1 ? '' : 's'} guardado${r.guardados === 1 ? '' : 's'}${r.saltados ? ` · ${r.saltados} se saltaron` : ''}`);
     } catch (e) {}
   };
   pintar();

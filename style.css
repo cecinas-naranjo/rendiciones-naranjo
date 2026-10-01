@@ -207,7 +207,10 @@ body:has(.ov) .toast{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto}
 .vrow.off{opacity:.55}
 .vrow .ck{width:30px;height:30px;border-radius:8px;border:2px solid var(--line);background:#fff;font-weight:700;color:#fff;flex:none;display:grid;place-items:center}
 .vrow:not(.off) .ck{background:var(--cu);border-color:var(--cu)}
-.vrow .chip{font-size:13.5px;padding:6px 12px}
+.vrow .chip{font-size:13.5px;padding:6px 12px;border:0;white-space:nowrap}
+.vopc{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;padding:4px 0 12px 40px;border-bottom:1px solid var(--line-2)}
+.vopc button{min-height:42px;border:1.5px solid var(--line);background:#fff;border-radius:10px;font-weight:700;font-size:14px}
+.vopc .on{border-color:var(--cu);background:var(--cu);color:#fff}
 
 /* ---------- inventario ---------- */
 .seg.secs{display:grid;grid-template-columns:repeat(4,1fr);width:100%;margin:4px 0 12px}

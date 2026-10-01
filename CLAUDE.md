@@ -77,10 +77,10 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 `getSaldosClientes`: facturas con líneas CREDITO en PAGOS menos pagos de COBRANZA. Pago con folio → esa factura; sin folio o sobrante → facturas más antiguas del cliente (nombre normalizado o RUT); lo que no calza queda como abono sin factura. Pantalla "Saldos clientes" para RENDICION/SUPERVISOR/ADMIN.
 
 ## Detalle de folios del vendedor
-- `abrirDetalle`: modo rápido. El vendedor toca la forma (Efectivo/Transferencia/Crédito/Cheque); transferencia y cheque piden banco con 3 botones (se recuerda el último banco por usuario). Guarda al tocar y abre el siguiente pendiente (`recorrido`). Sugiere Crédito si Mi DTE dice crédito.
+- `abrirDetalle`: modo rápido. El vendedor toca la forma (Efectivo/Transferencia/Crédito/Cheque); transferencia y cheque piden banco con 3 botones (se recuerda el último banco por usuario). Al tocar, marca el folio al instante y abre el siguiente; el guardado va por detrás en una cola en orden (`encolarGuardado`/`procesarCola`); si falla, el folio vuelve a pendiente con aviso, y `beforeunload` avisa si se cierra con guardados pendientes. Sugiere Crédito si Mi DTE dice crédito.
 - Pago mixto, abono o descuento → `abrirDetalleCompleto` (el editor de líneas de siempre). Folios con varias líneas, descuento pendiente o día cerrado abren directo el completo.
 - Encargada, supervisión y administración también detallan (Ventas → Detallar ventas, o "Detallar ›" en cada vendedor de la Rendición). PAGOS.registrado_por guarda quién fue; `docsDelDia_` devuelve `detalladoPor` y el chip dice "Detallado por …". En oficina, "Marcar varios" pide elegir vendedor.
-- "Marcar varios de una vez" (`marcarVarios` → API `guardarVarios`): lista de pendientes con efectivo/crédito según Mi DTE; se puede cambiar o excluir cada uno. Salta folios ya detallados o con descuento pendiente.
+- "Detallar varios de una vez" (`marcarVarios` → API `guardarVarios`): lista de pendientes con efectivo/crédito según Mi DTE; tocando la forma se elige efectivo, crédito, transferencia o cheque con banco; se puede excluir cada uno; un solo guardado. Salta folios ya detallados o con descuento pendiente.
 
 ## Velocidad y cargas
 - Servidor: `MEMO_` (cada hoja se lee una vez por petición; se invalida al escribir), USUARIOS y PRODUCTOS en CacheService 10 min (`onEdit` limpia si se editan a mano; `setup` también), `deleteRows_` borra bloques seguidos de una vez.
