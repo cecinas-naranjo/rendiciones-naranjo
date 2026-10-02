@@ -89,7 +89,7 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 ## Inspección por vendedor (Rendición)
 - API `getInspeccion(token, fecha, vendedor)` (vendedor '' = todos con movimiento): totales con las mismas cuentas que la hoja del vendedor, transferencias por banco (ventas + cobranza), cheques, cobranza, gastos, depósitos, créditos y folios con sus pagos.
 - En Rendición, cada tarjeta de vendedor se puede tocar (hover + "Ver detalle ›") y abre `abrirVendedor`: efectivo a entregar, resumen, folios (por detallar / detallados / todos, con forma de pago y quién detalló) y el detalle por sección.
-- `imprimirInspeccion(usuario|'')`: arma `#imprimir` y llama a `window.print()`; CSS `@media print` oculta la app. Una página por vendedor, poca tinta, cuadrado gris a la derecha de cada fila, firmas de vendedor y encargada. Se guarda como PDF desde el diálogo de impresión.
+- `imprimirInspeccion(usuario|'')`: arma `#imprimir` y llama a `window.print()`; CSS `@media print` oculta la app. Una página por vendedor, poca tinta, cuadrado gris a la derecha de cada fila, firmas de vendedor y encargada (sin el recuadro de efectivo a entregar). Se guarda como PDF desde el diálogo de impresión.
 - RUT del cliente en el archivo de rendición: hoja del vendedor (ventas, cobranza, cheques) y como última columna en VENTA Y CREDITO y COBRANZA.
 
 ## Velocidad y cargas

@@ -999,10 +999,7 @@ async function imprimirInspeccion(usuario) {
     return `<section class="ins">
       <div class="hd"><div><b class="n">${esc(v.nombre)}</b><small>Inspección de rendición · Cecinas Naranjo</small></div>
         <div class="r"><b>${fc}</b><small>${v.terminal ? 'Terminal ' + esc(v.terminal) : ''}</small></div></div>
-      <div class="top"><div class="box"><span>EFECTIVO A ENTREGAR</span><b>${clp(t.entregar)}</b>
-        <table class="calc"><tr><td>Efectivo de ventas</td><td>${clp(t.efVentas)}</td></tr><tr><td>+ Efectivo de cobranza</td><td>${clp(t.efCob)}</td></tr>
-          <tr><td>− Gastos</td><td>${clp(t.gastos)}</td></tr><tr><td>− Depositado</td><td>${clp(t.depositos)}</td></tr></table></div>
-        <div class="res"><h4>Resumen</h4><table>${res.map(x => `<tr><td>${x[0]}</td><td class="g n">${x[1]}</td><td class="m">${x[2]}</td><td class="ck"><i></i></td></tr>`).join('')}</table></div></div>
+      <div class="res"><h4>Resumen</h4><table>${res.map(x => `<tr><td>${x[0]}</td><td class="g n">${x[1]}</td><td class="m">${x[2]}</td><td class="ck"><i></i></td></tr>`).join('')}</table></div>
       ${Object.keys(v.transf).map(b => lista('Transferencias ' + b, v.transf[b].map(x => [esc(x.cliente), esc(x.origen), clp(x.monto)]), sum(v.transf[b]))).join('')}
       ${lista('Cheques', v.cheques.map(x => [esc(x.cliente) + (x.origen.startsWith('Cobranza') ? ' (cobranza)' : ''), 'N° ' + esc(x.numero), esc(nombreBanco(x.banco)),
         esc((x.fechaCheque || '').split('-').reverse().join('-')), clp(x.monto)]), t.cheques)}
