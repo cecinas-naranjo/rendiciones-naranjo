@@ -242,30 +242,48 @@ body:has(.ov) .toast{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto}
 /* ---------- inspección para imprimir ---------- */
 #imprimir{display:none}
 @media print{
-  @page{size:A4;margin:14mm 16mm}
+  @page{size:A4;margin:13mm 16mm}
   body{background:#fff!important;padding:0!important}
   body>*:not(#imprimir){display:none!important}
-  #imprimir{display:block;color:#1F1A17;font-family:"Atkinson Hyperlegible Next",system-ui,sans-serif;font-size:9.5pt}
-  .ins{break-after:page;position:relative}
-  .ins:last-child{break-after:auto}
-  .ins .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1pt solid #1F1A17;padding-bottom:6pt;margin-bottom:12pt}
-  .ins .hd .n{font-size:16pt;display:block;color:#1F1A17}.ins .hd small{display:block;color:#77706B;font-size:8.5pt}
-  .ins .hd .r{text-align:right}.ins .hd .r b{font-size:12pt;display:block;color:#1F1A17}
-  .ins .top{display:grid;grid-template-columns:7.4cm 1fr;gap:0.9cm;margin-bottom:6pt}
-  .ins .box{border:1.3pt solid #1F1A17;padding:9pt 11pt}
-  .ins .box span{font-weight:700;font-size:9pt}.ins .box>b{display:block;font-size:24pt;margin:2pt 0 6pt}
+  #imprimir{display:block;color:#1F1A17;font-family:"Atkinson Hyperlegible Next",system-ui,sans-serif;font-size:9pt;line-height:1.25}
+  .ins{break-after:page}.ins:last-child{break-after:auto}
   .ins table{width:100%;border-collapse:collapse}
-  .ins .calc td{color:#77706B;padding:1pt 0;border:0}.ins .calc td:last-child{text-align:right}
-  .ins h4{font-size:10.5pt;margin:9pt 0 3pt}.ins h4 span{font-weight:400;color:#77706B}
-  .ins .res h4{margin-top:0}
-  .ins td{padding:3pt 4pt 3pt 0;border-bottom:.4pt solid #DDD8D4;vertical-align:middle}
+  .ins .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1pt solid #1F1A17;padding-bottom:6pt;margin-bottom:10pt}
+  .ins .hd .n{font-size:15pt;display:block;color:#1F1A17}.ins .hd small{display:block;color:#77706B;font-size:8.5pt}
+  .ins .hd .r{text-align:right}.ins .hd .r b{font-size:12pt;display:block;color:#1F1A17}
+  .ins h3{font-size:12pt;margin:12pt 0 2pt;padding-bottom:2pt;border-bottom:1.2pt solid #1F1A17;break-after:avoid}
+  .ins td{padding:2.2pt 4pt 2.2pt 0;border-bottom:.4pt solid #DDD8D4;vertical-align:middle}
   .ins tr:last-child td{border-bottom:0}
-  .ins td.g{color:#77706B}.ins td.n{text-align:right}.ins td.m{text-align:right;white-space:nowrap}
-  .ins td.ck{width:16pt;text-align:right;padding-right:0}
-  .ins td.ck i{display:inline-block;width:8.5pt;height:8.5pt;border:.6pt solid #A8A19B}
-  .ins .firmas{display:grid;grid-template-columns:1fr 1fr;gap:2cm;margin-top:34pt;break-inside:avoid}
-  .ins .firmas div{border-top:.9pt solid #1F1A17;padding-top:3pt;color:#77706B;font-size:8.5pt}
-  .ins .ft{margin-top:14pt;color:#77706B;font-size:7.5pt}
+  .ins td.g,.ins small,.ins .nt{color:#77706B}
+  .ins td.nt{font-size:8pt}
+  .ins td.m{text-align:right;white-space:nowrap;width:2.6cm}
+  .ins td.ck{width:15pt;text-align:right;padding-right:0}
+  .ins td.ck i,.ins .bt i{display:inline-block;width:8.5pt;height:8.5pt;border:.6pt solid #A8A19B}
+  .ins .bt i{visibility:hidden}
+  .ins table.s td:first-child{width:5.4cm}
+  .ins table.d{table-layout:fixed}
+  .ins table.d td{word-break:break-word}
+  .ins table.s tr.sub td{border-top:.9pt solid #1F1A17;font-weight:700;border-bottom:0}
+  .ins table.s tr.tot td{border-top:1.4pt solid #1F1A17;font-weight:700;font-size:10.5pt;border-bottom:0;padding-top:4pt}
+  .ins table.s tr.sub+tr td,.ins table.s tr.tot+tr td{border-top:0}
+  .ins table.sp{margin-top:8pt}
+  .ins .blk{margin-top:10pt;break-inside:avoid}
+  .ins .bt{display:flex;align-items:baseline;border-bottom:.9pt solid #1F1A17;padding-bottom:2pt}
+  .ins .bt span{flex:1}.ins .bt b{font-size:10pt}.ins .bt small{font-size:8pt;font-weight:400}
+  .ins .bt b.m{width:2.6cm;text-align:right;padding-right:4pt}.ins .bt i{margin-left:0}
+  .ins table.d td small{display:block;font-size:7.5pt}
+  .ins td.tp b{white-space:nowrap}
+  .ins .pie{text-align:right;color:#77706B;font-size:8pt;padding:2pt 15pt 0 0}
+  .ins table.fin{margin-top:16pt;break-inside:avoid;table-layout:fixed}
+  .ins table.fin>tbody>tr>td{border:0;padding:0;vertical-align:top}
+  .ins table.fin td.fl{width:auto;padding-right:1cm}
+  .ins table.fin td.fr{width:7.4cm}
+  .ins .firmas{display:flex;flex-direction:column;gap:30pt;padding-top:14pt}
+  .ins .firmas div{border-top:.9pt solid #1F1A17;padding-top:2pt;color:#77706B;font-size:8.5pt}
+  .ins table.comp td{border:0;padding:1.3pt 0}
+  .ins table.comp td.m{width:2.4cm}
+  .ins table.comp tr.tot td{border-top:1.4pt solid #1F1A17;font-weight:700;font-size:10.5pt;padding-top:3pt}
+  .ins .ft{margin-top:12pt;color:#77706B;font-size:7.5pt}
 }
 
 /* ---------- inventario ---------- */

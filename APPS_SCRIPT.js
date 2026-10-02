@@ -1342,7 +1342,7 @@ function getInspeccion(token, fecha, vendedor) {
   const rutCob = c => rutFolio[String(c.folio || '').replace(/\D/g, '')] || rutNombre[normTxt_(c.cliente)] || '';
   const doc = d => d.tipo.replace(' Electrónica', '') + ' ' + d.folio;
   const bancoTr = b => BANCOS.indexOf(b) >= 0 ? b : 'BICE';     // igual que en el archivo de rendición
-  const tipoCh = f => f && f > fecha ? 'A fecha' : 'Al día';
+  const momentoCh = f => f && f > fecha ? 'A fecha' : 'Al día';       // cheque al día o a fecha
   const lista = vendedores_().filter(v => !vendedor || v.usuario === vendedor);
   const out = lista.map(v => {
     const ds = docs.filter(d => d.vendedor === v.usuario), cs = cob.filter(c => c.vendedor === v.usuario);
@@ -1354,10 +1354,10 @@ function getInspeccion(token, fecha, vendedor) {
     ds.forEach(d => {
       venta += num_(d.total); desc += num_(d.descAprob);
       d.pagos.forEach(p => {
-        const base = { cliente: d.cliente, rut: d.rut || '', origen: doc(d), monto: p.monto };
+        const base = { cliente: d.cliente, rut: d.rut || '', origen: doc(d), tipo: 'Venta', monto: p.monto };
         if (p.forma === 'EFECTIVO') efVentas += p.monto;
         else if (p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO') transf[bancoTr(p.banco)].push(base);
-        else if (p.forma === 'CHEQUE') cheques.push(Object.assign(base, { numero: p.cheque_numero || '', banco: p.banco, fechaCheque: p.cheque_fecha || '', tipo: tipoCh(p.cheque_fecha), titular: p.cheque_titular || '' }));
+        else if (p.forma === 'CHEQUE') cheques.push(Object.assign(base, { numero: p.cheque_numero || '', banco: p.banco, fechaCheque: p.cheque_fecha || '', momento: momentoCh(p.cheque_fecha), titular: p.cheque_titular || '' }));
         else if (p.forma === 'CREDITO') { credito += p.monto; creditos.push(base); }
         else if (p.forma === 'NOTA_CREDITO') nc += p.monto;
       });
@@ -1367,8 +1367,8 @@ function getInspeccion(token, fecha, vendedor) {
       const m = num_(c.monto), rut = rutCob(c), origen = 'Cobranza' + (c.folio ? ' folio ' + c.folio : '');
       cobranza.push({ cliente: c.cliente, rut, folio: c.folio || '', forma: c.forma, banco: c.banco || '', numero: c.cheque_numero || '', monto: m });
       if (c.forma === 'EFECTIVO') efCob += m;
-      else if ((c.forma === 'TRANSFERENCIA' || c.forma === 'DEP_EFECTIVO') && BANCOS.indexOf(c.banco) >= 0) transf[c.banco].push({ cliente: c.cliente, rut, origen, monto: m });
-      else if (c.forma === 'CHEQUE') cheques.push({ cliente: c.cliente, rut, origen, monto: m, numero: c.cheque_numero || '', banco: c.banco, fechaCheque: c.cheque_fecha || '', tipo: tipoCh(c.cheque_fecha), titular: c.cheque_titular || '' });
+      else if (c.forma === 'TRANSFERENCIA' || c.forma === 'DEP_EFECTIVO') transf[bancoTr(c.banco)].push({ cliente: c.cliente, rut, origen, tipo: 'COBRANZA', monto: m });
+      else if (c.forma === 'CHEQUE') cheques.push({ cliente: c.cliente, rut, origen, tipo: 'COBRANZA', monto: m, numero: c.cheque_numero || '', banco: c.banco, fechaCheque: c.cheque_fecha || '', momento: momentoCh(c.cheque_fecha), titular: c.cheque_titular || '' });
     });
     const gastos = gs.map(g => ({ concepto: g.concepto, respaldo: g.respaldo || '', monto: num_(g.monto) }));
     const depositos = dps.map(d => ({ banco: d.banco, referencia: d.referencia || '', monto: num_(d.monto) }));
@@ -1376,6 +1376,7 @@ function getInspeccion(token, fecha, vendedor) {
     return {
       usuario: v.usuario, nombre: v.nombre, terminal: v.terminales || '',
       documentos: ds.length, detallados: ds.filter(d => d.estado === 'DETALLADO').length,
+      docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
       totales: { venta, credito, nc, descuentos: desc, contado: venta - credito - nc - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         entregar: efVentas + efCob - tGas - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, creditos,
