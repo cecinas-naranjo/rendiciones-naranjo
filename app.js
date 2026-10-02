@@ -104,11 +104,11 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
-  misDocumentos: 'Cargando folios…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', historial: 'Cargando historial…' };
+  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', historial: 'Cargando historial…' };
 const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
   : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
 
@@ -922,6 +922,104 @@ async function vSaldos(m) {
   pintar();
 }
 
+/* ============ DETALLE E INSPECCIÓN POR VENDEDOR ============ */
+const textoPago = p => p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO' ? 'Transf. ' + p.banco
+  : p.forma === 'CHEQUE' ? 'Cheque' + (p.numero ? ' N° ' + p.numero : '') + (p.banco ? ' ' + (typeof nombreBanco === 'function' ? nombreBanco(p.banco) : p.banco) : '')
+  : FL[p.forma] || p.forma;
+
+/** Al tocar un vendedor en la Rendición: todo lo que detalló, ordenado como lo revisa la encargada. */
+async function abrirVendedor(usuario) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet ancha" role="dialog" aria-modal="true" aria-label="Detalle del vendedor"><div class="grip"></div>
+    <div class="body">${skeleton(3)}</div><div class="foot"><button class="btn ghost" id="cx">Cerrar</button></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov);
+  $('#cx', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  let r;
+  try { r = await api('getInspeccion', S.sess.token, S.fecha, usuario); } catch (e) { return cerrar(); }
+  const v = r.vendedores[0];
+  if (!v) { $('.body', ov).innerHTML = '<div class="empty">Sin movimientos este día.</div>'; return; }
+  const t = v.totales, pend = v.folios.filter(f => f.estado !== 'DETALLADO');
+  let filtro = pend.length ? 'pend' : 'todos';
+  const sec = (titulo, n, total, filas) => n ? `<div class="dsec"><div class="dtit"><b>${titulo}</b><span>${n} · ${clp(total)}</span></div>${filas}</div>` : '';
+  const fila = (a, b, monto) => `<div class="dfila"><span class="grow">${a}</span><span class="muted">${b || ''}</span><b>${clp(monto)}</b></div>`;
+  const pintar = () => {
+    const folios = v.folios.filter(f => filtro === 'todos' || (filtro === 'pend' ? f.estado !== 'DETALLADO' : f.estado === 'DETALLADO'))
+      .sort((a, b) => (a.estado === 'DETALLADO') - (b.estado === 'DETALLADO') || String(a.folio).localeCompare(String(b.folio), 'es', { numeric: true }));
+    $('.body', ov).innerHTML = `
+      <div class="row" style="align-items:flex-start"><div class="grow"><div class="muted">${fechaLarga(r.fecha)}${v.terminal ? ' · ' + esc(v.terminal) : ''}</div>
+        <div style="font-weight:700;font-size:21px">${esc(v.nombre)}</div></div>
+        ${pend.length ? `<span class="chip cu">${pend.length} por detallar</span>` : '<span class="chip ok">Todo detallado</span>'}</div>
+      <div class="dtop">
+        <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
+          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)} − gastos ${clp(t.gastos)} − depositado ${clp(t.depositos)}</small></div>
+        <div class="dres">
+          ${fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${t.credito ? fila('Crédito', v.creditos.length + ' docs', t.credito) : ''}
+          ${v.cheques.length ? fila('Cheques', v.cheques.length, t.cheques) : ''}
+          ${Object.keys(v.transf).filter(b => v.transf[b].length).map(b => fila('Transf. ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0))).join('')}
+          ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}</div></div>
+      <div class="dsec"><div class="dtit"><b>Folios</b><span>${v.detallados} de ${v.documentos} detallados</span></div>
+        <div class="seg" id="dfl" style="margin:2px 0 8px">${[['pend', 'Por detallar (' + pend.length + ')'], ['det', 'Detallados'], ['todos', 'Todos']].map(x =>
+          `<button type="button" data-f="${x[0]}" class="${filtro === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
+        ${folios.length ? folios.map(f => `<div class="dfolio ${f.estado === 'DETALLADO' ? '' : 'pend'}">
+          <div class="row"><span class="grow"><b>${esc(f.cliente)}</b> <span class="muted">${esc(f.tipo)} ${esc(f.folio)}</span></span><b>${clp(f.total)}</b></div>
+          <div class="muted">${f.estado === 'DETALLADO' ? f.pagos.map(p => esc(textoPago(p)) + (f.pagos.length > 1 ? ' ' + clp(p.monto) : '')).join(' + ')
+            + (f.descAprob ? ' · descuento ' + clp(f.descAprob) : '') + (f.detalladoPor ? ' · por ' + esc(f.detalladoPor.split(' ')[0]) : '')
+            : f.descPend ? 'Descuento esperando autorización' : 'Por detallar'}</div></div>`).join('') : '<div class="muted" style="padding:6px 0">No hay folios en este filtro.</div>'}</div>
+      ${Object.keys(v.transf).map(b => sec('Transferencias ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0),
+        v.transf[b].map(x => fila(esc(x.cliente), esc(x.origen), x.monto)).join(''))).join('')}
+      ${sec('Cheques', v.cheques.length, t.cheques, v.cheques.map(x => fila(esc(x.cliente), esc('N° ' + x.numero + ' · ' + nombreBanco(x.banco) + ' · ' + x.tipo +
+        (x.fechaCheque ? ' ' + x.fechaCheque.split('-').reverse().join('-') : '')), x.monto)).join(''))}
+      ${sec('Cobranza', v.cobranza.length, v.cobranza.reduce((a, x) => a + x.monto, 0), v.cobranza.map(x => fila(esc(x.cliente),
+        esc((x.folio ? 'Folio ' + x.folio + ' · ' : '') + textoPago(x)), x.monto)).join(''))}
+      ${sec('Gastos', v.gastos.length, t.gastos, v.gastos.map(x => fila(esc(x.concepto), esc(x.respaldo ? 'Boleta ' + x.respaldo : ''), x.monto)).join(''))}
+      ${sec('Depósitos de efectivo', v.depositos.length, t.depositos, v.depositos.map(x => fila(esc(x.banco), esc(x.referencia ? 'Op. ' + x.referencia : ''), x.monto)).join(''))}`;
+    $('#dfl', ov).onclick = e => { const b = e.target.closest('[data-f]'); if (b) { filtro = b.dataset.f; pintar(); } };
+  };
+  pintar();
+  $('.foot', ov).innerHTML = `${pend.length ? '<button class="btn ghost" id="dDet">Detallar pendientes</button>' : ''}<span class="grow"></span>
+    <button class="btn ghost" id="cx">Cerrar</button><button class="btn cu" id="dImp">Imprimir inspección</button>`;
+  $('#cx', ov).onclick = cerrar;
+  $('#dImp', ov).onclick = () => imprimirInspeccion(usuario);
+  if ($('#dDet', ov)) $('#dDet', ov).onclick = () => { ov.remove(); S.vend = usuario; S.filtro = 'pend'; ir('folios'); };
+}
+
+/** Hoja de inspección para imprimir (o guardar como PDF): una página por vendedor, con cuadrados para marcar. */
+async function imprimirInspeccion(usuario) {
+  let r; try { r = await api('getInspeccion', S.sess.token, S.fecha, usuario); } catch (e) { return; }
+  if (!r.vendedores.length) return toast('No hay vendedores con movimientos este día.', true);
+  const fc = r.fecha.split('-').reverse().join('-');
+  const lista = (titulo, filas, total) => filas.length ? `<h4>${titulo} <span>${filas.length} · ${clp(total)}</span></h4>
+    <table>${filas.map(f => `<tr>${f.map((c, i) => `<td class="${i === f.length - 1 ? 'm' : i ? 'g' : ''}">${c}</td>`).join('')}<td class="ck"><i></i></td></tr>`).join('')}</table>` : '';
+  const html = r.vendedores.map(v => {
+    const t = v.totales, sum = xs => xs.reduce((a, x) => a + x.monto, 0);
+    const res = [['Efectivo', '', clp(t.efVentas + t.efCob)]].concat(
+      Object.keys(v.transf).filter(b => v.transf[b].length).map(b => ['Transf. ' + b, v.transf[b].length, clp(sum(v.transf[b]))]),
+      v.cheques.length ? [['Cheques', v.cheques.length, clp(t.cheques)]] : [], t.credito ? [['Crédito', v.creditos.length, clp(t.credito)]] : []);
+    return `<section class="ins">
+      <div class="hd"><div><b class="n">${esc(v.nombre)}</b><small>Inspección de rendición · Cecinas Naranjo</small></div>
+        <div class="r"><b>${fc}</b><small>${v.terminal ? 'Terminal ' + esc(v.terminal) : ''}</small></div></div>
+      <div class="top"><div class="box"><span>EFECTIVO A ENTREGAR</span><b>${clp(t.entregar)}</b>
+        <table class="calc"><tr><td>Efectivo de ventas</td><td>${clp(t.efVentas)}</td></tr><tr><td>+ Efectivo de cobranza</td><td>${clp(t.efCob)}</td></tr>
+          <tr><td>− Gastos</td><td>${clp(t.gastos)}</td></tr><tr><td>− Depositado</td><td>${clp(t.depositos)}</td></tr></table></div>
+        <div class="res"><h4>Resumen</h4><table>${res.map(x => `<tr><td>${x[0]}</td><td class="g n">${x[1]}</td><td class="m">${x[2]}</td><td class="ck"><i></i></td></tr>`).join('')}</table></div></div>
+      ${Object.keys(v.transf).map(b => lista('Transferencias ' + b, v.transf[b].map(x => [esc(x.cliente), esc(x.origen), clp(x.monto)]), sum(v.transf[b]))).join('')}
+      ${lista('Cheques', v.cheques.map(x => [esc(x.cliente) + (x.origen.startsWith('Cobranza') ? ' (cobranza)' : ''), 'N° ' + esc(x.numero), esc(nombreBanco(x.banco)),
+        esc((x.fechaCheque || '').split('-').reverse().join('-')), clp(x.monto)]), t.cheques)}
+      ${lista('Cobranza', v.cobranza.map(x => [esc(x.cliente), x.folio ? 'Folio ' + esc(x.folio) : '', esc(textoPago(x)), clp(x.monto)]), sum(v.cobranza))}
+      ${lista('Gastos', v.gastos.map(x => [esc(x.concepto), clp(x.monto)]), t.gastos)}
+      ${lista('Depósitos de efectivo', v.depositos.map(x => [esc(x.banco), x.referencia ? 'Op. ' + esc(x.referencia) : '', clp(x.monto)]), t.depositos)}
+      <div class="firmas"><div>Firma vendedor</div><div>Firma encargada</div></div>
+      <div class="ft">${esc(v.nombre)} · ${fc} · generado ${esc(r.generado)}</div></section>`;
+  }).join('');
+  let box = $('#imprimir');
+  if (!box) { box = document.createElement('div'); box.id = 'imprimir'; document.body.appendChild(box); }
+  box.innerHTML = html;
+  const titulo = document.title;
+  document.title = 'Inspección ' + (usuario ? r.vendedores[0].nombre : 'vendedores') + ' ' + fc;
+  setTimeout(() => { window.print(); setTimeout(() => { document.title = titulo; }, 500); }, 60);
+}
+
 /* ============ IMPORTAR MI DTE ============ */
 const serialAFecha = v => { const d = new Date(Math.round((v - 25569) * 864e5)); return d.toISOString().slice(0, 10); };
 const CANON = { 'rut': 'RUT', 'datos rut': 'RUT', 'documento': 'Documento', 'folio': 'Folio', 'fecha': 'Fecha', 'condicion': 'Condicion',
@@ -1040,8 +1138,10 @@ async function vResumen(m) {
       <div class="cash"><span>Efectivo a recibir</span><b>${clp(t.efectivo)}</b></div></div>
     ${r.alertas.length ? `<div class="alert" id="avisos"><b>Antes de cerrar</b><ul>${r.alertas.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`
       : r.porVendedor.length ? '<div class="alert ok">Todo cuadra. Puedes cerrar la rendición.</div>' : ''}
-    <h3>Por vendedor</h3>
-    ${r.porVendedor.length ? `<div class="vcards">${r.porVendedor.map(v => `<div class="vcard">
+    ${r.porVendedor.length ? '' : '<h3>Por vendedor</h3>'}
+    ${r.porVendedor.length ? `<div class="row" style="margin:18px 0 8px"><h3 class="grow" style="margin:0">Por vendedor</h3>
+      <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
+    <div class="vcards">${r.porVendedor.map(v => `<div class="vcard clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(v.vendedor)}">
       <div class="row"><b class="grow" style="font-size:17px">${esc(v.vendedor)}</b>${v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar · Detallar ›</button>` : '<span class="chip ok">Detallado</span>'}</div>
       <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.venta)}</dd><dt>Crédito</dt><dd>${clp(v.credito)}</dd>
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>${v.CHEQUE ? `<dt>Cheques</dt><dd>${clp(v.CHEQUE)}</dd>` : ''}
@@ -1052,7 +1152,7 @@ async function vResumen(m) {
         ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
           <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
           ${r.hayDetalle ? `<dt>Diferencia kilos</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)}</dd>` : ''}` : ''}
-      </dl></div>`).join('')}</div>` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
+      </dl><div class="vermas">Ver detalle ›</div></div>`).join('')}</div>` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
     ${r.sinAsignar.length ? `<h3>Documentos sin vendedor</h3><div class="tw"><table><thead><tr><th>Documento</th><th>Cliente</th><th>Terminal</th><th class="r">Total</th><th>Asignar a</th></tr></thead><tbody>
       ${r.sinAsignar.map(d => `<tr><td>${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)}</td><td>${esc(d.cliente)}</td><td>${esc(d.terminal)}</td><td class="r">${clp(d.total)}</td>
         <td><select class="in" style="min-height:38px" data-fk="${esc(d.folio_key)}"><option value="">Elegir…</option>${opcVend('')}</select></td></tr>`).join('')}</tbody></table></div>
@@ -1062,7 +1162,12 @@ async function vResumen(m) {
       ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
         : '<button class="btn ghost" id="pv">Ver cómo quedaría</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
     <div id="lnk"></div>`);
-  $$('[data-detallar]', m).forEach(b => b.onclick = () => { S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
+  $$('[data-detallar]', m).forEach(b => b.onclick = e => { e.stopPropagation(); S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
+  $$('[data-ver]', m).forEach(c => {
+    c.onclick = () => abrirVendedor(c.dataset.ver);
+    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirVendedor(c.dataset.ver); } };
+  });
+  if ($('#impTodos')) $('#impTodos').onclick = () => imprimirInspeccion('');
   $$('[data-paso]', m).forEach(b => b.onclick = () => {
     const p = b.dataset.paso;
     if (p === 'importar' || p === 'folios') return ir(p);

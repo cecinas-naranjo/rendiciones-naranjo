@@ -86,6 +86,12 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - Al elegir cheque (detalle rápido, detallar varios, detalle completo y Cobranza) se piden: banco emisor (`BANCOS_CHEQUE`, bancos chilenos + Otro), N° de cheque y fecha del cheque, es decir desde cuándo se puede cobrar, no cuándo se cobra (obligatorios) y titular/RUT (opcional). Helpers en app: `camposCheque`, `leerCheque`, `avisoTipoCheque` (al día / a fecha).
 - Servidor: `datosCheque_` valida; columnas `cheque_numero`, `cheque_fecha`, `cheque_titular` en PAGOS y COBRANZA (el banco del cheque va en `banco`; referencia = "Cheque N° …"). El archivo de rendición agrega por vendedor la tabla CHEQUES RECIBIDOS (ventas y cobranza, al día / a fecha).
 
+## Inspección por vendedor (Rendición)
+- API `getInspeccion(token, fecha, vendedor)` (vendedor '' = todos con movimiento): totales con las mismas cuentas que la hoja del vendedor, transferencias por banco (ventas + cobranza), cheques, cobranza, gastos, depósitos, créditos y folios con sus pagos.
+- En Rendición, cada tarjeta de vendedor se puede tocar (hover + "Ver detalle ›") y abre `abrirVendedor`: efectivo a entregar, resumen, folios (por detallar / detallados / todos, con forma de pago y quién detalló) y el detalle por sección.
+- `imprimirInspeccion(usuario|'')`: arma `#imprimir` y llama a `window.print()`; CSS `@media print` oculta la app. Una página por vendedor, poca tinta, cuadrado gris a la derecha de cada fila, firmas de vendedor y encargada. Se guarda como PDF desde el diálogo de impresión.
+- RUT del cliente en el archivo de rendición: hoja del vendedor (ventas, cobranza, cheques) y como última columna en VENTA Y CREDITO y COBRANZA.
+
 ## Velocidad y cargas
 - Servidor: `MEMO_` (cada hoja se lee una vez por petición; se invalida al escribir), USUARIOS y PRODUCTOS en CacheService 10 min (`onEdit` limpia si se editan a mano; `setup` también), `deleteRows_` borra bloques seguidos de una vez.
 - App: consultas (`LECTURA`) guardadas en localStorage (`rn_cache`, 30 entradas): se muestran al instante y se revalidan por detrás; si cambió, `ir(tab, true)` re-dibuja sin animación, salvo que el usuario esté escribiendo (`S.tocado`) o haya una hoja abierta. Cualquier escritura borra la caché. `precargar()` trae las pestañas vecinas. El lector de Excel se descarga solo en Importar (`cargarXLSX`).
