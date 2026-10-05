@@ -153,6 +153,7 @@ function setup() {
   prepararProductosInventario_();
   ['Hoja 1','Sheet1'].forEach(n => { const d = ss.getSheetByName(n); if (d && ss.getSheets().length > 1) ss.deleteSheet(d); });
   Object.keys(CACHEADAS_).forEach(limpiarCache_);
+  invalidarTodo_();
   return 'Listo';
 }
 
@@ -160,7 +161,7 @@ function setup() {
 
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
-  listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
+  batch, listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
   borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
@@ -169,15 +170,33 @@ function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
 
 // Cuerpo: {"fn":"nombre","args":[...]} enviado como text/plain (evita el preflight CORS)
 function doPost(e) {
-  MEMO_ = {};
+  MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {};
   try {
     const req = JSON.parse(e.postData.contents);
     const fn = API[req.fn];
     if (!fn) throw new Error('Acción desconocida: ' + req.fn);
+    // Solo las consultas (que no escriben) pueden usar la caché por día; cualquier otra acción lee siempre la planilla.
+    FRESCO_ = !LECTURAS_[req.fn];
     return json_({ ok: true, data: fn.apply(null, req.args || []) });
   } catch (err) {
     return json_({ ok: false, error: String(err.message || err) });
+  } finally {
+    cerrarPeticion_();
   }
+}
+
+// Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
+const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, getInventario: 1,
+  getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, batch: 1 };
+
+/** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
+function batch(llamadas) {
+  return (llamadas || []).map(l => {
+    try {
+      if (!LECTURAS_[l[0]] || l[0] === 'batch') throw new Error('Solo se pueden agrupar consultas: ' + l[0]);
+      return { ok: true, data: API[l[0]].apply(null, l[1] || []) };
+    } catch (err) { return { ok: false, error: String(err.message || err) }; }
+  });
 }
 
 /* ---------- velocidad ----------
@@ -186,14 +205,70 @@ function doPost(e) {
       al escribir desde la app y, con onEdit, cuando alguien edita esas hojas a mano. */
 let MEMO_ = {};
 let SS_ = null;
+let FRESCO_ = true;      // true: se lee siempre de la planilla (acciones que escriben)
+let SLICE_ = {};         // filas de un día ya leídas en esta petición: 'TABLA|fecha' → filas
+let VER_ = {};           // versiones de tabla ya leídas en esta petición
+let TOCADAS_ = {};       // tablas escritas en esta petición
+// Tablas con una fila por movimiento y columna fecha: se guardan por día en CacheService (clave con la versión de la tabla).
+const POR_DIA_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, VENTAS_DETALLE: 1 };
+const TTL_DIA_ = 300;
+
+function nuevaVersion_() { return String(Date.now()) + Math.random().toString(36).slice(2, 6); }
+/** Versiones actuales de las tablas (una sola consulta a la caché). Si no existe, se crea. */
+function versiones_(nombres) {
+  const c = CacheService.getScriptCache(), faltan = nombres.filter(n => !VER_[n]);
+  if (faltan.length) {
+    let got = {}; try { got = c.getAll(faltan.map(n => 'v_' + n)) || {}; } catch (e) {}
+    const nuevas = {};
+    faltan.forEach(n => { let v = got['v_' + n]; if (!v) { v = nuevaVersion_(); nuevas['v_' + n] = v; } VER_[n] = v; });
+    if (Object.keys(nuevas).length) try { c.putAll(nuevas, 21600); } catch (e) {}
+  }
+  return VER_;
+}
+/** Trae de la caché, de una vez, los días de varias tablas. Lo que no esté se lee de la planilla cuando se pida. */
+function cargarDia_(fecha, nombres) {
+  if (FRESCO_) return;
+  const lista = nombres.filter(n => POR_DIA_[n] && !SLICE_[n + '|' + fecha]);
+  if (!lista.length) return;
+  versiones_(lista);
+  let got = {}; try { got = CacheService.getScriptCache().getAll(lista.map(n => 'd|' + n + '|' + VER_[n] + '|' + fecha)) || {}; } catch (e) {}
+  lista.forEach(n => { const v = got['d|' + n + '|' + VER_[n] + '|' + fecha]; if (v) try { SLICE_[n + '|' + fecha] = JSON.parse(v); } catch (e) {} });
+}
+/** Guarda el resultado de una consulta cara, ligado a las versiones de las tablas de las que depende: si cualquiera cambia, se recalcula. */
+function conCache_(clave, tablas, fn) {
+  if (FRESCO_) return fn();
+  const c = CacheService.getScriptCache(), vs = versiones_(tablas), k = 'r|' + clave + '|' + tablas.map(n => vs[n]).join('.');
+  try { const hit = c.get(k); if (hit) return JSON.parse(hit); } catch (e) {}
+  const r = fn();
+  try { const j = JSON.stringify(r); if (j.length < 95000) c.put(k, j, TTL_DIA_); } catch (e) {}
+  return r;
+}
+function tocar_(name) { FRESCO_ = true; TOCADAS_[name] = 1; SLICE_ = {}; }
+/** Al terminar una petición que escribió: se confirman las escrituras y se cambia la versión de las tablas tocadas (la caché vieja deja de usarse). */
+function cerrarPeticion_() {
+  const t = Object.keys(TOCADAS_); if (!t.length) return;
+  try { SpreadsheetApp.flush(); } catch (e) {}
+  const v = {}; t.forEach(n => v['v_' + n] = nuevaVersion_());
+  try { CacheService.getScriptCache().putAll(v, 21600); } catch (e) {}
+  TOCADAS_ = {};
+}
+/** Para funciones que se ejecutan desde el editor (setup, cargas): descarta toda la caché por día. */
+function invalidarTodo_() {
+  const v = {}; Object.keys(SCHEMA).forEach(n => v['v_' + n] = nuevaVersion_());
+  try { CacheService.getScriptCache().putAll(v, 21600); } catch (e) {}
+}
 const CACHEADAS_ = { USUARIOS: 1, PRODUCTOS: 1 };
 function limpiarCache_(name) {
-  delete MEMO_[name];
+  delete MEMO_[name]; tocar_(name);
   if (CACHEADAS_[name]) try { CacheService.getScriptCache().remove('tbl_' + name); } catch (e) {}
 }
 /** Disparador simple: si alguien edita USUARIOS o PRODUCTOS directo en la planilla, se refresca la caché. */
 function onEdit(e) {
-  try { const n = e.range.getSheet().getName(); if (CACHEADAS_[n]) CacheService.getScriptCache().remove('tbl_' + n); } catch (err) {}
+  try {
+    const n = e.range.getSheet().getName();
+    if (CACHEADAS_[n]) CacheService.getScriptCache().remove('tbl_' + n);
+    if (SCHEMA[n]) CacheService.getScriptCache().put('v_' + n, nuevaVersion_(), 21600);     // alguien editó la hoja a mano
+  } catch (err) {}
 }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
@@ -253,7 +328,15 @@ function read_(name) {
     return o;
   });
 }
-function byFecha_(name, fecha) { return read_(name).filter(r => r.fecha === fecha); }
+function byFecha_(name, fecha) {
+  if (FRESCO_ || !POR_DIA_[name]) return read_(name).filter(r => r.fecha === fecha);
+  const k = name + '|' + fecha;
+  if (!SLICE_[k]) {
+    SLICE_[k] = read_(name).filter(r => r.fecha === fecha);
+    try { const j = JSON.stringify(SLICE_[k]); if (j.length < 95000) CacheService.getScriptCache().put('d|' + name + '|' + versiones_([name])[name] + '|' + fecha, j, TTL_DIA_); } catch (e) {}
+  }
+  return SLICE_[k].map(r => Object.assign({}, r));
+}
 
 function append_(name, objs) {
   if (!objs.length) return;
@@ -284,14 +367,14 @@ function deleteRows_(name, rows) {
 function withLock_(fn) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
-  try { return fn(); } finally { lock.releaseLock(); }
+  try { FRESCO_ = true; MEMO_ = {}; SLICE_ = {}; return fn(); } finally { lock.releaseLock(); }
 }
 
 /* ============================ SESIÓN ============================ */
 
 const SESION_DIAS = 30; // la sesión dura 30 días en el celular: nadie tiene que reingresar cada hora
 
-function login(usuario, pin) {
+function login(usuario, pin, fecha) {
   const u = read_('USUARIOS').find(x =>
     String(x.usuario).toUpperCase() === String(usuario).toUpperCase() &&
     String(x.pin) === String(pin) && String(x.activo).toUpperCase() !== 'FALSE');
@@ -303,7 +386,18 @@ function login(usuario, pin) {
     append_('SESIONES', [{ token, usuario: u.usuario, creado: new Date().toISOString() }]);
   });
   CacheService.getScriptCache().put('s_' + token, u.usuario, 21600);
-  return { token, usuario: u.usuario, nombre: u.nombre, rol: u.rol, puedeAutorizar: ROLES_AUTORIZAN.indexOf(u.rol) >= 0 };
+  const sesion = { token, usuario: u.usuario, nombre: u.nombre, rol: u.rol, puedeAutorizar: ROLES_AUTORIZAN.indexOf(u.rol) >= 0 };
+  // Para que la app abra de una vez: se devuelve el catálogo y los datos de la primera pantalla (ahorra dos viajes al servidor).
+  try {
+    FRESCO_ = false; MEMO_ = {}; SLICE_ = {};          // el login solo escribió en SESIONES: las lecturas por día pueden usar la caché
+    const f = fecha || hoy_(), cat = catalogo(token);
+    const primera = u.rol === 'VENDEDOR' ? ['misDocumentos', [token, f, '']]
+      : u.rol === 'BODEGA' ? ['getDespacho', [token, f, (cat.vendedores[0] || {}).usuario || '']]
+      : ['getResumen', [token, f]];
+    const lote = [['catalogo', [token]], primera].map(l => ({ fn: l[0], args: l[1], data: API[l[0]].apply(null, l[1]) }));
+    sesion.lote = lote;
+  } catch (e) { /* si algo falla, la app pide cada cosa por separado como siempre */ }
+  return sesion;
 }
 
 function logout(token) {
@@ -361,6 +455,7 @@ function assertAbierta_(fecha) {
 
 function getDespacho(token, fecha, vendedor) {
   auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
+  cargarDia_(fecha, ['VENTAS_DETALLE', 'DESPACHO']);
   const det = byFecha_('VENTAS_DETALLE', fecha).filter(r => r.vendedor === vendedor);
   const facturado = {}, guias = {};
   det.forEach(r => {
@@ -564,11 +659,12 @@ function docsDelDia_(fecha, vendedor) {
 function misDocumentos(token, fecha, vendedor) {
   const u = auth_(token);
   const v = u.rol === 'VENDEDOR' ? u.usuario : vendedor;
+  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS']);
   return { estadoDia: estadoDia_(fecha), docs: docsDelDia_(fecha, v) };
 }
 
 /** pagos: [{forma, banco, monto, referencia}] — reemplaza el detalle anterior del folio */
-function guardarDetalle(token, fecha, folio_key, pagos, descuento) {
+function guardarDetalle(token, fecha, folio_key, pagos, descuento, minimo) {
   const u = auth_(token);
   assertAbierta_(fecha);
   return withLock_(() => {
@@ -600,6 +696,7 @@ function guardarDetalle(token, fecha, folio_key, pagos, descuento) {
         monto: descMonto, motivo: descuento.motivo || '', estado: 'PENDIENTE', solicitado_por: u.usuario, autorizado_por: '', resuelto: '' }]);
     }
     d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d);
+    if (minimo) return { folio_key, estado: 'DETALLADO' };      // el detalle rápido ya muestra el resultado: no se vuelve a leer todo el día
     return docsDelDia_(d.fecha, d.vendedor).find(x => x.folio_key === folio_key);
   });
 }
@@ -902,7 +999,7 @@ function inventarioDia_(fecha) {
 
 function getInventario(token, fecha) {
   auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
-  return inventarioDia_(fecha);
+  return conCache_('inv|' + fecha, ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(fecha));
 }
 
 /**
@@ -1126,6 +1223,7 @@ function cargarSaldoDesdePlanilla(idPlanilla, nombreHoja, fechaInicio) {
   deleteRows_('INVENTARIO_MOV', read_('INVENTARIO_MOV').filter(m => m.fecha === fechaInicio && m.tipo === 'SALDO_INICIAL').map(m => m._row));
   append_('INVENTARIO_MOV', Object.keys(saldos).map(c => ({ key: [fechaInicio, c, 'SALDO_INICIAL', ''].join('|'), fecha: fechaInicio, codigo: c,
     tipo: 'SALDO_INICIAL', destino: '', cantidad: r3_(saldos[c]), obs: 'Desde ' + nombreHoja, registrado_por: 'CARGA', registrado: now_() })));
+  invalidarTodo_();
   Logger.log('Cargados ' + Object.keys(saldos).length + ' productos. No encontrados: ' + (faltan.join(' | ') || 'ninguno'));
   return { cargados: Object.keys(saldos).length, faltan };
 }
@@ -1136,6 +1234,9 @@ function cargarSaldoDesdePlanilla(idPlanilla, nombreHoja, fechaInicio) {
 // Lo que no se puede asociar a ninguna factura queda como "abono sin factura" del cliente.
 function getSaldosClientes(token) {
   auth_(token, ['RENDICION','SUPERVISOR']);
+  return conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS'], () => saldosClientes_());
+}
+function saldosClientes_() {
   const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
   const nombres = {}; vendedores_().forEach(v => nombres[v.usuario] = v.nombre);
   const hoy = hoy_(), dias = f => Math.max(0, Math.round((new Date(hoy + 'T12:00:00') - new Date(String(f) + 'T12:00:00')) / 864e5));
@@ -1198,6 +1299,7 @@ const lista_ = v => String(v || '').split(',').map(x => x.trim()).filter(String)
 function efectivoParaDepositar(token, fecha, vendedor) {
   const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
   const v = u.rol === 'VENDEDOR' ? u.usuario : vendedor;
+  cargarDia_(fecha, ['DEPOSITOS', 'PAGOS', 'DESCUENTOS', 'DOCUMENTOS', 'COBRANZA']);
   const deps = byFecha_('DEPOSITOS', fecha).filter(d => d.vendedor === v);
   const enDep = {}; deps.forEach(d => { lista_(d.folios).forEach(k => enDep[k] = d.id); lista_(d.cobranzas).forEach(k => enDep['C:' + k] = d.id); });
   const folios = docsDelDia_(fecha, v).map(d => ({ key: d.folio_key, folio: d.folio, cliente: d.cliente,
@@ -1248,6 +1350,7 @@ function borrarDeposito(token, id) {
 /* ============================ RESUMEN / RENDICIÓN ============================ */
 
 function resumen_(fecha) {
+  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'DESPACHO', 'VENTAS_DETALLE', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'PROVEEDORES', 'CONSUMO']);
   const docs = docsDelDia_(fecha);
   const desp = byFecha_('DESPACHO', fecha);
   const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
@@ -1335,6 +1438,7 @@ function getResumen(token, fecha) {
  */
 function getInspeccion(token, fecha, vendedor) {
   auth_(token, ['RENDICION','SUPERVISOR']);
+  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO']);
   const docs = docsDelDia_(fecha), cob = byFecha_('COBRANZA', fecha), gas = byFecha_('GASTOS', fecha), deps = byFecha_('DEPOSITOS', fecha);
   const desp = byFecha_('DESPACHO', fecha);
   const rutFolio = {}, rutNombre = {};

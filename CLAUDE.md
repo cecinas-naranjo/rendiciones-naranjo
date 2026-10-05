@@ -97,12 +97,21 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - RUT del cliente en el archivo de rendición: hoja del vendedor (ventas, cobranza, cheques) y como última columna en VENTA Y CREDITO y COBRANZA.
 
 ## Velocidad y cargas
-- Servidor: `MEMO_` (cada hoja se lee una vez por petición; se invalida al escribir), USUARIOS y PRODUCTOS en CacheService 10 min (`onEdit` limpia si se editan a mano; `setup` también), `deleteRows_` borra bloques seguidos de una vez.
-- App: consultas (`LECTURA`) guardadas en localStorage (`rn_cache`, 30 entradas): se muestran al instante y se revalidan por detrás; si cambió, `ir(tab, true)` re-dibuja sin animación, salvo que el usuario esté escribiendo (`S.tocado`) o haya una hoja abierta. Cualquier escritura borra la caché. `precargar()` trae las pestañas vecinas. El lector de Excel se descarga solo en Importar (`cargarXLSX`).
-- Indicadores: barra superior + aviso abajo (`trabajando()`, mensajes en `MSG`, escalan a los 6 s y 16 s); el botón tocado muestra spinner y "Guardando…".
-- Service worker: cache-first con actualización por detrás; aviso "Hay una versión nueva" al instalarse otra.
-- Navegación de oficina en 5 grupos (`GRUPOS`) con sub-pestañas; aviso "Estás viendo…" si la fecha no es hoy; Rendición muestra los 4 pasos del día.
-- `.enter` usa fill `backwards`: con `both` quedaba un transform en #app y la barra inferior dejaba de estar fija.
+**Servidor (APPS_SCRIPT.js)**
+- `MEMO_`: cada hoja se lee una sola vez por petición. USUARIOS y PRODUCTOS además en CacheService (10 min).
+- **Caché por día** (`byFecha_`, `cargarDia_`, `POR_DIA_`): las tablas con movimientos (DOCUMENTOS, PAGOS, DESCUENTOS, DESPACHO, COBRANZA, GASTOS, DEPOSITOS, PROVEEDORES, CONSUMO, VENTAS_DETALLE) se guardan por día en CacheService con clave `d|TABLA|versión|fecha` (5 min). Cada tabla tiene una versión (`v_TABLA`); toda escritura (`append_`/`updateRow_`/`deleteRows_` → `tocar_`) la cambia al final de la petición (`cerrarPeticion_`: flush + nueva versión), así la caché vieja deja de usarse. `onEdit` la cambia si alguien edita la hoja a mano; `invalidarTodo_()` en `setup` y cargas del editor.
+- **Regla de seguridad**: solo las acciones de `LECTURAS_` (consultas) usan la caché por día; toda acción que escribe (`FRESCO_`) y todo lo que va dentro de `withLock_` lee siempre la planilla, para que los `_row` de las escrituras nunca vengan de la caché. Borrar filas a mano en la planilla puede tardar hasta 5 min en verse en las pantallas (editar celdas se ve al tiro por `onEdit`).
+- `conCache_(clave, tablas, fn)`: resultado de consultas caras (Saldos de clientes, Inventario) ligado a las versiones de sus tablas.
+- `batch([[fn,args],…])`: varias consultas en una sola petición (solo lecturas); comparten lecturas. `login(usuario, pin, fecha)` devuelve además `lote` = catálogo + datos de la primera pantalla según el rol.
+- `guardarDetalle(..., minimo)`: con `minimo` responde corto y no relee el día. `deleteRows_` borra bloques seguidos de una vez.
+
+**App (app.js)**
+- Consultas (`LECTURA`) en localStorage (`rn_cache`): se muestran al instante; se piden de nuevo solo si tienen más de 20 s (`FRESCURA`) o fueron marcadas `viejo` tras un guardado (`olvidarCache(false)` ya no borra, marca). Si lo nuevo es distinto, `ir(tab, true)` re-dibuja sin animación, salvo que el usuario esté escribiendo (`S.tocado`) o haya una hoja abierta.
+- `pedirLote` + `precargar`: la precarga de las pestañas vecinas (las de la misma sección y la primera de cada otra sección) es UNA sola llamada `batch`. El login siembra la caché con `lote`, así la primera pantalla sale con una sola llamada.
+- Detalle rápido de folios: se marca al instante y se guarda por detrás en cola (`encolarGuardado`), con respuesta mínima.
+- Indicadores: barra superior + aviso abajo (`trabajando()`, `MSG`), botón con spinner. Lector de Excel solo al importar. Service worker: cache-first con actualización por detrás; aviso "Hay una versión nueva".
+- Compatibilidad: un cliente nuevo con servidor viejo funciona (cae a llamadas sueltas); uno viejo con servidor nuevo también.
+- Medido en simulación (400 ms por llamada): primera pantalla 1.350 → 860 ms; llamadas al ingresar 4–6 → 2; cambio de sección/pestaña ~440 ms → ~40 ms.
 
 ## Roles
 ADMIN (todo, reabre días), SUPERVISOR (rendición + autoriza descuentos), RENDICION, BODEGA, VENDEDOR

@@ -124,9 +124,12 @@ function guardarCache() {
   }, 400);
 }
 function olvidarCache(todo) {
-  [...CACHE.keys()].forEach(k => { if (todo || !/^listaUsuarios\|/.test(k)) CACHE.delete(k); });
+  if (todo) CACHE.clear();
+  else CACHE.forEach((v, k) => { if (!/^listaUsuarios\|/.test(k)) v.viejo = true; });     // tras guardar algo: se muestran al instante y se actualizan por detrás
   guardarCache();
 }
+const claveApi = (fn, args) => fn + '|' + JSON.stringify(args);
+const FRESCURA = 20e3;      // si lo guardado tiene menos de 20 s no se vuelve a pedir al servidor
 
 // indicador "trabajando": barra arriba + aviso abajo con el mensaje; el botón tocado muestra su propio "Guardando…"
 let ultimoClic = null;
@@ -178,6 +181,16 @@ function pedir(fn, args, key) {                    // si ya se está pidiendo lo
   EN_CURSO.set(key, p); return p;
 }
 const copia = d => JSON.parse(JSON.stringify(d));
+/** Pide varias consultas en UNA sola llamada al servidor y deja cada respuesta en la caché. Devuelve cuántas se guardaron. */
+async function pedirLote(items) {
+  items = items.filter(x => LECTURA.has(x[0]));
+  if (!items.length) return 0;
+  const res = await llamar('batch', [items.map(x => [x[0], x[1]])]);
+  let n = 0;
+  res.forEach((r, i) => { if (r && r.ok) { CACHE.set(claveApi(items[i][0], items[i][1]), { t: Date.now(), d: r.data }); n++; } });
+  if (n) guardarCache();
+  return n;
+}
 function errorApi(e) {
   const m = String(e.message || e);
   if (m.indexOf('SESION') >= 0) salir(true);
@@ -185,10 +198,11 @@ function errorApi(e) {
 }
 
 async function api(fn, ...args) {
-  const lectura = LECTURA.has(fn), key = fn + '|' + JSON.stringify(args);
+  const lectura = LECTURA.has(fn), key = claveApi(fn, args);
   if (lectura && CACHE.has(key) && Date.now() - CACHE.get(key).t < 12 * 3600e3) {
-    revalidar(fn, args, key);
-    return copia(CACHE.get(key).d);
+    const e = CACHE.get(key);
+    if (e.viejo || Date.now() - e.t > FRESCURA) revalidar(fn, args, key);
+    return copia(e.d);
   }
   if (!lectura) olvidarCache(false);
   const fin = trabajando(fn, !lectura);
@@ -207,35 +221,24 @@ function revalidar(fn, args, key) {
   }).catch(e => { if (String(e.message).indexOf('SESION') >= 0) errorApi(e); })
     .finally(() => busy(false));
 }
-/** Deja listas en memoria las pantallas vecinas para que abran al instante. */
+/** Deja listas en memoria las pantallas vecinas para que abran al instante: todas en UNA llamada al servidor. */
 function precargar(tabs) {
   const tok = S.sess && S.sess.token, F = S.fecha, esV = S.sess && S.sess.rol === 'VENDEDOR';
   const q = { folios: ['misDocumentos', [tok, F, S.vend]], inventario: ['getInventario', [tok, F]], resumen: ['getResumen', [tok, F]],
     saldos: ['getSaldosClientes', [tok]], descuentos: ['descuentosPendientes', [tok]], depositos: ['efectivoParaDepositar', [tok, F, esV ? '' : S.vend]],
-    despacho: S.vend ? ['getDespacho', [tok, F, S.vend]] : null };
-  let cadena = Promise.resolve();
+    despacho: (S.vend || (S.cat.vendedores[0] || {}).usuario) ? ['getDespacho', [tok, F, S.vend || S.cat.vendedores[0].usuario]] : null,
+    historial: ['historial', [tok]] };
+  const lista = [];
   tabs.forEach(t => {
     const x = q[t] || (/^[A-Z]+$/.test(t) ? ['listarMov', [tok, t, F]] : null);
     if (!x) return;
-    const key = x[0] + '|' + JSON.stringify(x[1]);
-    if (CACHE.has(key) && Date.now() - CACHE.get(key).t < 120e3) return;
-    cadena = cadena.then(() => pedir(x[0], x[1], key)).catch(() => {});
+    const e = CACHE.get(claveApi(x[0], x[1]));
+    if (e && !e.viejo && Date.now() - e.t < FRESCURA * 3) return;          // ya está reciente
+    lista.push(x);
   });
+  if (lista.length && !PRECARGANDO) { PRECARGANDO = true; pedirLote(lista).catch(() => {}).finally(() => { PRECARGANDO = false; }); }
 }
-
-/** El lector de Excel pesa ~900 KB: se descarga solo cuando alguien va a importar. */
-let xlsxP = null;
-function cargarXLSX() {
-  if (typeof XLSX !== 'undefined') return Promise.resolve();
-  if (!xlsxP) xlsxP = new Promise((ok, mal) => {
-    const fin = trabajando('xlsx', false);
-    const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    sc.onload = () => { fin(); ok(); };
-    sc.onerror = () => { fin(); xlsxP = null; mal(new Error('No se pudo descargar el lector de Excel. Revisa tu internet.')); };
-    document.head.appendChild(sc);
-  });
-  return xlsxP;
-}
+let PRECARGANDO = false;
 
 /* ---------- estado ---------- */
 const S = { sess: null, cat: null, fecha: null, tab: null, vend: '', filtro: 'pend', vistaId: 0, tocado: false, silencio: false };
@@ -282,7 +285,10 @@ async function pantallaLogin() {
   const go = async () => {
     if (!sel) return toast('Elige tu nombre primero', true);
     try {
-      const s = await api('login', sel, $('#pin').value);
+      const s = await api('login', sel, $('#pin').value, hoyCL());
+      const lote = s.lote || []; delete s.lote;
+      lote.forEach(x => CACHE.set(claveApi(x.fn, x.args), { t: Date.now(), d: x.data }));      // catálogo y primera pantalla ya vienen listos
+      if (lote.length) guardarCache();
       S.sess = s; try { localStorage.setItem('rn_sess', JSON.stringify(s)); } catch (e) {}
       iniciar();
     } catch (e) { const p = $('#pin'); p.value = ''; p.classList.remove('shake'); void p.offsetWidth; p.classList.add('shake'); }
@@ -354,8 +360,12 @@ function ir(t, silencioso) {
   }).finally(() => {
     S.silencio = false;
     if (silencioso) window.scrollTo(0, y);
-    else setTimeout(() => precargar((S.grupos ? (S.grupos.find(x => x[2].indexOf(t) >= 0) || [0, 0, []])[2] : tabs.map(x => x[0]))
-      .filter(x => x !== t).concat(t === 'resumen' ? ['folios', 'despacho'] : [])), 800);
+    else setTimeout(() => {
+      // primero las otras pestañas de la misma sección; después la primera pestaña de cada una de las demás secciones
+      const delGrupo = S.grupos ? (S.grupos.find(x => x[2].indexOf(t) >= 0) || [0, 0, []])[2] : tabs.map(x => x[0]);
+      const otras = S.grupos ? S.grupos.filter(g => g[2].indexOf(t) < 0).map(g => g[2][0]) : [];
+      precargar(delGrupo.filter(x => x !== t).concat(otras).filter(x => x !== 'saldos').slice(0, 7));
+    }, 600);
   });
 }
 const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(p * 100) + '%'; };
@@ -581,7 +591,7 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
   const guardar = (f, banco, cheque) => {
     if (banco && f === 'TRANSFERENCIA') try { localStorage.setItem('rn_banco_' + S.sess.usuario, banco); } catch (e) {}
     const lineas = [Object.assign({ forma: f, banco: banco || '', monto, referencia: '' }, cheque || {})];
-    alGuardar(Object.assign({}, d, { estado: 'DETALLADO', pagos: lineas, pagado: monto, diferencia: d.total - monto - aprob, detalladoPor: '' }));
+    alGuardar(Object.assign({}, d, { estado: 'DETALLADO', pagos: lineas, pagado: monto, diferencia: d.total - monto - aprob, detalladoPor: S.sess.rol === 'VENDEDOR' ? '' : S.sess.nombre }));
     encolarGuardado(d, lineas, alGuardar);
     const sig = siguiente && d.estado !== 'DETALLADO' && siguiente.proximo(d.folio_key);   // solo encadena si venía de un pendiente
     if (sig) { toast(`Folio ${d.folio}: ${FL[f].toLowerCase()} ✓`); abrirDetalle(sig, estadoDia, alGuardar, siguiente, ov); }
@@ -619,7 +629,7 @@ async function procesarCola() {
   colaCorriendo = true;
   while (COLA.length) {
     const x = COLA[0];
-    try { x.alGuardar(await api('guardarDetalle', S.sess.token, x.fecha, x.d.folio_key, x.lineas, null)); }
+    try { await api('guardarDetalle', S.sess.token, x.fecha, x.d.folio_key, x.lineas, null, true); }      // `true`: el servidor responde corto (ya se ve el resultado en pantalla)
     catch (e) { x.alGuardar(x.d); toast(`No se pudo guardar el folio ${x.d.folio}. Quedó como "Por detallar".`, true); }
     COLA.shift();
   }
