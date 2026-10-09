@@ -87,9 +87,9 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - Servidor: `datosCheque_` valida; columnas `cheque_numero`, `cheque_fecha`, `cheque_titular` en PAGOS y COBRANZA (el banco del cheque va en `banco`; referencia = "Cheque N° …"). El archivo de rendición agrega por vendedor la tabla CHEQUES RECIBIDOS (ventas y cobranza, al día / a fecha).
 
 ## Devoluciones (mermas y reprocesos)
-- Producto que vuelve a la bodega y no se puede vender: **MERMA** (se descarta) o **REPROCESO** (vuelve a producción). Se justifica con una **orden de compra**: el N° es obligatorio y se adjunta la foto de la OC (si falta, chip "Sin foto de la OC" y aviso en Rendición).
-- Hoja DEVOLUCIONES (`id, fecha, tipo, origen, cliente, codigo, producto, unidad, cantidad, orden_compra, motivo, obs, registrado_por, registrado, adjuntos`). API `listarDevoluciones` (lectura), `guardarDevolucion`, `borrarDevolucion`; roles BODEGA, RENDICION, SUPERVISOR, ADMIN. Pantalla `vDevoluciones` (pestaña "Devoluciones" en Bodega); `origen` = vendedor de la ruta o '' (cliente/otro).
-- Fotos: tabla de adjuntos `DEVOLUCIONES` (Drive: Respaldos/Devoluciones/<AAAA-MM>/"<fecha> Devolución <tipo> OC <n> <producto> <cantidad>"). BODEGA ya puede subir adjuntos.
+- Producto que vuelve a la bodega y no se puede vender: **MERMA** (se descarta) o **REPROCESO** (vuelve a producción). Se justifica con una **nota de crédito**: el N° es obligatorio y se adjunta la foto de la NC (si falta, chip "Sin foto de la NC" y aviso en Rendición).
+- Hoja DEVOLUCIONES (`id, fecha, tipo, origen, cliente, codigo, producto, unidad, cantidad, nota_credito, motivo, obs, registrado_por, registrado, adjuntos`). API `listarDevoluciones` (lectura), `guardarDevolucion`, `borrarDevolucion`; roles BODEGA, RENDICION, SUPERVISOR, ADMIN. Pantalla `vDevoluciones` (pestaña "Devoluciones" en Bodega); `origen` = vendedor de la ruta o '' (cliente/otro).
+- Fotos: tabla de adjuntos `DEVOLUCIONES` (Drive: Respaldos/Devoluciones/<AAAA-MM>/"<fecha> Devolución <tipo> NC <n> <producto> <cantidad>"). BODEGA ya puede subir adjuntos.
 - Archivo de rendición: hoja DEVOLUCIONES (solo si hubo). El resumen cuenta `totales.devoluciones`.
 - NO toca el inventario (la merma/reproceso ya sale como destino MERMA/REPROCESO en INVENTARIO_MOV); evita doble descuento. Pendiente: cruzar con inventario si se quiere.
 

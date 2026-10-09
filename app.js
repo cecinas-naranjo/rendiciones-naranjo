@@ -719,18 +719,18 @@ async function vDevoluciones(m) {
   const cats = {}; S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
   const opcProd = Object.keys(cats).map(c => `<optgroup label="${esc(CATS[c] || c)}">${cats[c].map(p => `<option value="${esc(p.codigo)}" data-u="${esc(p.unidad)}">${esc(p.nombre)}</option>`).join('')}</optgroup>`).join('');
   let tipo = 'MERMA';
-  render(m, `<h2>Devoluciones</h2><p class="lead">Producto que vuelve y no se puede vender. <b>Merma</b>: se descarta. <b>Reproceso</b>: vuelve a producción. Cada una se justifica con una orden de compra.</p>
+  render(m, `<h2>Devoluciones</h2><p class="lead">Producto que vuelve y no se puede vender. <b>Merma</b>: se descarta. <b>Reproceso</b>: vuelve a producción. Cada una se justifica con una nota de crédito.</p>
     <div class="card" id="dvf">
       <div class="seg" id="dvt" style="width:100%;display:grid;grid-template-columns:1fr 1fr"><button type="button" data-t="MERMA" class="on">Merma</button><button type="button" data-t="REPROCESO">Reproceso</button></div>
       <div class="grid g3" style="margin-top:12px">
         <div><label class="f" for="dv_p">Producto</label><select class="in" id="dv_p"><option value="">Elige un producto…</option>${opcProd}</select></div>
         <div><label class="f" for="dv_c">Cantidad <span class="muted" id="dv_u"></span></label><input class="in n" id="dv_c" inputmode="decimal" placeholder="0"></div>
-        <div><label class="f" for="dv_oc">N° orden de compra</label><input class="in" id="dv_oc" inputmode="numeric" autocomplete="off"></div>
+        <div><label class="f" for="dv_oc">N° nota de crédito</label><input class="in" id="dv_oc" inputmode="numeric" autocomplete="off"></div>
         <div><label class="f" for="dv_o">Viene de</label><select class="in" id="dv_o"><option value="">Cliente / otro</option>${opcVend('')}</select></div>
         <div><label class="f" for="dv_cl">Cliente (si corresponde)</label><input class="in" id="dv_cl" autocomplete="off"></div>
         <div><label class="f" for="dv_m">Motivo</label><select class="in" id="dv_m">${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select></div>
         <div><label class="f" for="dv_ob">Observación</label><input class="in" id="dv_ob" autocomplete="off"></div>
-        ${campoArchivos('dvf_a').replace('Foto o archivo de respaldo', 'Foto de la orden de compra')}
+        ${campoArchivos('dvf_a').replace('Foto o archivo de respaldo', 'Foto de la nota de crédito')}
       </div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="dv_ad">Registrar devolución</button></div></div>
     <div id="dvl" style="margin-top:16px"></div>`);
@@ -743,8 +743,8 @@ async function vDevoluciones(m) {
       return `<div><span>${t === 'MERMA' ? 'Mermas' : 'Reprocesos'}</span><b>${xs.length}</b><small>${[k ? kg(k) + ' kg' : '', u ? u + ' un' : ''].filter(Boolean).join(' · ') || '—'}</small></div>`; };
     $('#dvl').innerHTML = rs.length ? `<div class="dvres">${res('MERMA')}${res('REPROCESO')}</div>` + rs.map(r => `<div class="dev">
         <div class="row"><span class="grow"><span class="chip ${r.tipo === 'MERMA' ? 'bad' : 'warn'}">${r.tipo === 'MERMA' ? 'Merma' : 'Reproceso'}</span> <b>${esc(r.producto)}</b></span><b>${fmt(r.cantidad, r.unidad)}</b></div>
-        <div class="muted">OC N° <b>${esc(r.orden_compra)}</b>${r.motivo ? ' · ' + esc(r.motivo) : ''}${r.origen ? ' · viene de ' + esc((S.cat.vendedores.find(v => v.usuario === r.origen) || {}).nombre || r.origen) : ''}${r.cliente ? ' · ' + esc(r.cliente) : ''}${r.obs ? ' · ' + esc(r.obs) : ''}</div>
-        <div class="row" style="margin-top:6px">${r.adjuntos.length ? chipsAdj(r.adjuntos, 'DEVOLUCIONES', r.id, true) : `<span class="chip warn">Sin foto de la OC</span>${chipsAdj([], 'DEVOLUCIONES', r.id, true)}`}<span class="grow"></span>
+        <div class="muted">NC N° <b>${esc(r.nota_credito)}</b>${r.motivo ? ' · ' + esc(r.motivo) : ''}${r.origen ? ' · viene de ' + esc((S.cat.vendedores.find(v => v.usuario === r.origen) || {}).nombre || r.origen) : ''}${r.cliente ? ' · ' + esc(r.cliente) : ''}${r.obs ? ' · ' + esc(r.obs) : ''}</div>
+        <div class="row" style="margin-top:6px">${r.adjuntos.length ? chipsAdj(r.adjuntos, 'DEVOLUCIONES', r.id, true) : `<span class="chip warn">Sin foto de la NC</span>${chipsAdj([], 'DEVOLUCIONES', r.id, true)}`}<span class="grow"></span>
           <button class="x" style="min-height:34px;width:34px" data-id="${esc(r.id)}" aria-label="Borrar">×</button></div></div>`).join('')
       : '<div class="empty">Sin devoluciones este día.</div>';
   }
@@ -754,10 +754,10 @@ async function vDevoluciones(m) {
   $('#dvl').addEventListener('click', async e => { const id = e.target.dataset && e.target.dataset.id; if (!id || !confirm('¿Borrar esta devolución?')) return;
     await api('borrarDevolucion', S.sess.token, id); await recargar(); });
   $('#dv_ad').onclick = async () => {
-    const o = { tipo, codigo: sel.value, cantidad: String(dec($('#dv_c').value)), orden_compra: $('#dv_oc').value.trim(), origen: $('#dv_o').value, cliente: $('#dv_cl').value.trim(), motivo: $('#dv_m').value, obs: $('#dv_ob').value.trim() };
+    const o = { tipo, codigo: sel.value, cantidad: String(dec($('#dv_c').value)), nota_credito: $('#dv_oc').value.trim(), origen: $('#dv_o').value, cliente: $('#dv_cl').value.trim(), motivo: $('#dv_m').value, obs: $('#dv_ob').value.trim() };
     if (!o.codigo) return toast('Elige el producto.', true);
     if (!(dec(o.cantidad) > 0)) return toast('Ingresa la cantidad.', true);
-    if (!o.orden_compra) return toast('Falta el N° de la orden de compra.', true);
+    if (!o.nota_credito) return toast('Falta el N° de la nota de crédito.', true);
     const b = $('#dv_ad'); b.disabled = true;
     try {
       const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, o); toast('Devolución registrada');
