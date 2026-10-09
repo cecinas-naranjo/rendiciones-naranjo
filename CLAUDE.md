@@ -91,7 +91,7 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - En Rendición, cada tarjeta de vendedor se puede tocar (hover + "Ver detalle ›") y abre `abrirVendedor`: efectivo a entregar, resumen, folios (por detallar / detallados / todos, con forma de pago y quién detalló) y el detalle por sección.
 - `imprimirInspeccion(usuario|'')`: arma `#imprimir` y llama a `window.print()`; CSS `@media print` oculta la app. Una hoja por vendedor (sigue en otra página si hay muchos movimientos), poca tinta, cuadrado gris a la derecha de cada línea, firmas de vendedor y encargada.
   - **RESUMEN** (por forma de pago): Efectivo total (ventas + cobranza) → (−) Gastos → (−) Depositado (si hay) → **Efectivo a entregar** → Depósitos de efectivo (si hay) → Transferencias BICE/ESTADO/SANTANDER → Cheques → **Subtotal** → Crédito → **Total rendición**.
-  - **DETALLE** (por origen): Venta en efectivo (solo suma), transferencias de cada banco con cliente, RUT, documento y tipo (Venta / **COBRANZA**), cheques (N°, banco, fecha, al día/a fecha), Cobranza (todas las formas de pago, con desglose efectivo/transferencia/cheque), Depósitos de efectivo (si hay), suma de gastos, Crédito, y la composición del **Total detalle**.
+  - **DETALLE** (por origen): Venta en efectivo (lista de cada folio pagado en efectivo: cliente, RUT, documento, monto), transferencias de cada banco con cliente, RUT, documento y tipo (Venta / **COBRANZA**), cheques (N°, banco, fecha, al día/a fecha), Cobranza (todas las formas de pago, con desglose efectivo/transferencia/cheque), Depósitos de efectivo (si hay), suma de gastos, Crédito (lista de cada documento a crédito), y la composición del **Total detalle**.
   - **Invariante: Total rendición = Total detalle** (efectivo de ventas + efectivo de cobranza − gastos + transferencias + cheques + crédito). La cobranza aparece dos veces (en su banco y en Cobranza) pero al total solo entra su efectivo. Los gastos van dentro del efectivo, por eso se restan en ambos. Los depósitos de efectivo no cambian el total: bajan "Efectivo a entregar" y suben "Depósitos de efectivo".
   - Servidor: `getInspeccion` marca cada transferencia/cheque con `tipo` ('Venta' | 'COBRANZA') y cada cheque con `momento` ('Al día' | 'A fecha'); `docsEfectivo` cuenta los folios pagados en efectivo.
 - RUT del cliente en el archivo de rendición: hoja del vendedor (ventas, cobranza, cheques) y como última columna en VENTA Y CREDITO y COBRANZA.
@@ -138,3 +138,8 @@ pestañas superiores. Animaciones cortas (≤260 ms) y se desactivan con prefers
 ## Cómo probar
 Sin tests automáticos. Probar en el celular real; pedir al usuario que confirme antes de dar algo por resuelto.
 Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`.
+
+## Impresión: reglas que no hay que romper
+- `th,td{white-space:nowrap}` es global para las tablas de la app; en `.ins` se anula (`white-space:normal`) para que los nombres largos salten de línea. RUT y montos van en `nowrap`.
+- Al imprimir `html,body` quedan sin altura fija ni scroll; los modales usan `overflow-x:hidden` y `::-webkit-scrollbar-corner` transparente (evita el cuadrado gris de las barras de desplazamiento en Windows).
+- El modal del vendedor muestra el RUT bajo/junto al cliente en folios, transferencias, cheques y cobranza.

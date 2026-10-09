@@ -952,6 +952,7 @@ async function abrirVendedor(usuario) {
   const t = v.totales, pend = v.folios.filter(f => f.estado !== 'DETALLADO');
   let filtro = pend.length ? 'pend' : 'todos';
   const sec = (titulo, n, total, filas) => n ? `<div class="dsec"><div class="dtit"><b>${titulo}</b><span>${n} · ${clp(total)}</span></div>${filas}</div>` : '';
+  const conRut = x => esc(x.cliente) + (x.rut ? `<span class="rutl">RUT ${esc(x.rut)}</span>` : '');
   const fila = (a, b, monto) => `<div class="dfila"><span class="grow">${a}</span><span class="muted">${b || ''}</span><b>${clp(monto)}</b></div>`;
   const pintar = () => {
     const folios = v.folios.filter(f => filtro === 'todos' || (filtro === 'pend' ? f.estado !== 'DETALLADO' : f.estado === 'DETALLADO'))
@@ -972,15 +973,15 @@ async function abrirVendedor(usuario) {
         <div class="seg" id="dfl" style="margin:2px 0 8px">${[['pend', 'Por detallar (' + pend.length + ')'], ['det', 'Detallados'], ['todos', 'Todos']].map(x =>
           `<button type="button" data-f="${x[0]}" class="${filtro === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
         ${folios.length ? folios.map(f => `<div class="dfolio ${f.estado === 'DETALLADO' ? '' : 'pend'}">
-          <div class="row"><span class="grow"><b>${esc(f.cliente)}</b> <span class="muted">${esc(f.tipo)} ${esc(f.folio)}</span></span><b>${clp(f.total)}</b></div>
+          <div class="row"><span class="grow"><b>${esc(f.cliente)}</b> <span class="muted">${esc(f.tipo)} ${esc(f.folio)}</span>${f.rut ? `<span class="rutl">RUT ${esc(f.rut)}</span>` : ''}</span><b>${clp(f.total)}</b></div>
           <div class="muted">${f.estado === 'DETALLADO' ? f.pagos.map(p => esc(textoPago(p)) + (f.pagos.length > 1 ? ' ' + clp(p.monto) : '')).join(' + ')
             + (f.descAprob ? ' · descuento ' + clp(f.descAprob) : '') + (f.detalladoPor ? ' · por ' + esc(f.detalladoPor.split(' ')[0]) : '')
             : f.descPend ? 'Descuento esperando autorización' : 'Por detallar'}</div></div>`).join('') : '<div class="muted" style="padding:6px 0">No hay folios en este filtro.</div>'}</div>
       ${Object.keys(v.transf).map(b => sec('Transferencias ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0),
-        v.transf[b].map(x => fila(esc(x.cliente), esc(x.origen), x.monto)).join(''))).join('')}
-      ${sec('Cheques', v.cheques.length, t.cheques, v.cheques.map(x => fila(esc(x.cliente), esc('N° ' + x.numero + ' · ' + nombreBanco(x.banco) + ' · ' + x.momento +
-        (x.fechaCheque ? ' ' + x.fechaCheque.split('-').reverse().join('-') : '')), x.monto)).join(''))}
-      ${sec('Cobranza', v.cobranza.length, v.cobranza.reduce((a, x) => a + x.monto, 0), v.cobranza.map(x => fila(esc(x.cliente),
+        v.transf[b].map(x => fila(conRut(x), esc(x.origen), x.monto)).join(''))).join('')}
+      ${sec('Cheques', v.cheques.length, t.cheques, v.cheques.map(x => fila(conRut(x), esc([x.numero ? 'N° ' + x.numero : '', nombreBanco(x.banco), x.momento +
+        (x.fechaCheque ? ' ' + x.fechaCheque.split('-').reverse().join('-') : '')].filter(Boolean).join(' · ')), x.monto)).join(''))}
+      ${sec('Cobranza', v.cobranza.length, v.cobranza.reduce((a, x) => a + x.monto, 0), v.cobranza.map(x => fila(conRut(x),
         esc((x.folio ? 'Folio ' + x.folio + ' · ' : '') + textoPago(x)), x.monto)).join(''))}
       ${sec('Gastos', v.gastos.length, t.gastos, v.gastos.map(x => fila(esc(x.concepto), esc(x.respaldo ? 'Boleta ' + x.respaldo : ''), x.monto)).join(''))}
       ${sec('Depósitos de efectivo', v.depositos.length, t.depositos, v.depositos.map(x => fila(esc(x.banco), esc(x.referencia ? 'Op. ' + x.referencia : ''), x.monto)).join(''))}`;
@@ -1008,12 +1009,13 @@ async function imprimirInspeccion(usuario) {
   const refOrigen = o => String(o).replace(/^Cobranza folio /, 'Folio ');
   // fila de suma (resumen y líneas sueltas del detalle)
   const suma = (lab, nota, monto, check, cls) => `<tr class="${cls || ''}"><td>${lab}</td><td class="g nt">${nota || ''}</td><td class="m">${mm(monto)}</td>${check ? CK : SINCK}</tr>`;
-  const bloque = (titulo, total, nota, filas, pie, cols) => `<div class="blk"><div class="bt"><span><b>${titulo}</b>${nota ? ' <small>' + nota + '</small>' : ''}</span><b class="m">${clp(total)}</b><i></i></div>
+  const bloque = (titulo, total, nota, filas, pie, cols, largo) => `<div class="blk${largo ? ' lg' : ''}"><div class="bt"><span><b>${titulo}</b>${nota ? ' <small>' + nota + '</small>' : ''}</span><b class="m">${clp(total)}</b><i></i></div>
     <table class="d"><colgroup>${cols}</colgroup>${filas}</table>${pie || ''}</div>`;
   // anchos de columna (la primera, el cliente, ocupa lo que sobra)
   const COLS_TR = '<col><col style="width:3.1cm"><col style="width:2.9cm"><col style="width:2.6cm"><col style="width:2.5cm"><col style="width:15pt">';
   const COLS_CH = '<col><col style="width:3.1cm"><col style="width:2.6cm"><col style="width:2.5cm"><col style="width:15pt">';
   const COLS_CB = '<col><col style="width:3.1cm"><col style="width:2.5cm"><col style="width:3.9cm"><col style="width:2.5cm"><col style="width:15pt">';
+  const COLS_VT = '<col><col style="width:3.1cm"><col style="width:3cm"><col style="width:2.5cm"><col style="width:15pt">';
   const COLS_DP = '<col><col style="width:5.4cm"><col style="width:2.6cm"><col style="width:15pt">';
 
   const html = r.vendedores.map(v => {
@@ -1044,12 +1046,20 @@ async function imprimirInspeccion(usuario) {
       return xs.length ? bloque('Transferencias ' + b, tb[b], '', xs.map(x => `<tr><td>${esc(x.cliente)}</td><td class="g">${esc(x.rut)}</td><td class="g">${esc(refOrigen(x.origen))}</td>${tipoTd(x)}<td class="m">${clp(x.monto)}</td>${CK}</tr>`).join(''), '', COLS_TR) : '';
     }).join('');
     const chequesHtml = v.cheques.length ? bloque('Cheques', t.cheques, '', v.cheques.slice().sort((p, q) => (p.tipo === 'COBRANZA') - (q.tipo === 'COBRANZA')).map(x =>
-      `<tr><td>${esc(x.cliente)}<small>${esc(refOrigen(x.origen))} · N° ${esc(x.numero)} · ${esc(nombreBanco(x.banco))} · ${fechaCorta(x.fechaCheque)} (${x.momento.toLowerCase()})</small></td><td class="g">${esc(x.rut)}</td>${tipoTd(x)}<td class="m">${clp(x.monto)}</td>${CK}</tr>`).join(''), '', COLS_CH) : '';
+      `<tr><td>${esc(x.cliente)}<small>${esc([refOrigen(x.origen), x.numero ? 'N° ' + x.numero : '', nombreBanco(x.banco), x.fechaCheque ? fechaCorta(x.fechaCheque) + ' (' + x.momento.toLowerCase() + ')' : ''].filter(Boolean).join(' · '))}</small></td><td class="g">${esc(x.rut)}</td>${tipoTd(x)}<td class="m">${clp(x.monto)}</td>${CK}</tr>`).join(''), '', COLS_CH) : '';
     const cobHtml = v.cobranza.length ? bloque('Cobranza', sum(v.cobranza), 'solo su efectivo suma al total', v.cobranza.map(x =>
       `<tr><td>${esc(x.cliente)}</td><td class="g">${esc(x.rut)}</td><td class="g">${x.folio ? 'Folio ' + esc(x.folio) : ''}</td><td class="fp ${x.forma === 'EFECTIVO' ? '' : 'g'}">${x.forma === 'EFECTIVO' ? '<b>Efectivo</b>' : esc(textoPago(x))}</td><td class="m">${clp(x.monto)}</td>${CK}</tr>`).join(''),
       `<div class="pie"><b>en efectivo ${clp(cobEf)}</b> · en transferencia ${clp(cobTr)} · en cheque ${clp(cobCh)}</div>`, COLS_CB) : '';
     const depHtml = v.depositos.length ? bloque('Depósitos de efectivo', t.depositos, 'ya están dentro del efectivo', v.depositos.map(x =>
       `<tr><td>${esc(x.banco)}</td><td class="g">${x.referencia ? 'Op. ' + esc(x.referencia) : ''}</td><td class="m">${clp(x.monto)}</td>${CK}</tr>`).join(''), '', COLS_DP) : '';
+
+    // todas las ventas: lo pagado en efectivo (por folio) y lo vendido a crédito
+    const efecFilas = [];
+    v.folios.forEach(f => (f.pagos || []).forEach(p => { if (p.forma === 'EFECTIVO') efecFilas.push({ cliente: f.cliente, rut: f.rut, doc: f.tipo + ' ' + f.folio, monto: p.monto }); }));
+    const filaVt = x => `<tr><td>${esc(x.cliente)}</td><td class="g">${esc(x.rut)}</td><td class="g">${esc(x.doc)}</td><td class="m">${clp(x.monto)}</td>${CK}</tr>`;
+    const efecHtml = efecFilas.length ? bloque('Venta en efectivo', t.efVentas, `${efecFilas.length} documento${efecFilas.length === 1 ? '' : 's'}`, efecFilas.map(filaVt).join(''), '', COLS_VT, true)
+      : `<table class="s">${suma('Venta en efectivo', '', t.efVentas, true)}</table>`;
+    const credHtml = v.creditos.length ? bloque('Crédito', t.credito, `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}`, v.creditos.map(x => filaVt({ cliente: x.cliente, rut: x.rut, doc: refOrigen(x.origen), monto: x.monto })).join(''), '', COLS_VT, true) : '';
 
     const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat(t.gastos ? [['− Gastos', -t.gastos]] : [],
       [['+ Transferencias', transfTot], ['+ Cheques', t.cheques], ['+ Crédito', t.credito]]);
@@ -1058,10 +1068,10 @@ async function imprimirInspeccion(usuario) {
         <div class="r"><b>${fc}</b><small>${v.terminal ? 'Terminal ' + esc(v.terminal) : ''}</small></div></div>
       <h3>RESUMEN</h3><table class="s">${resumen}</table>
       <h3>DETALLE</h3>
-      <table class="s">${suma('Venta en efectivo', `${v.docsEfectivo} documento${v.docsEfectivo === 1 ? '' : 's'}`, t.efVentas, true)}</table>
-      ${transfHtml}${chequesHtml}${cobHtml}${depHtml}
+      ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${depHtml}
       <table class="s sp">${t.gastos ? suma('(−) Suma de gastos', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, -t.gastos, true) : ''}
-        ${suma('Crédito', v.creditos.length ? `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}` : '', t.credito, true)}</table>
+        </table>
+      ${credHtml || (t.credito ? `<table class="s">${suma('Crédito', '', t.credito, true)}</table>` : '')}
       <table class="fin"><tr><td class="fl"><div class="firmas"><div>Firma vendedor</div><div>Firma encargada</div></div></td><td class="fr">
         <table class="comp">${comp.map(c => `<tr><td>${c[0]}</td><td class="m">${mm(c[1])}</td></tr>`).join('')}<tr class="tot"><td>Total detalle</td><td class="m">${clp(totalDetalle)}</td></tr></table></td></tr></table>
       <div class="ft">${esc(v.nombre)} · ${fc} · generado ${esc(r.generado)}</div></section>`;
