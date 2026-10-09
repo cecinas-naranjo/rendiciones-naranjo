@@ -41,6 +41,7 @@ const SCHEMA = {
   COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado','adjuntos','cheque_numero','cheque_fecha','cheque_titular'],
   PROVEEDORES: ['id','fecha','proveedor','documento','folio','monto','forma','obs','registrado_por','registrado','adjuntos'],
   CONSUMO:     ['id','fecha','cliente','folio','monto','forma','obs','registrado_por','registrado'],
+  DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','orden_compra','motivo','obs','registrado_por','registrado','adjuntos'],
   GASTOS:      ['id','fecha','responsable','concepto','monto','respaldo','obs','registrado_por','registrado','adjuntos'],
   DEPOSITOS:   ['id','fecha','vendedor','banco','monto','referencia','folios','cobranzas','obs','registrado_por','registrado','adjuntos'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
@@ -163,7 +164,7 @@ function setup() {
 const API = {
   batch, listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -186,7 +187,7 @@ function doPost(e) {
 }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, getInventario: 1,
+const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -210,7 +211,7 @@ let SLICE_ = {};         // filas de un día ya leídas en esta petición: 'TABL
 let VER_ = {};           // versiones de tabla ya leídas en esta petición
 let TOCADAS_ = {};       // tablas escritas en esta petición
 // Tablas con una fila por movimiento y columna fecha: se guardan por día en CacheService (clave con la versión de la tabla).
-const POR_DIA_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, VENTAS_DETALLE: 1 };
+const POR_DIA_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, DEVOLUCIONES: 1, VENTAS_DETALLE: 1 };
 const TTL_DIA_ = 300;
 
 function nuevaVersion_() { return String(Date.now()) + Math.random().toString(36).slice(2, 6); }
@@ -808,8 +809,8 @@ function borrarMov(token, tabla, id) {
 // Drive:  Respaldos / <Persona> / <AAAA-MM> / "2026-09-22 Gasto Combustible $25.000 - Jaime Parada.jpg"
 // La carpeta es la de la persona a quien pertenece el registro (no la de quien sube el archivo).
 
-const ADJ_TABLAS = { GASTOS: 'Gasto', COBRANZA: 'Cobranza', PROVEEDORES: 'Proveedor', DEPOSITOS: 'Depósito' };
-const ADJ_ROLES = ['VENDEDOR','RENDICION','SUPERVISOR'];
+const ADJ_TABLAS = { GASTOS: 'Gasto', COBRANZA: 'Cobranza', PROVEEDORES: 'Proveedor', DEPOSITOS: 'Depósito', DEVOLUCIONES: 'Devolución' };
+const ADJ_ROLES = ['VENDEDOR','BODEGA','RENDICION','SUPERVISOR'];
 const MAX_ADJ_MB = 15;
 
 function adjuntosDe_(r) {
@@ -829,6 +830,7 @@ const pesos_ = n => '$' + Math.round(num_(n)).toLocaleString('es-CL').replace(/,
 function duenoAdj_(tabla, r) {
   const nombres = {}; read_('USUARIOS').forEach(u => nombres[u.usuario] = u.nombre);
   if (tabla === 'PROVEEDORES') return { usuario: '', carpeta: 'Proveedores' };
+  if (tabla === 'DEVOLUCIONES') return { usuario: '', carpeta: 'Devoluciones' };
   const us = tabla === 'GASTOS' ? r.responsable : r.vendedor;
   if (!us || us === 'GENERAL') return { usuario: '', carpeta: 'General planta' };
   return { usuario: us, carpeta: nombres[us] || us };
@@ -837,9 +839,11 @@ function nombreAdj_(tabla, r, dueno, n, ext) {
   const detalle = {
     GASTOS: () => r.concepto, COBRANZA: () => r.cliente + (r.folio ? ' folio ' + r.folio : ''),
     PROVEEDORES: () => r.proveedor + (r.folio ? ' ' + (r.documento || 'doc') + ' ' + r.folio : ''),
-    DEPOSITOS: () => r.banco + (r.referencia ? ' N°' + r.referencia : '')
+    DEPOSITOS: () => r.banco + (r.referencia ? ' N°' + r.referencia : ''),
+    DEVOLUCIONES: () => String(r.tipo).toLowerCase() + ' OC ' + r.orden_compra + ' ' + r.producto
   }[tabla]();
-  return limpiarNombre_([r.fecha, ADJ_TABLAS[tabla], detalle, pesos_(r.monto)].filter(String).join(' ') +
+  const valor = tabla === 'DEVOLUCIONES' ? num_(r.cantidad) + ' ' + String(r.unidad).toLowerCase() : pesos_(r.monto);
+  return limpiarNombre_([r.fecha, ADJ_TABLAS[tabla], detalle, valor].filter(String).join(' ') +
     (dueno.usuario ? ' - ' + dueno.carpeta : '') + (n > 1 ? ' (' + n + ')' : '')) + ext;
 }
 
@@ -1347,11 +1351,53 @@ function borrarDeposito(token, id) {
   });
 }
 
+/* ============================ DEVOLUCIONES (mermas y reprocesos) ============================ */
+// Producto que vuelve a la bodega y no se puede vender: MERMA (se descarta) o REPROCESO (vuelve a producción).
+// Cada una se justifica con una orden de compra (N° obligatorio; la foto de la OC se adjunta y, si falta, avisa en la Rendición).
+const DEV_ROLES = ['BODEGA','RENDICION','SUPERVISOR'];
+const DEV_TIPOS = ['MERMA','REPROCESO'];
+
+function listarDevoluciones(token, fecha) {
+  auth_(token, DEV_ROLES);
+  return byFecha_('DEVOLUCIONES', fecha).map(r => { delete r._row; r.cantidad = num_(r.cantidad); r.adjuntos = adjuntosDe_(r); return r; })
+    .sort((a, b) => String(a.registrado) < String(b.registrado) ? 1 : -1);
+}
+
+/** o: {tipo, codigo, cantidad, origen (usuario del vendedor o ''), cliente, orden_compra, motivo, obs} */
+function guardarDevolucion(token, fecha, o) {
+  const u = auth_(token, DEV_ROLES);
+  assertAbierta_(fecha);
+  const tipo = String(o.tipo || '').toUpperCase();
+  if (DEV_TIPOS.indexOf(tipo) < 0) throw new Error('Indica si es merma o reproceso.');
+  const cantidad = num_(o.cantidad);
+  if (!(cantidad > 0)) throw new Error('Ingresa la cantidad.');
+  const oc = String(o.orden_compra || '').trim();
+  if (!oc) throw new Error('Falta el N° de la orden de compra que justifica la devolución.');
+  const p = read_('PRODUCTOS').find(x => codeKey_(x.codigo) === codeKey_(o.codigo));
+  if (!p) throw new Error('Elige el producto.');
+  return withLock_(() => {
+    const r = { id: uid_(), fecha, tipo, origen: String(o.origen || ''), cliente: String(o.cliente || '').trim(), codigo: codeKey_(p.codigo), producto: p.nombre,
+      unidad: p.unidad, cantidad, orden_compra: oc, motivo: String(o.motivo || '').trim(), obs: String(o.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
+    append_('DEVOLUCIONES', [r]); return r;
+  });
+}
+
+function borrarDevolucion(token, id) {
+  auth_(token, DEV_ROLES);
+  return withLock_(() => {
+    const r = read_('DEVOLUCIONES').find(x => x.id === id);
+    if (!r) return true;
+    assertAbierta_(r.fecha);
+    deleteRows_('DEVOLUCIONES', [r._row]); return true;
+  });
+}
+
 /* ============================ RESUMEN / RENDICIÓN ============================ */
 
 function resumen_(fecha) {
-  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'DESPACHO', 'VENTAS_DETALLE', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'PROVEEDORES', 'CONSUMO']);
+  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'DESPACHO', 'VENTAS_DETALLE', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'PROVEEDORES', 'CONSUMO', 'DEVOLUCIONES']);
   const docs = docsDelDia_(fecha);
+  const devs = byFecha_('DEVOLUCIONES', fecha);
   const desp = byFecha_('DESPACHO', fecha);
   const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
   const unidad = {}; read_('PRODUCTOS').forEach(p => unidad[codeKey_(p.codigo)] = p.unidad);
@@ -1412,6 +1458,7 @@ function resumen_(fecha) {
       venta: porVendedor.reduce((a, t) => a + t.venta, 0),
       credito: porVendedor.reduce((a, t) => a + t.credito, 0),
       efectivo: porVendedor.reduce((a, t) => a + t.efectivoEntregar, 0),
+      devoluciones: devs.length,
       cobranza: sum(cob), proveedores: sum(prov), consumo: sum(cons), gastos: sum(gas), depositos: sum(deps)
     },
     alertas: []
@@ -1423,6 +1470,7 @@ function resumen_(fecha) {
       .concat(porVendedor.filter(t => t.sinRetorno).map(t => t.vendedor + ': falta registrar retorno de ' + t.sinRetorno + ' producto(s)'))
       .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(1) + ' kg ' +
         (t.kilos.diferencia > 0 ? 'salieron y no volvieron ni se facturaron' : 'facturados de más respecto a lo que salió')))
+      .concat(devs.filter(x => !lista_(x.adjuntos).length).length ? [devs.filter(x => !lista_(x.adjuntos).length).length + ' devolución(es) sin foto de la orden de compra'] : [])
       .concat(fecha && !hayDetalle && desp.length ? ['Falta importar el Informe de ventas (kilos por producto) para cruzar kilos'] : [])
   };
 }
@@ -1743,6 +1791,13 @@ function generarArchivo_(fecha, r, borrador) {
   K.tabla('', [{ h: 'CLIENTE' }, { h: 'FOLIO' }, { h: 'MONTO', t: '$', sum: 1 }, { h: 'FORMA DE PAGO' }, { h: 'OBSERVACIÓN' }],
     cons.map(x => [x.cliente, x.folio, num_(x.monto), etiquetaForma_(x.forma), x.obs]));
   K.escribir([220, 80, 100, 130, 220]);
+  const dvs = byFecha_('DEVOLUCIONES', fecha);
+  if (dvs.length) {
+    const DV = new Hoja_(ss, 'DEVOLUCIONES', 9); DV.titulo('DEVOLUCIONES (MERMAS Y REPROCESOS) ' + fechaTxt);
+    DV.tabla('', [{ h: 'TIPO' }, { h: 'PRODUCTO' }, { h: 'CANTIDAD', t: 'kg', sum: 0 }, { h: 'UNIDAD' }, { h: 'VIENE DE' }, { h: 'CLIENTE' }, { h: 'N° ORDEN DE COMPRA' }, { h: 'MOTIVO' }, { h: 'FOTO OC' }],
+      dvs.map(x => [x.tipo, x.producto, num_(x.cantidad), x.unidad, x.origen ? ((usuarios[x.origen] || {}).nombre || x.origen) : 'Cliente / otro', x.cliente, x.orden_compra, x.motivo, linkAdj_(x)]));
+    DV.escribir([90, 220, 80, 70, 150, 200, 140, 200, 80]);
+  }
   const GG = new Hoja_(ss, 'GASTOS', 6); GG.titulo('GASTOS ' + fechaTxt);
   GG.tabla('', [{ h: 'RESPONSABLE' }, { h: 'CONCEPTO' }, { h: 'N° BOLETA' }, { h: 'MONTO', t: '$', sum: 1 }, { h: 'OBSERVACIÓN' }, { h: 'FOTO / ARCHIVO' }],
     gas.map(x => [(usuarios[x.responsable] || {}).nombre || (x.responsable === 'GENERAL' ? 'General planta' : x.responsable), x.concepto, x.respaldo, num_(x.monto), x.obs, linkAdj_(x)]));

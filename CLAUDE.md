@@ -86,6 +86,13 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - Al elegir cheque (detalle rápido, detallar varios, detalle completo y Cobranza) se piden: banco emisor (`BANCOS_CHEQUE`, bancos chilenos + Otro), N° de cheque y fecha del cheque, es decir desde cuándo se puede cobrar, no cuándo se cobra (obligatorios) y titular/RUT (opcional). Helpers en app: `camposCheque`, `leerCheque`, `avisoTipoCheque` (al día / a fecha).
 - Servidor: `datosCheque_` valida; columnas `cheque_numero`, `cheque_fecha`, `cheque_titular` en PAGOS y COBRANZA (el banco del cheque va en `banco`; referencia = "Cheque N° …"). El archivo de rendición agrega por vendedor la tabla CHEQUES RECIBIDOS (ventas y cobranza, al día / a fecha).
 
+## Devoluciones (mermas y reprocesos)
+- Producto que vuelve a la bodega y no se puede vender: **MERMA** (se descarta) o **REPROCESO** (vuelve a producción). Se justifica con una **orden de compra**: el N° es obligatorio y se adjunta la foto de la OC (si falta, chip "Sin foto de la OC" y aviso en Rendición).
+- Hoja DEVOLUCIONES (`id, fecha, tipo, origen, cliente, codigo, producto, unidad, cantidad, orden_compra, motivo, obs, registrado_por, registrado, adjuntos`). API `listarDevoluciones` (lectura), `guardarDevolucion`, `borrarDevolucion`; roles BODEGA, RENDICION, SUPERVISOR, ADMIN. Pantalla `vDevoluciones` (pestaña "Devoluciones" en Bodega); `origen` = vendedor de la ruta o '' (cliente/otro).
+- Fotos: tabla de adjuntos `DEVOLUCIONES` (Drive: Respaldos/Devoluciones/<AAAA-MM>/"<fecha> Devolución <tipo> OC <n> <producto> <cantidad>"). BODEGA ya puede subir adjuntos.
+- Archivo de rendición: hoja DEVOLUCIONES (solo si hubo). El resumen cuenta `totales.devoluciones`.
+- NO toca el inventario (la merma/reproceso ya sale como destino MERMA/REPROCESO en INVENTARIO_MOV); evita doble descuento. Pendiente: cruzar con inventario si se quiere.
+
 ## Inspección por vendedor (Rendición)
 - API `getInspeccion(token, fecha, vendedor)` (vendedor '' = todos con movimiento): totales con las mismas cuentas que la hoja del vendedor, transferencias por banco (ventas + cobranza), cheques, cobranza, gastos, depósitos, créditos y folios con sus pagos.
 - En Rendición, cada tarjeta de vendedor se puede tocar (hover + "Ver detalle ›") y abre `abrirVendedor`: efectivo a entregar, resumen, folios (por detallar / detallados / todos, con forma de pago y quién detalló) y el detalle por sección.

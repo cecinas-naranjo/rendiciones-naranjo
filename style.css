@@ -242,6 +242,13 @@ body:has(.ov) .toast{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto}
 .dfolio.pend{border-left:3px solid var(--cu);padding-left:10px;background:var(--cu-soft)}
 .dfolio .muted{font-size:13px;margin-top:2px}
 
+/* ---------- devoluciones ---------- */
+.dvres{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.dvres>div{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
+.dvres span{display:block;font-size:13px;font-weight:600;color:var(--ink-2)}.dvres b{font-size:24px}.dvres small{display:block;color:var(--mut);font-size:13px}
+.dev{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:8px}
+.dev .muted{font-size:13.5px;margin-top:3px}
+
 /* ---------- inspección para imprimir ---------- */
 #imprimir{display:none}
 @media print{

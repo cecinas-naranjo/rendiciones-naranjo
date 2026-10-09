@@ -28,6 +28,7 @@ const IC = {
   clip: '<path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"/>',
   camera: '<path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/>',
   store: '<path d="M3 9l1.5-5h15L21 9M4 9v11h16V9M3 9h18M9 20v-6h6v6"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>'
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
@@ -52,7 +53,7 @@ function render(el, html) {
 }
 
 /* ---------- fotos y archivos de respaldo ---------- */
-const ADJ = { GASTOS: 1, COBRANZA: 1, PROVEEDORES: 1, DEPOSITOS: 1 };
+const ADJ = { GASTOS: 1, COBRANZA: 1, PROVEEDORES: 1, DEPOSITOS: 1, DEVOLUCIONES: 1 };
 /** Achica las fotos (máx. 1600 px, JPEG) para que suban rápido con datos móviles. */
 async function prepararArchivo(f) {
   let blob = f, nombre = f.name || 'archivo', tipo = f.type || 'application/octet-stream';
@@ -104,11 +105,11 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
-  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', historial: 'Cargando historial…' };
+  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', historial: 'Cargando historial…' };
 const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
   : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
 
@@ -227,6 +228,7 @@ function precargar(tabs) {
   const q = { folios: ['misDocumentos', [tok, F, S.vend]], inventario: ['getInventario', [tok, F]], resumen: ['getResumen', [tok, F]],
     saldos: ['getSaldosClientes', [tok]], descuentos: ['descuentosPendientes', [tok]], depositos: ['efectivoParaDepositar', [tok, F, esV ? '' : S.vend]],
     despacho: (S.vend || (S.cat.vendedores[0] || {}).usuario) ? ['getDespacho', [tok, F, S.vend || S.cat.vendedores[0].usuario]] : null,
+    devoluciones: ['listarDevoluciones', [tok, F]],
     historial: ['historial', [tok]] };
   const lista = [];
   tabs.forEach(t => {
@@ -247,15 +249,15 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 
 const TABS = {
   VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
-  BODEGA: [['despacho', 'Despacho', 'box'], ['inventario', 'Inventario', 'stack']],
-  RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
+  BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
+  RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['devoluciones', 'Devoluciones'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
     ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR;
 // En oficina, las pestañas se agrupan en 5 secciones para no tener 12 opciones a la vista
 const GRUPOS = [['g-rend', 'Rendición', ['resumen']], ['g-ventas', 'Ventas', ['folios', 'importar', 'descuentos']],
-  ['g-bodega', 'Bodega', ['despacho', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
+  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
   ['g-hist', 'Historial', ['historial']]];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
@@ -354,7 +356,7 @@ function ir(t, silencioso) {
   const y = window.scrollY;
   if (!silencioso) m.innerHTML = skeleton(4);
   S.silencio = !!silencioso;
-  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, devoluciones: vDevoluciones, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   Promise.resolve(v(m, t)).catch(() => {
     if (!silencioso && m.querySelector('.sk')) m.innerHTML = `<div class="empty"><b>No se pudo cargar</b>Revisa tu conexión.<br><button class="btn ghost sm" style="margin-top:10px" onclick="ir(S.tab)">Reintentar</button></div>`;
   }).finally(() => {
@@ -708,6 +710,63 @@ function marcarVarios(docs, alGuardar) {
     } catch (e) {}
   };
   pintar();
+}
+
+/* ============ DEVOLUCIONES (mermas y reprocesos) ============ */
+const MOTIVOS_DEV = ['Producto vencido', 'Mal estado / en mal olor', 'Empaque dañado', 'Error de pedido', 'Reclamo de calidad', 'Otro'];
+async function vDevoluciones(m) {
+  const rows = await api('listarDevoluciones', S.sess.token, S.fecha);
+  const cats = {}; S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
+  const opcProd = Object.keys(cats).map(c => `<optgroup label="${esc(CATS[c] || c)}">${cats[c].map(p => `<option value="${esc(p.codigo)}" data-u="${esc(p.unidad)}">${esc(p.nombre)}</option>`).join('')}</optgroup>`).join('');
+  let tipo = 'MERMA';
+  render(m, `<h2>Devoluciones</h2><p class="lead">Producto que vuelve y no se puede vender. <b>Merma</b>: se descarta. <b>Reproceso</b>: vuelve a producción. Cada una se justifica con una orden de compra.</p>
+    <div class="card" id="dvf">
+      <div class="seg" id="dvt" style="width:100%;display:grid;grid-template-columns:1fr 1fr"><button type="button" data-t="MERMA" class="on">Merma</button><button type="button" data-t="REPROCESO">Reproceso</button></div>
+      <div class="grid g3" style="margin-top:12px">
+        <div><label class="f" for="dv_p">Producto</label><select class="in" id="dv_p"><option value="">Elige un producto…</option>${opcProd}</select></div>
+        <div><label class="f" for="dv_c">Cantidad <span class="muted" id="dv_u"></span></label><input class="in n" id="dv_c" inputmode="decimal" placeholder="0"></div>
+        <div><label class="f" for="dv_oc">N° orden de compra</label><input class="in" id="dv_oc" inputmode="numeric" autocomplete="off"></div>
+        <div><label class="f" for="dv_o">Viene de</label><select class="in" id="dv_o"><option value="">Cliente / otro</option>${opcVend('')}</select></div>
+        <div><label class="f" for="dv_cl">Cliente (si corresponde)</label><input class="in" id="dv_cl" autocomplete="off"></div>
+        <div><label class="f" for="dv_m">Motivo</label><select class="in" id="dv_m">${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select></div>
+        <div><label class="f" for="dv_ob">Observación</label><input class="in" id="dv_ob" autocomplete="off"></div>
+        ${campoArchivos('dvf_a').replace('Foto o archivo de respaldo', 'Foto de la orden de compra')}
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="dv_ad">Registrar devolución</button></div></div>
+    <div id="dvl" style="margin-top:16px"></div>`);
+  enlazarCampoArchivos('dvf_a');
+  const sel = $('#dv_p'); sel.onchange = () => { const o = sel.selectedOptions[0]; $('#dv_u').textContent = o && o.dataset.u ? '(' + (o.dataset.u === 'UN' ? 'unidades' : 'kilos') + ')' : ''; };
+  $('#dvt').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; $$('#dvt button').forEach(x => x.classList.toggle('on', x === b)); };
+  const fmt = (n, u) => u === 'UN' ? String(Math.round(n * 100) / 100).replace('.', ',') + ' un' : kg(n) + ' kg';
+  function lista(rs) {
+    const res = t => { const xs = rs.filter(r => r.tipo === t), k = xs.filter(r => r.unidad !== 'UN').reduce((a, r) => a + r.cantidad, 0), u = xs.filter(r => r.unidad === 'UN').reduce((a, r) => a + r.cantidad, 0);
+      return `<div><span>${t === 'MERMA' ? 'Mermas' : 'Reprocesos'}</span><b>${xs.length}</b><small>${[k ? kg(k) + ' kg' : '', u ? u + ' un' : ''].filter(Boolean).join(' · ') || '—'}</small></div>`; };
+    $('#dvl').innerHTML = rs.length ? `<div class="dvres">${res('MERMA')}${res('REPROCESO')}</div>` + rs.map(r => `<div class="dev">
+        <div class="row"><span class="grow"><span class="chip ${r.tipo === 'MERMA' ? 'bad' : 'warn'}">${r.tipo === 'MERMA' ? 'Merma' : 'Reproceso'}</span> <b>${esc(r.producto)}</b></span><b>${fmt(r.cantidad, r.unidad)}</b></div>
+        <div class="muted">OC N° <b>${esc(r.orden_compra)}</b>${r.motivo ? ' · ' + esc(r.motivo) : ''}${r.origen ? ' · viene de ' + esc((S.cat.vendedores.find(v => v.usuario === r.origen) || {}).nombre || r.origen) : ''}${r.cliente ? ' · ' + esc(r.cliente) : ''}${r.obs ? ' · ' + esc(r.obs) : ''}</div>
+        <div class="row" style="margin-top:6px">${r.adjuntos.length ? chipsAdj(r.adjuntos, 'DEVOLUCIONES', r.id, true) : `<span class="chip warn">Sin foto de la OC</span>${chipsAdj([], 'DEVOLUCIONES', r.id, true)}`}<span class="grow"></span>
+          <button class="x" style="min-height:34px;width:34px" data-id="${esc(r.id)}" aria-label="Borrar">×</button></div></div>`).join('')
+      : '<div class="empty">Sin devoluciones este día.</div>';
+  }
+  lista(rows);
+  const recargar = async () => { const args = [S.sess.token, S.fecha]; lista(copia(await pedir('listarDevoluciones', args, claveApi('listarDevoluciones', args)))); };   // siempre lo último del servidor
+  activarAdjuntarDespues($('#dvl'), recargar);
+  $('#dvl').addEventListener('click', async e => { const id = e.target.dataset && e.target.dataset.id; if (!id || !confirm('¿Borrar esta devolución?')) return;
+    await api('borrarDevolucion', S.sess.token, id); await recargar(); });
+  $('#dv_ad').onclick = async () => {
+    const o = { tipo, codigo: sel.value, cantidad: String(dec($('#dv_c').value)), orden_compra: $('#dv_oc').value.trim(), origen: $('#dv_o').value, cliente: $('#dv_cl').value.trim(), motivo: $('#dv_m').value, obs: $('#dv_ob').value.trim() };
+    if (!o.codigo) return toast('Elige el producto.', true);
+    if (!(dec(o.cantidad) > 0)) return toast('Ingresa la cantidad.', true);
+    if (!o.orden_compra) return toast('Falta el N° de la orden de compra.', true);
+    const b = $('#dv_ad'); b.disabled = true;
+    try {
+      const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, o); toast('Devolución registrada');
+      const fs = [...$('#dvf_a').files];
+      if (fs.length) { try { await subirArchivos('DEVOLUCIONES', nuevo.id, fs); } catch (e) { toast('Quedó registrada, pero la foto no subió. Usa "Adjuntar" en la devolución.', true); } }
+      ['#dv_c', '#dv_oc', '#dv_cl', '#dv_ob'].forEach(x => $(x).value = ''); sel.value = ''; sel.onchange(); $('#dvf_a').value = ''; $('#dvf_a').onchange();
+      await recargar();
+    } finally { b.disabled = false; }
+  };
 }
 
 /* ============ DESPACHO Y RETORNO ============ */
