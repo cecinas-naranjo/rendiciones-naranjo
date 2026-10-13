@@ -86,6 +86,15 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - Al elegir cheque (detalle rápido, detallar varios, detalle completo y Cobranza) se piden: banco emisor (`BANCOS_CHEQUE`, bancos chilenos + Otro), N° de cheque y fecha del cheque, es decir desde cuándo se puede cobrar, no cuándo se cobra (obligatorios) y titular/RUT (opcional). Helpers en app: `camposCheque`, `leerCheque`, `avisoTipoCheque` (al día / a fecha).
 - Servidor: `datosCheque_` valida; columnas `cheque_numero`, `cheque_fecha`, `cheque_titular` en PAGOS y COBRANZA (el banco del cheque va en `banco`; referencia = "Cheque N° …"). El archivo de rendición agrega por vendedor la tabla CHEQUES RECIBIDOS (ventas y cobranza, al día / a fecha).
 
+## Kilos con 2 decimales y diferencia en plata
+- `kilosDe_` (servidor) calcula por vendedor y producto: salida − retorno − facturado, a 2 decimales. `preciosKg_`: precio por kilo del día = total facturado / kilos facturados (VENTAS_DETALLE, sin guías); si no hubo ventas de ese producto, el precio de PRODUCTOS. `diferenciaPesos` > 0 = salió y no volvió ni se facturó → se descuenta de la liquidación del vendedor; < 0 = a favor.
+- Se muestra en la tarjeta del vendedor, en el detalle (`abrirVendedor`, con el cálculo por producto), en la inspección impresa (bloque informativo, no entra al Total) y en el archivo de rendición (hoja del vendedor KILOS con PRECIO KG y DIFERENCIA $, y columna DIF. KILOS $ en RESUMEN).
+
+## Efectivo del día (conteo y depósito)
+- Pestaña "Efectivo" en Rendición. Por vendedor: cantidad de billetes de $20.000/$10.000/$5.000/$2.000/$1.000 y monedas (un solo total). Esperado = efectivo a entregar (ventas + cobranza − gastos − depositado). Muestra "Cuadra / Falta / Sobra".
+- Resumen del día: billetes contados (con el desglose), monedas (NO se depositan), diferencia, caja chica (opcional, con motivo) y **Efectivo a depositar = billetes − caja chica**.
+- Hoja CONTEO_EFECTIVO (`key = fecha|vendedor`; fila `GENERAL` guarda la caja chica). API `getConteoEfectivo` (lectura) y `guardarConteoEfectivo`. El archivo de rendición agrega la hoja "EFECTIVO A DEPOSITAR" si hay conteo.
+
 ## Devoluciones (mermas y reprocesos)
 - Producto que vuelve a la bodega y no se puede vender: **MERMA** (se descarta) o **REPROCESO** (vuelve a producción). Se justifica con una **nota de crédito**: el N° es obligatorio y se adjunta la foto de la NC (si falta, chip "Sin foto de la NC" y aviso en Rendición).
 - Hoja DEVOLUCIONES (`id, fecha, tipo, origen, cliente, codigo, producto, unidad, cantidad, nota_credito, motivo, obs, registrado_por, registrado, adjuntos`). API `listarDevoluciones` (lectura), `guardarDevolucion`, `borrarDevolucion`; roles BODEGA, RENDICION, SUPERVISOR, ADMIN. Pantalla `vDevoluciones` (pestaña "Devoluciones" en Bodega); `origen` = vendedor de la ruta o '' (cliente/otro).
@@ -150,3 +159,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - `th,td{white-space:nowrap}` es global para las tablas de la app; en `.ins` se anula (`white-space:normal`) para que los nombres largos salten de línea. RUT y montos van en `nowrap`.
 - Al imprimir `html,body` quedan sin altura fija ni scroll; los modales usan `overflow-x:hidden` y `::-webkit-scrollbar-corner` transparente (evita el cuadrado gris de las barras de desplazamiento en Windows).
 - El modal del vendedor muestra el RUT bajo/junto al cliente en folios, transferencias, cheques y cobranza.
+
+## Pendiente (pedido 13-10-2026)
+- Lista de créditos de la empresa (se sube desde Excel) para que Cobranza muestre lo que hay por cobrar, vinculada por RUT a la razón social del DTE.
+- Planilla única de cuentas por cobrar: créditos + cheques (los cheques se tratan como crédito hasta que se cobran).

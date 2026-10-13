@@ -7,7 +7,7 @@
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const clp = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
-const kg = n => (Math.round((Number(n) || 0) * 10) / 10).toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const kg = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const soloDigitos = v => Number(String(v).replace(/\D/g, '')) || 0;
 const dec = v => Number(String(v).replace(',', '.')) || 0;
@@ -105,11 +105,11 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
-  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', historial: 'Cargando historial…' };
+  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', historial: 'Cargando historial…' };
 const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
   : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
 
@@ -228,7 +228,7 @@ function precargar(tabs) {
   const q = { folios: ['misDocumentos', [tok, F, S.vend]], inventario: ['getInventario', [tok, F]], resumen: ['getResumen', [tok, F]],
     saldos: ['getSaldosClientes', [tok]], descuentos: ['descuentosPendientes', [tok]], depositos: ['efectivoParaDepositar', [tok, F, esV ? '' : S.vend]],
     despacho: (S.vend || (S.cat.vendedores[0] || {}).usuario) ? ['getDespacho', [tok, F, S.vend || S.cat.vendedores[0].usuario]] : null,
-    devoluciones: ['listarDevoluciones', [tok, F]],
+    devoluciones: ['listarDevoluciones', [tok, F]], efectivo: ['getConteoEfectivo', [tok, F]],
     historial: ['historial', [tok]] };
   const lista = [];
   tabs.forEach(t => {
@@ -250,13 +250,13 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 const TABS = {
   VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
   BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
-  RENDICION: [['resumen', 'Rendición'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['devoluciones', 'Devoluciones'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
+  RENDICION: [['resumen', 'Rendición'], ['efectivo', 'Efectivo'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['devoluciones', 'Devoluciones'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
     ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR;
 // En oficina, las pestañas se agrupan en 5 secciones para no tener 12 opciones a la vista
-const GRUPOS = [['g-rend', 'Rendición', ['resumen']], ['g-ventas', 'Ventas', ['folios', 'importar', 'descuentos']],
+const GRUPOS = [['g-rend', 'Rendición', ['resumen', 'efectivo']], ['g-ventas', 'Ventas', ['folios', 'importar', 'descuentos']],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
   ['g-hist', 'Historial', ['historial']]];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
@@ -356,7 +356,7 @@ function ir(t, silencioso) {
   const y = window.scrollY;
   if (!silencioso) m.innerHTML = skeleton(4);
   S.silencio = !!silencioso;
-  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, devoluciones: vDevoluciones, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   Promise.resolve(v(m, t)).catch(() => {
     if (!silencioso && m.querySelector('.sk')) m.innerHTML = `<div class="empty"><b>No se pudo cargar</b>Revisa tu conexión.<br><button class="btn ghost sm" style="margin-top:10px" onclick="ir(S.tab)">Reintentar</button></div>`;
   }).finally(() => {
@@ -1036,6 +1036,9 @@ async function abrirVendedor(usuario) {
           <div class="muted">${f.estado === 'DETALLADO' ? f.pagos.map(p => esc(textoPago(p)) + (f.pagos.length > 1 ? ' ' + clp(p.monto) : '')).join(' + ')
             + (f.descAprob ? ' · descuento ' + clp(f.descAprob) : '') + (f.detalladoPor ? ' · por ' + esc(f.detalladoPor.split(' ')[0]) : '')
             : f.descPend ? 'Descuento esperando autorización' : 'Por detallar'}</div></div>`).join('') : '<div class="muted" style="padding:6px 0">No hay folios en este filtro.</div>'}</div>
+      ${v.kilos && v.kilos.detalle.length ? `<div class="dsec"><div class="dtit"><b>Diferencia de kilos</b><span>${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)} kg · ${v.kilos.diferenciaPesos > 0 ? 'a descontar ' : 'a favor '}${clp(Math.abs(v.kilos.diferenciaPesos))}</span></div>
+        ${v.sinRetorno ? `<p class="muted" style="margin:6px 0">Falta registrar el retorno de ${v.sinRetorno} producto(s): la diferencia es provisoria.</p>` : ''}
+        ${v.kilos.detalle.map(d => fila(esc(d.producto), `sale ${kg(d.salida)} − vuelve ${kg(d.retorno)} − factura ${kg(d.facturado)} = ${d.diferencia > 0 ? '+' : ''}${kg(d.diferencia)} kg × ${clp(d.precio)}`, d.monto)).join('')}</div>` : ''}
       ${Object.keys(v.transf).map(b => sec('Transferencias ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0),
         v.transf[b].map(x => fila(conRut(x), esc(x.origen), x.monto)).join(''))).join('')}
       ${sec('Cheques', v.cheques.length, t.cheques, v.cheques.map(x => fila(conRut(x), esc([x.numero ? 'N° ' + x.numero : '', nombreBanco(x.banco), x.momento +
@@ -1130,6 +1133,10 @@ async function imprimirInspeccion(usuario) {
       ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${depHtml}
       <table class="s sp">${t.gastos ? suma('(−) Suma de gastos', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, -t.gastos, true) : ''}
         </table>
+      ${v.kilos && v.kilos.detalle.length ? `<div class="blk"><div class="bt"><span><b>Diferencia de kilos</b> <small>${v.kilos.diferencia > 0 ? 'a descontar de su liquidación' : 'a favor del vendedor'} · no entra al total</small></span><b class="m">${mm(v.kilos.diferenciaPesos)}</b><i></i></div>
+        <table class="d"><colgroup><col><col style="width:2cm"><col style="width:2cm"><col style="width:2cm"><col style="width:2.3cm"><col style="width:2.6cm"><col style="width:15pt"></colgroup>
+        <tr><td class="g">Producto</td><td class="m g">Sale − vuelve</td><td class="m g">Factura</td><td class="m g">Dif. kg</td><td class="m g">Precio kg</td><td class="m g">Monto</td>${SINCK}</tr>
+        ${v.kilos.detalle.map(d => `<tr><td>${esc(d.producto)}</td><td class="m g">${kg(d.salida - d.retorno)}</td><td class="m g">${kg(d.facturado)}</td><td class="m">${kg(d.diferencia)}</td><td class="m g">${clp(d.precio)}</td><td class="m">${mm(d.monto)}</td>${CK}</tr>`).join('')}</table></div>` : ''}
       ${credHtml || (t.credito ? `<table class="s">${suma('Crédito', '', t.credito, true)}</table>` : '')}
       <table class="fin"><tr><td class="fl"><div class="firmas"><div>Firma vendedor</div><div>Firma encargada</div></div></td><td class="fr">
         <table class="comp">${comp.map(c => `<tr><td>${c[0]}</td><td class="m">${mm(c[1])}</td></tr>`).join('')}<tr class="tot"><td>Total detalle</td><td class="m">${clp(totalDetalle)}</td></tr></table></td></tr></table>
@@ -1239,6 +1246,53 @@ async function vImportar(m) {
   }
 }
 
+/* ============ EFECTIVO DEL DÍA: conteo de billetes y monto a depositar ============ */
+const BILLETES = [20000, 10000, 5000, 2000, 1000];
+async function vEfectivo(m) {
+  const r = await api('getConteoEfectivo', S.sess.token, S.fecha), cerrada = r.estado === 'CERRADA';
+  if (!r.vendedores.length) return render(m, `<h2>Efectivo del día</h2><div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>`);
+  const n = el => soloDigitos(el.value);
+  render(m, `<h2>Efectivo del día</h2><p class="lead">Cuenta el efectivo de cada vendedor: cuántos billetes de cada tipo y las monedas (las monedas no se depositan). Abajo queda cuánto hay que depositar.</p>
+    ${r.vendedores.map(v => `<div class="card efv" data-u="${esc(v.usuario)}" data-esp="${v.esperado}" style="margin-bottom:10px">
+      <div class="row"><b class="grow" style="font-size:17px">${esc(v.nombre)}</b><span class="muted">Debe entregar <b>${clp(v.esperado)}</b></span></div>
+      <div class="bill">${BILLETES.map(b => `<label><span>${clp(b)}</span><input class="in n" inputmode="numeric" data-b="${b}" value="${v['b' + b] || ''}" ${cerrada ? 'disabled' : ''} aria-label="Billetes de ${clp(b)} de ${esc(v.nombre)}" placeholder="0"></label>`).join('')}
+        <label class="mon"><span>Monedas ($)</span><input class="in n" inputmode="numeric" data-mon value="${v.monedas || ''}" ${cerrada ? 'disabled' : ''} aria-label="Monedas de ${esc(v.nombre)}" placeholder="0"></label></div>
+      <div class="row efr"><span class="muted">Billetes <b data-bt></b> · contado <b data-ct></b></span><span class="grow"></span><span data-df></span></div></div>`).join('')}
+    <div class="card" id="efs" style="border:1.5px solid var(--ink)">
+      <dl class="efd"><dt>Efectivo que debían entregar</dt><dd id="s_esp"></dd>
+        <dt>Billetes contados</dt><dd id="s_bil"></dd><dt class="muted" id="s_det" style="grid-column:1/-1;text-align:left"></dt>
+        <dt>Monedas (no se depositan)</dt><dd id="s_mon"></dd>
+        <dt>Diferencia (contado − esperado)</dt><dd id="s_dif"></dd></dl>
+      <div class="grid g2" style="margin:10px 0"><div><label class="f" for="cc">Caja chica (se descuenta del depósito)</label><input class="in n" id="cc" inputmode="numeric" value="${r.cajaChica || ''}" placeholder="0" ${cerrada ? 'disabled' : ''}></div>
+        <div><label class="f" for="cco">Para qué es la caja chica</label><input class="in" id="cco" value="${esc(r.obs)}" ${cerrada ? 'disabled' : ''}></div></div>
+      <div class="dbox" style="margin-top:6px"><span>Efectivo a depositar</span><b id="s_dep"></b><small>Billetes contados − caja chica</small></div>
+      ${cerrada ? '<p class="muted">El día está cerrado: solo ADMIN puede reabrirlo para cambiar el conteo.</p>' : '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="efg">Guardar conteo</button></div>'}</div>`);
+  const filas = $$('.efv', m);
+  function calc() {
+    let esp = 0, bil = 0, mon = 0; const por = {}; BILLETES.forEach(b => por[b] = 0);
+    filas.forEach(f => {
+      let b = 0; $$('[data-b]', f).forEach(i => { const q = n(i); b += q * Number(i.dataset.b); por[i.dataset.b] += q; });
+      const mo = n($('[data-mon]', f)), e = Number(f.dataset.esp), dif = b + mo - e;
+      $('[data-bt]', f).textContent = clp(b); $('[data-ct]', f).textContent = clp(b + mo);
+      $('[data-df]', f).innerHTML = b + mo === 0 ? '' : dif === 0 ? '<span class="chip ok">Cuadra</span>' : `<span class="chip ${dif < 0 ? 'bad' : 'warn'}">${dif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(dif))}</span>`;
+      esp += e; bil += b; mon += mo;
+    });
+    const cc = n($('#cc')), dif = bil + mon - esp;
+    $('#s_esp').textContent = clp(esp); $('#s_bil').textContent = clp(bil); $('#s_mon').textContent = clp(mon);
+    $('#s_det').textContent = BILLETES.filter(b => por[b]).map(b => por[b] + ' × ' + clp(b)).join(' · ') || 'Sin billetes contados todavía';
+    $('#s_dif').innerHTML = bil + mon === 0 ? '—' : dif === 0 ? '<span class="chip ok">Cuadra</span>' : `<span class="chip ${dif < 0 ? 'bad' : 'warn'}">${dif < 0 ? 'Faltan ' : 'Sobran '}${clp(Math.abs(dif))}</span>`;
+    $('#s_dep').textContent = clp(bil - cc);
+    return { esp, bil, mon, cc };
+  }
+  m.oninput = e => { if (e.target.matches('input')) { S.tocado = true; calc(); } };
+  calc();
+  if ($('#efg')) $('#efg').onclick = async () => {
+    const b = $('#efg'); b.disabled = true;
+    const datos = { cajaChica: n($('#cc')), obs: $('#cco').value.trim(), filas: filas.map(f => { const o = { vendedor: f.dataset.u, monedas: n($('[data-mon]', f)) }; $$('[data-b]', f).forEach(i => o['b' + i.dataset.b] = n(i)); return o; }) };
+    try { await api('guardarConteoEfectivo', S.sess.token, S.fecha, datos); toast('Conteo guardado'); S.tocado = false; } finally { b.disabled = false; }
+  };
+}
+
 /* ============ RENDICIÓN ============ */
 async function vResumen(m) {
   const r = await api('getResumen', S.sess.token, S.fecha);
@@ -1274,7 +1328,8 @@ async function vResumen(m) {
         <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
         ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
           <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
-          ${r.hayDetalle ? `<dt>Diferencia kilos</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)}</dd>` : ''}` : ''}
+          ${r.hayDetalle ? `<dt>Diferencia kilos</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)}</dd>
+          ${v.kilos.diferenciaPesos ? `<dt>${v.kilos.diferenciaPesos > 0 ? 'A descontar de su liquidación' : 'A favor del vendedor'}</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${clp(Math.abs(v.kilos.diferenciaPesos))}</dd>` : ''}` : ''}` : ''}
       </dl><div class="vermas">Ver detalle ›</div></div>`).join('')}</div>` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
     ${r.sinAsignar.length ? `<h3>Documentos sin vendedor</h3><div class="tw"><table><thead><tr><th>Documento</th><th>Cliente</th><th>Terminal</th><th class="r">Total</th><th>Asignar a</th></tr></thead><tbody>
       ${r.sinAsignar.map(d => `<tr><td>${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)}</td><td>${esc(d.cliente)}</td><td>${esc(d.terminal)}</td><td class="r">${clp(d.total)}</td>

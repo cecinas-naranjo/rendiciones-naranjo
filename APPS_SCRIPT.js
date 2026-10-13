@@ -41,6 +41,7 @@ const SCHEMA = {
   COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado','adjuntos','cheque_numero','cheque_fecha','cheque_titular'],
   PROVEEDORES: ['id','fecha','proveedor','documento','folio','monto','forma','obs','registrado_por','registrado','adjuntos'],
   CONSUMO:     ['id','fecha','cliente','folio','monto','forma','obs','registrado_por','registrado'],
+  CONTEO_EFECTIVO: ['key','fecha','vendedor','b20000','b10000','b5000','b2000','b1000','monedas','caja_chica','obs','registrado_por','registrado'],
   DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','nota_credito','motivo','obs','registrado_por','registrado','adjuntos'],
   GASTOS:      ['id','fecha','responsable','concepto','monto','respaldo','obs','registrado_por','registrado','adjuntos'],
   DEPOSITOS:   ['id','fecha','vendedor','banco','monto','referencia','folios','cobranzas','obs','registrado_por','registrado','adjuntos'],
@@ -164,7 +165,7 @@ function setup() {
 const API = {
   batch, listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -187,7 +188,7 @@ function doPost(e) {
 }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, getInventario: 1,
+const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, getConteoEfectivo: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -1392,6 +1393,64 @@ function borrarDevolucion(token, id) {
   });
 }
 
+/** Precio por kilo de cada producto ese día = total facturado / kilos facturados (Informe de ventas). Si no se facturó, el de la lista de precios. */
+function preciosKg_(detV) {
+  const t = {}, q = {};
+  detV.forEach(x => { const c = codeKey_(x.codigo); t[c] = (t[c] || 0) + num_(x.total); q[c] = (q[c] || 0) + num_(x.cantidad); });
+  const p = {};
+  read_('PRODUCTOS').forEach(x => { const c = codeKey_(x.codigo); p[c] = q[c] > 0 ? t[c] / q[c] : num_(x.precio); });
+  Object.keys(q).forEach(c => { if (!(c in p)) p[c] = q[c] > 0 ? t[c] / q[c] : 0; });
+  return p;
+}
+/** Kilos de un vendedor: salida − retorno vs facturado, por producto, con 2 decimales, y la diferencia valorizada en pesos
+ *  (positivo = salió y no volvió ni se facturó: se descuenta de su liquidación). */
+function kilosDe_(v, desp, detV, unidad, precios) {
+  const m = {};
+  const it = (c, nombre) => m[c] = m[c] || { codigo: c, producto: nombre, salida: 0, retorno: 0, facturado: 0 };
+  desp.filter(x => x.vendedor === v && x.unidad !== 'UN').forEach(x => { const o = it(codeKey_(x.codigo), x.producto); o.salida += num_(x.salida); o.retorno += num_(x.retorno); });
+  detV.filter(x => x.vendedor === v && unidad[codeKey_(x.codigo)] !== 'UN').forEach(x => { it(codeKey_(x.codigo), x.producto).facturado += num_(x.cantidad); });
+  const r2 = n => Math.round(n * 100) / 100, L = Object.keys(m).map(c => m[c]);
+  const detalle = L.map(o => { const dif = o.salida - o.retorno - o.facturado, pr = precios[o.codigo] || 0;
+    return { codigo: o.codigo, producto: o.producto, salida: r2(o.salida), retorno: r2(o.retorno), facturado: r2(o.facturado), diferencia: r2(dif), precio: Math.round(pr), monto: Math.round(dif * pr) }; });
+  const salida = L.reduce((a, o) => a + o.salida, 0), retorno = L.reduce((a, o) => a + o.retorno, 0), fact = L.reduce((a, o) => a + o.facturado, 0);
+  return { salida: r2(salida), retorno: r2(retorno), vendido: r2(salida - retorno), facturado: r2(fact), diferencia: r2(salida - retorno - fact),
+    diferenciaPesos: detalle.reduce((a, d) => a + d.monto, 0), detalle: detalle.filter(d => Math.abs(d.diferencia) >= 0.005) };
+}
+
+/* ============================ CONTEO DE EFECTIVO Y DEPÓSITO ============================ */
+// La encargada cuenta el efectivo de cada vendedor: billetes por denominación y monedas (un total; no se depositan).
+// A depositar = billetes contados − caja chica. Esperado = efectivo de ventas + cobranza − gastos − lo que el vendedor ya depositó.
+const BILLETES = [20000, 10000, 5000, 2000, 1000];
+
+function getConteoEfectivo(token, fecha) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  const r = resumen_(fecha);
+  const nombres = {}; read_('USUARIOS').forEach(u => nombres[u.usuario] = u.nombre);
+  const guardado = {}; byFecha_('CONTEO_EFECTIVO', fecha).forEach(x => guardado[x.vendedor] = x);
+  const fila = x => { const o = {}; BILLETES.forEach(b => o['b' + b] = Math.round(num_((x || {})['b' + b]))); o.monedas = Math.round(num_((x || {}).monedas)); return o; };
+  const g = guardado.GENERAL || {};
+  return { fecha, estado: r.estado,
+    vendedores: r.porVendedor.map(t => Object.assign({ usuario: t.vendedor, nombre: nombres[t.vendedor] || t.vendedor, esperado: t.efectivoEntregar, guardado: !!guardado[t.vendedor] }, fila(guardado[t.vendedor]))),
+    cajaChica: Math.round(num_(g.caja_chica)), obs: g.obs || '' };
+}
+
+/** datos: {filas:[{vendedor, b20000, b10000, b5000, b2000, b1000, monedas}], cajaChica, obs} */
+function guardarConteoEfectivo(token, fecha, datos) {
+  const u = auth_(token, ['RENDICION','SUPERVISOR']);
+  assertAbierta_(fecha);
+  const n = x => { const v = Math.round(num_(x)); if (v < 0) throw new Error('Las cantidades no pueden ser negativas.'); return v; };
+  return withLock_(() => {
+    const previo = {}; read_('CONTEO_EFECTIVO').filter(x => x.fecha === fecha).forEach(x => previo[x.vendedor] = x);
+    const nuevas = [];
+    const poner = o => { const p = previo[o.vendedor]; o.key = fecha + '|' + o.vendedor; o.fecha = fecha; o.registrado_por = u.usuario; o.registrado = now_();
+      if (p) updateRow_('CONTEO_EFECTIVO', p._row, o); else nuevas.push(o); };
+    (datos.filas || []).forEach(f => { const o = { vendedor: String(f.vendedor), monedas: n(f.monedas), caja_chica: '', obs: '' }; BILLETES.forEach(b => o['b' + b] = n(f['b' + b])); poner(o); });
+    const g = { vendedor: 'GENERAL', monedas: 0, caja_chica: n(datos.cajaChica), obs: String(datos.obs || '').trim() }; BILLETES.forEach(b => g['b' + b] = 0); poner(g);
+    if (nuevas.length) append_('CONTEO_EFECTIVO', nuevas);
+    return true;
+  });
+}
+
 /* ============================ RESUMEN / RENDICIÓN ============================ */
 
 function resumen_(fecha) {
@@ -1402,6 +1461,7 @@ function resumen_(fecha) {
   const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
   const unidad = {}; read_('PRODUCTOS').forEach(p => unidad[codeKey_(p.codigo)] = p.unidad);
   const hayDetalle = detV.length > 0;
+  const precios = preciosKg_(detV);
   const cob = byFecha_('COBRANZA', fecha), gas = byFecha_('GASTOS', fecha), deps = byFecha_('DEPOSITOS', fecha);
   const prov = byFecha_('PROVEEDORES', fecha), cons = byFecha_('CONSUMO', fecha);
   const vend = vendedores_().map(v => v.usuario);
@@ -1435,14 +1495,7 @@ function resumen_(fecha) {
     } else tot.depositoDif = 0;
     tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.gastos - tot.depositos;
     const k = desp.filter(x => x.vendedor === v);
-    tot.kilos = {
-      salida: k.filter(x => x.unidad !== 'UN').reduce((a, x) => a + num_(x.salida), 0),
-      retorno: k.filter(x => x.unidad !== 'UN').reduce((a, x) => a + num_(x.retorno), 0)
-    };
-    tot.kilos.vendido = Math.round((tot.kilos.salida - tot.kilos.retorno) * 1000) / 1000;
-    tot.kilos.facturado = Math.round(detV.filter(x => x.vendedor === v && unidad[codeKey_(x.codigo)] !== 'UN').reduce((a, x) => a + num_(x.cantidad), 0) * 1000) / 1000;
-    tot.kilos.salida = Math.round(tot.kilos.salida * 1000) / 1000; tot.kilos.retorno = Math.round(tot.kilos.retorno * 1000) / 1000;
-    tot.kilos.diferencia = Math.round((tot.kilos.vendido - tot.kilos.facturado) * 1000) / 1000;
+    tot.kilos = kilosDe_(v, desp, detV, unidad, precios);
     tot.sinRetorno = k.filter(x => x.salida !== '' && x.retorno === '').length;
     // la diferencia de kilos solo se evalúa cuando ya se registró todo el retorno
     tot.kilos.alerta = hayDetalle && tot.kilos.salida > 0 && tot.sinRetorno === 0 && Math.abs(tot.kilos.diferencia) > CFG.TOLERANCIA_KG;
@@ -1468,7 +1521,7 @@ function resumen_(fecha) {
       .concat(porVendedor.filter(t => t.depositoDif).map(t => t.vendedor + ': el depósito ' + (t.depositoDif > 0 ? 'supera' : 'no alcanza') +
         ' el efectivo de los folios que incluye (diferencia $' + Math.abs(t.depositoDif).toLocaleString('es-CL') + ')'))
       .concat(porVendedor.filter(t => t.sinRetorno).map(t => t.vendedor + ': falta registrar retorno de ' + t.sinRetorno + ' producto(s)'))
-      .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(1) + ' kg ' +
+      .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(2).replace('.', ',') + ' kg ($' + Math.abs(t.kilos.diferenciaPesos).toLocaleString('es-CL') + ') ' +
         (t.kilos.diferencia > 0 ? 'salieron y no volvieron ni se facturaron' : 'facturados de más respecto a lo que salió')))
       .concat(devs.filter(x => !lista_(x.adjuntos).length).length ? [devs.filter(x => !lista_(x.adjuntos).length).length + ' devolución(es) sin foto de la nota de crédito'] : [])
       .concat(fecha && !hayDetalle && desp.length ? ['Falta importar el Informe de ventas (kilos por producto) para cruzar kilos'] : [])
@@ -1486,7 +1539,10 @@ function getResumen(token, fecha) {
  */
 function getInspeccion(token, fecha, vendedor) {
   auth_(token, ['RENDICION','SUPERVISOR']);
-  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO']);
+  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO', 'VENTAS_DETALLE']);
+  const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
+  const unidadP = {}; read_('PRODUCTOS').forEach(p => unidadP[codeKey_(p.codigo)] = p.unidad);
+  const precios = preciosKg_(detV);
   const docs = docsDelDia_(fecha), cob = byFecha_('COBRANZA', fecha), gas = byFecha_('GASTOS', fecha), deps = byFecha_('DEPOSITOS', fecha);
   const desp = byFecha_('DESPACHO', fecha);
   const rutFolio = {}, rutNombre = {};
@@ -1532,6 +1588,7 @@ function getInspeccion(token, fecha, vendedor) {
       totales: { venta, credito, nc, descuentos: desc, contado: venta - credito - nc - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         entregar: efVentas + efCob - tGas - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, creditos,
+      kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
       folios: ds.map(d => ({ folio_key: d.folio_key, folio: d.folio, tipo: d.tipo.replace(' Electrónica', ''), cliente: d.cliente, rut: d.rut || '',
         total: num_(d.total), estado: d.estado, descAprob: num_(d.descAprob), detalladoPor: d.detalladoPor || '',
         descPend: d.descuentos.some(x => x.estado === 'PENDIENTE'),
@@ -1574,7 +1631,7 @@ function reabrirRendicion(token, fecha) {
 /* ============================ ARCHIVO DE RENDICIÓN ============================ */
 
 const EST = { font: 'Calibri', gris: '#D9D9D9', grisClaro: '#F2F2F2', cobre: '#C2571A', cobreClaro: '#FBE9DD',
-  amarillo: '#FFF2CC', borde: '#A6A6A6', dinero: '$ #,##0;-$ #,##0;"-"', kilos: '#,##0.0;-#,##0.0;"-"' };
+  amarillo: '#FFF2CC', borde: '#A6A6A6', dinero: '$ #,##0;-$ #,##0;"-"', kilos: '#,##0.00;-#,##0.00;"-"' };
 // Fórmula de enlace a los respaldos: "Ver" o "Ver (2)"
 function linkAdj_(r) { const a = lista_(r.adjuntos); if (!a.length) return '';
   return '=HYPERLINK("https://drive.google.com/file/d/' + a[0] + '/view","Ver' + (a.length > 1 ? ' (' + a.length + ')' : '') + '")'; }
@@ -1644,8 +1701,8 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
   const kil = datos.kilos.filter(k => k.vendedor === t.vendedor);
   if (kil.length) {
     H.tabla('KILOS', [{ h: 'PRODUCTO' }, { h: 'SALIDA', t: 'kg', sum: 1 }, { h: 'RETORNO', t: 'kg', sum: 1 }, { h: 'VENDIDO', t: 'kg', sum: 1 },
-      { h: 'FACTURADO', t: 'kg', sum: 1 }, { h: 'DIFERENCIA', t: 'kg', sum: 1 }],
-      kil.map(k => [k.producto, k.salida, k.retorno, '=ROUND(B{r}-C{r},3)', k.facturado, '=ROUND(D{r}-E{r},1)']));
+      { h: 'FACTURADO', t: 'kg', sum: 1 }, { h: 'DIFERENCIA', t: 'kg', sum: 1 }, { h: 'PRECIO KG', t: '$' }, { h: 'DIFERENCIA $', t: '$', sum: 1 }],
+      kil.map(k => [k.producto, k.salida, k.retorno, '=ROUND(B{r}-C{r},2)', k.facturado, '=ROUND(D{r}-E{r},2)', k.precio, '=ROUND(F{r}*G{r},0)']));
   }
   // VENTAS
   const docs = datos.docs.filter(d => d.vendedor === t.vendedor);
@@ -1753,11 +1810,12 @@ function generarArchivo_(fecha, r, borrador) {
       foliosTxt: lista_(d.folios).map(k => folioTxt[k] || k).concat(lista_(d.cobranzas).map(() => 'cobranza')).join(', '), bancoDe: d.banco, link: linkAdj_(d) };
   });
   const bancoDep = {}; depsRaw.forEach(d => { lista_(d.folios).forEach(k => bancoDep[k] = d.banco); lista_(d.cobranzas).forEach(k => bancoDep['C:' + k] = d.banco); });
+  const preciosK = preciosKg_(byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)));
   const fact = {};
   byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)).forEach(x => {
     const k = x.vendedor + '|' + codeKey_(x.codigo); fact[k] = (fact[k] || 0) + num_(x.cantidad); });
   const kilos = byFecha_('DESPACHO', fecha).map(k => ({ vendedor: k.vendedor, producto: k.producto, salida: num_(k.salida), retorno: num_(k.retorno),
-    facturado: Math.round((fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0) * 1000) / 1000 }));
+    facturado: Math.round((fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0) * 100) / 100, precio: Math.round(preciosK[codeKey_(k.codigo)] || 0) }));
   // RUT de los clientes de cobranza: por el folio que pagan y, si no, por el nombre del cliente
   const rutFolio = {}, rutNombre = {};
   read_('DOCUMENTOS').forEach(d => { if (!d.rut) return; rutFolio[String(d.folio).replace(/\D/g, '')] = d.rut; rutNombre[normTxt_(d.cliente)] = d.rut; });
@@ -1769,18 +1827,18 @@ function generarArchivo_(fecha, r, borrador) {
 
   // 2) Resumen del día
   const fechaTxt = f[2] + '-' + f[1] + '-' + f[0];
-  const R = new Hoja_(ss, 'RESUMEN', 16);
+  const R = new Hoja_(ss, 'RESUMEN', 17);
   R.titulo('RESUMEN RENDICIÓN ' + fechaTxt, 'Cecinas Naranjo');
   R.tabla('', [{ h: 'VENDEDOR' }, { h: 'DOCS', sum: 1 }, { h: 'VENTA', t: '$', sum: 1 }, { h: 'CRÉDITO', t: '$', sum: 1 }, { h: 'DESCUENTOS', t: '$', sum: 1 },
     { h: 'EFECTIVO', t: '$', sum: 1 }, { h: 'TRANSF. BICE', t: '$', sum: 1 }, { h: 'TRANSF. ESTADO', t: '$', sum: 1 }, { h: 'TRANSF. SANTANDER', t: '$', sum: 1 },
     { h: 'CHEQUE', t: '$', sum: 1 }, { h: 'COBRANZA', t: '$', sum: 1 }, { h: 'GASTOS', t: '$', sum: 1 }, { h: 'DEPÓSITOS', t: '$', sum: 1 },
-    { h: 'EFECTIVO A ENTREGAR', t: '$', sum: 1 }, { h: 'KG VENDIDOS', t: 'kg', sum: 1 }, { h: 'KG FACTURADOS', t: 'kg', sum: 1 }],
+    { h: 'EFECTIVO A ENTREGAR', t: '$', sum: 1 }, { h: 'KG VENDIDOS', t: 'kg', sum: 1 }, { h: 'KG FACTURADOS', t: 'kg', sum: 1 }, { h: 'DIF. KILOS $ (A DESCONTAR)', t: '$', sum: 1 }],
     r.porVendedor.map(t => [(usuarios[t.vendedor] || {}).nombre || t.vendedor, t.documentos, t.venta, t.credito, t.descuentos, t.EFECTIVO,
-      t.bancos.BICE, t.bancos.ESTADO, t.bancos.SANTANDER, t.CHEQUE, t.cobranza, t.gastos, t.depositos, t.efectivoEntregar, t.kilos.vendido, t.kilos.facturado]));
+      t.bancos.BICE, t.bancos.ESTADO, t.bancos.SANTANDER, t.CHEQUE, t.cobranza, t.gastos, t.depositos, t.efectivoEntregar, t.kilos.vendido, t.kilos.facturado, t.kilos.diferenciaPesos]));
   const sumM = a => a.reduce((x, y) => x + num_(y.monto), 0);
   const prov = byFecha_('PROVEEDORES', fecha), cons = byFecha_('CONSUMO', fecha);
   R.tabla('OTROS MOVIMIENTOS', [{ h: 'CONCEPTO' }, { h: 'MONTO', t: '$', sum: 0 }], [['Proveedores', sumM(prov)], ['Consumo (venta en bodega)', sumM(cons)], ['Gastos generales', sumM(gas.filter(x => x.responsable === 'GENERAL'))]]);
-  R.escribir([150, 55, 100, 100, 90, 100, 100, 105, 120, 90, 95, 85, 95, 120, 90, 100]);
+  R.escribir([150, 55, 100, 100, 90, 100, 100, 105, 120, 90, 95, 85, 95, 120, 90, 100, 130]);
 
   // 3) Proveedores, consumo y gastos generales
   const P = new Hoja_(ss, 'PROVEEDORES', 7); P.titulo('PROVEEDORES ' + fechaTxt);
@@ -1797,6 +1855,20 @@ function generarArchivo_(fecha, r, borrador) {
     DV.tabla('', [{ h: 'TIPO' }, { h: 'PRODUCTO' }, { h: 'CANTIDAD', t: 'kg', sum: 0 }, { h: 'UNIDAD' }, { h: 'VIENE DE' }, { h: 'CLIENTE' }, { h: 'N° NOTA DE CRÉDITO' }, { h: 'MOTIVO' }, { h: 'FOTO NC' }],
       dvs.map(x => [x.tipo, x.producto, num_(x.cantidad), x.unidad, x.origen ? ((usuarios[x.origen] || {}).nombre || x.origen) : 'Cliente / otro', x.cliente, x.nota_credito, x.motivo, linkAdj_(x)]));
     DV.escribir([90, 220, 80, 70, 150, 200, 140, 200, 80]);
+  }
+  const cef = byFecha_('CONTEO_EFECTIVO', fecha);
+  if (cef.length) {
+    const nom = u => (usuarios[u] || {}).nombre || u, esp = {}; r.porVendedor.forEach(t => esp[t.vendedor] = t.efectivoEntregar);
+    const vs = cef.filter(x => x.vendedor !== 'GENERAL'), gen = cef.find(x => x.vendedor === 'GENERAL') || {};
+    const bil = x => BILLETES.reduce((a, b) => a + b * num_(x['b' + b]), 0);
+    const totBil = vs.reduce((a, x) => a + bil(x), 0), cc = num_(gen.caja_chica);
+    const EF = new Hoja_(ss, 'EFECTIVO A DEPOSITAR', 12); EF.titulo('CONTEO DE EFECTIVO Y DEPÓSITO ' + fechaTxt);
+    EF.tabla('', [{ h: 'VENDEDOR' }, { h: 'ESPERADO', t: '$', sum: 1 }, { h: '$20.000' }, { h: '$10.000' }, { h: '$5.000' }, { h: '$2.000' }, { h: '$1.000' },
+      { h: 'BILLETES', t: '$', sum: 1 }, { h: 'MONEDAS', t: '$', sum: 1 }, { h: 'CONTADO', t: '$', sum: 1 }, { h: 'DIFERENCIA', t: '$', sum: 1 }],
+      vs.map(x => [nom(x.vendedor), esp[x.vendedor] || 0, num_(x.b20000), num_(x.b10000), num_(x.b5000), num_(x.b2000), num_(x.b1000), bil(x), num_(x.monedas), bil(x) + num_(x.monedas), bil(x) + num_(x.monedas) - (esp[x.vendedor] || 0)]));
+    EF.tabla('A DEPOSITAR', [{ h: 'CONCEPTO' }, { h: 'MONTO', t: '$', sum: 0 }],
+      [['Billetes contados', totBil], ['(−) Caja chica' + (gen.obs ? ' · ' + gen.obs : ''), -cc], ['EFECTIVO A DEPOSITAR (las monedas no se depositan)', totBil - cc]]);
+    EF.escribir([150, 100, 70, 70, 70, 70, 70, 100, 90, 100, 100, 10]);
   }
   const GG = new Hoja_(ss, 'GASTOS', 6); GG.titulo('GASTOS ' + fechaTxt);
   GG.tabla('', [{ h: 'RESPONSABLE' }, { h: 'CONCEPTO' }, { h: 'N° BOLETA' }, { h: 'MONTO', t: '$', sum: 1 }, { h: 'OBSERVACIÓN' }, { h: 'FOTO / ARCHIVO' }],
