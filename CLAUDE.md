@@ -205,3 +205,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Arranque sin internet: la sesión y la caché permiten abrir; si falla la carga inicial se muestra "Sin conexión / Reintentar" (ya no cierra la sesión).
 - Pruebas: Playwright con `context.set_offline` y rutas a script.google.com (ver /tmp/claude-0/t/t10.py durante el desarrollo).
 - Recuperar acceso: `recuperarAcceso()` (editor de Apps Script) pone una clave temporal nueva al usuario indicado dentro de la función (ADMIN por defecto) y la escribe en el registro. Las claves temporales se aceptan también en minúsculas o con espacios.
+
+## Navegación de oficina (ADMIN/SUPERVISOR/RENDICION)
+- Computador (≥900 px): barra lateral oscura con las pantallas agrupadas por tarea (Hoy, Ventas, Bodega, Cobranza, Caja, Más), cada una con ícono; arriba a la derecha fecha, Clave y Salir (no quedan pegadas). Celular: barra inferior con los 6 grupos y las pantallas del grupo como píldoras bajo la barra superior (que se va con el scroll). `GRUPOS` = [id, nombre, pantallas, ícono]; `TABS[rol]` = [id, nombre, ícono].
+- Vendedor y bodeguero mantienen su cabecera simple y barra inferior propia.
+- En Cobranza, el registro manual de un pago va plegado (`details.manual`): el flujo principal es "Cobrar a un cliente".

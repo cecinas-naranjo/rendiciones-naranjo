@@ -29,7 +29,16 @@ const IC = {
   camera: '<path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/>',
   store: '<path d="M3 9l1.5-5h15L21 9M4 9v11h16V9M3 9h18M9 20v-6h6v6"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
-  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>'
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+  upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/>',
+  percent: '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.5c2.2.7 3.5 2.6 3.5 5.5"/>',
+  dots: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
+  doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',
+  out: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
 
@@ -398,15 +407,17 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 const TABS = {
   VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
   BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
-  RENDICION: [['resumen', 'Rendición'], ['efectivo', 'Efectivo'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['devoluciones', 'Devoluciones'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'], ['cheques', 'Cheques'],
-    ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
+  RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
+    ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
+    ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'],
+    ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
-TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
-TABS.ADMIN = TABS.SUPERVISOR.concat([['usuarios', 'Usuarios']]);
-// En oficina, las pestañas se agrupan en 5 secciones para no tener 12 opciones a la vista
-const GRUPOS = [['g-rend', 'Rendición', ['resumen', 'efectivo']], ['g-ventas', 'Ventas', ['folios', 'importar', 'descuentos']],
-  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'cheques', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
-  ['g-hist', 'Historial', ['historial']], ['g-adm', 'Usuarios', ['usuarios']]];
+TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos por autorizar', 'percent']], TABS.RENDICION.slice(1));
+TABS.ADMIN = TABS.SUPERVISOR.concat([['usuarios', 'Usuarios', 'users']]);
+// En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
+const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
+  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques'], 'cash'],
+  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['historial', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
 function salir(expirada) {
@@ -502,22 +513,35 @@ async function iniciar() {
   S.tab = S.tab && tabs.some(t => t[0] === S.tab) ? S.tab : tabs[0][0];
   const unica = tabs.length === 1;          // una sola pantalla, sin menú
   const abajo = !unica && tabs.length <= 4;
-  const grupos = !unica && !abajo ? GRUPOS.map(g => [g[0], g[1], g[2].filter(t => tabs.some(x => x[0] === t))]).filter(g => g[2].length) : null;
+  const grupos = !unica && !abajo ? GRUPOS.map(g => [g[0], g[1], g[2].filter(t => tabs.some(x => x[0] === t)), g[3]]).filter(g => g[2].length) : null;
   S.grupos = grupos; S.ultimoDeGrupo = S.ultimoDeGrupo || {};
-  document.body.classList.toggle('has-bottom', abajo);
-  app.innerHTML = `<header>
+  document.body.classList.toggle('has-bottom', abajo || !!grupos);
+  document.body.classList.toggle('oficina', !!grupos);
+  const dia = `<div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha"><button id="next" aria-label="Día siguiente">›</button></div>`;
+  const cuenta = `<button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
+  const ref = t => tabs.find(x => x[0] === t) || [];
+  if (grupos) {
+    app.innerHTML = `<div class="shell">
+      <aside class="side"><div class="brand"><img src="logo-96.png" alt="" width="44" height="44"><div><b>Naranjo</b><small>${esc(S.sess.nombre)}</small></div></div>
+        <nav id="side">${grupos.map(g => `<div class="sg">${g[1]}</div>${g[2].map(t => `<button data-t="${t}">${icon(ref(t)[2])}<span>${ref(t)[1]}</span></button>`).join('')}`).join('')}</nav></aside>
+      <div class="col">
+        <div class="topbar"><div class="brand mini"><img src="logo-96.png" alt="" width="34" height="34"><b>Naranjo</b></div><div class="sp"></div>${dia}${cuenta}</div>
+        <div id="redbar" class="redbar" role="status" hidden></div>
+        <div class="otrodia" id="otrodia" hidden><span></span><button type="button" id="hoyBtn">Volver a hoy</button></div>
+        <nav class="sub" id="sub"></nav>
+        <main id="main"></main></div></div>
+      <nav class="bottom" id="nav">${grupos.map(g => `<button data-g="${g[0]}">${icon(g[3])}${g[1]}</button>`).join('')}</nav>`;
+  } else {
+    app.innerHTML = `<header>
       <div class="hbar"><div class="brand"><img src="logo-96.png" alt="" width="42" height="42"><div><b>Naranjo</b><small>${esc(S.sess.nombre)}</small></div></div>
-        <div class="sp"></div>
-        <div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha">
-          <button id="next" aria-label="Día siguiente">›</button></div>
-        <button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">Clave</button><button class="icon-btn" id="out">Salir</button></div>
+        <div class="sp"></div>${dia}${cuenta}</div>
       <div id="redbar" class="redbar" role="status" hidden></div>
-      ${abajo || unica ? '<div class="progress" aria-hidden="true"><i id="prog"></i></div>'
-        : `<nav class="top" id="nav">${grupos.map(g => `<button data-g="${g[0]}">${g[1]}</button>`).join('')}</nav><nav class="sub" id="sub"></nav>`}
+      <div class="progress" aria-hidden="true"><i id="prog"></i></div>
       <div class="otrodia" id="otrodia" hidden><span></span><button type="button" id="hoyBtn">Volver a hoy</button></div>
     </header>
     <main id="main"></main>
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
+  }
   $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
   const cambiarFecha = f => { S.fecha = f; $('#fecha').value = f; ir(S.tab); };
   $('#fecha').onchange = e => e.target.value && cambiarFecha(e.target.value);
@@ -528,6 +552,7 @@ async function iniciar() {
     if (b.dataset.t) return ir(b.dataset.t);
     const g = grupos.find(x => x[0] === b.dataset.g); ir(S.ultimoDeGrupo[g[0]] || g[2][0]); };
   if ($('#sub')) $('#sub').onclick = e => { const b = e.target.closest('button'); if (b) ir(b.dataset.t); };
+  if ($('#side')) $('#side').onclick = e => { const b = e.target.closest('button'); if (b) ir(b.dataset.t); };
   // si la persona escribe algo, no se le cambia la pantalla por una actualización de fondo
   $('#main').addEventListener('input', () => { S.tocado = true; });
   ir(S.tab);
@@ -541,6 +566,7 @@ function ir(t, silencioso) {
     const g = S.grupos.find(x => x[2].indexOf(t) >= 0);
     S.ultimoDeGrupo[g[0]] = t;
     $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.g === g[0]));
+    $$('#side button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
     const sub = $('#sub');
     sub.hidden = g[2].length < 2;
     sub.innerHTML = g[2].map(x => `<button data-t="${x}" class="${x === t ? 'on' : ''}">${(tabs.find(y => y[0] === x) || [])[1]}</button>`).join('');
@@ -1965,10 +1991,11 @@ async function vMov(m, tabla) {
   const rows = await api('listarMov', S.sess.token, tabla, S.fecha);
   const conAdj = !!ADJ[tabla];
   render(m, `<h2>${cfg.t}</h2><p class="lead">${cfg.d}</p>
-    ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div><h3 style="margin:0 0 8px">O registra un pago a mano</h3>' : ''}
+    ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div><details class="manual"><summary>Registrar un pago a mano (sin usar la lista)</summary>' : ''}
     <div class="card"><div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}${conAdj ? campoArchivos('mf') : ''}</div>
       ${tabla === 'COBRANZA' ? `<div id="mch" hidden style="margin-top:12px"><div class="pregunta" style="margin-top:0">Datos del cheque</div>${camposCheque(null, 'mov')}</div>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
+    ${tabla === 'COBRANZA' ? '</details>' : ''}
     <div id="ml" style="margin-top:16px"></div>`);
   function lista(rows) {
     const cols = campos.map(c => c[0]);
