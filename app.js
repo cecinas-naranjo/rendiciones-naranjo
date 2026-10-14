@@ -59,6 +59,19 @@ function render(el, html) {
   el.innerHTML = html;
   if (S.silencio) return;                       // actualización por detrás: sin animación ni salto
   el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
+  animarMontos(el);
+}
+/** Los totales de las tarjetas resumen "suben" desde cero al abrir la pantalla (solo se ve, el valor final es el real). */
+function animarMontos(raiz) {
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  $$('.kpis b', raiz).forEach(el => {
+    const txt = el.textContent.trim(), m = txt.match(/^\$([\d.]+)$/); if (!m) return;
+    const fin = Number(m[1].replace(/\./g, '')); if (!(fin > 0)) return;
+    const t0 = performance.now(), dur = 650, tk = el._tk = (el._tk || 0) + 1;
+    const paso = t => { if (el._tk !== tk) return; const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = k < 1 ? clp(fin * e) : txt; if (k < 1) requestAnimationFrame(paso); };
+    el.textContent = '$0'; requestAnimationFrame(paso);
+  });
 }
 
 /* ---------- fotos y archivos de respaldo ---------- */
@@ -1615,10 +1628,15 @@ async function vImportar(m) {
   }
   const avisoRequisitos = leidos => { const r = requisitos(leidos); return r ? `<div class="alert" style="margin-top:12px"><b>No se puede importar todavía.</b> ${r} Súbelos juntos para continuar.</div>` : ''; };
 
+  const pausa = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 30)));       // deja pintar el aviso antes de un trabajo pesado
   async function procesar(files) {
-    await cargarXLSX();
+    if (!files.length) return;
+    $('#pv').innerHTML = `<div class="card impl"><span class="spin"></span><div class="grow"><b>Leyendo ${files.length > 1 ? files.length + ' archivos' : 'el archivo'}…</b>
+      <div class="muted" id="leyn">Preparando el lector de Excel</div></div></div>`;
+    try { await cargarXLSX(); } catch (e) { $('#pv').innerHTML = `<div class="alert">${esc(e.message)}</div>`; return; }
     const leidos = [];
-    for (const f of files) {
+    for (const [k, f] of files.entries()) {
+      $('#leyn').textContent = `${f.name} (${k + 1} de ${files.length})`; await pausa();
       try { leidos.push(Object.assign({ nombre: f.name }, leerLibro(await f.arrayBuffer()))); }
       catch (e) { leidos.push({ nombre: f.name, error: e.message }); }
     }
@@ -1637,10 +1655,24 @@ async function vImportar(m) {
         <div id="res${i}"></div></div>`;
     }).join('') + avisoRequisitos(leidos) + (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
     const b = $('#imp'); if (!b) return;
+    const lotesDe = l => l.tipo === 'creditos' ? [l.filas] : l.tipo === 'dte' ? tandas(l.filas, 1200) : tandas(l.filas, 2000, x => String(x.Nombre) + '|' + String(x.Folio));
     b.onclick = async () => {
-      b.disabled = true; const sinT = new Set(); let fechas = [];
+      b.hidden = true; const sinT = new Set(); let fechas = [];
+      // panel de avance: se ve qué archivo se está guardando y cuánto falta
+      const items = leidos.map((l, i) => [l, i]).filter(([l]) => !l.error), NOM = { dte: 'Ventas Diarias', detalle: 'Informe de ventas (kilos)', creditos: 'Control de crédito' };
+      let T = 0, D = 0; items.forEach(([l]) => T += lotesDe(l).length);
+      const pp = document.createElement('div'); pp.className = 'card impp run';
+      pp.innerHTML = `<div class="row"><span class="spin" id="impsp"></span><b class="grow" id="impt">Guardando en la base de datos…</b><span class="muted" id="impn">0%</span></div>
+        <div class="pbar"><i id="impb"></i></div>
+        <ul class="imps">${items.map(([l, i]) => `<li data-i="${i}" class="wait"><span class="pt"></span><span class="grow">${NOM[l.tipo]} <span class="muted">· ${l.filas.length} ${l.tipo === 'dte' ? 'documentos' : l.tipo === 'detalle' ? 'líneas' : 'créditos'}</span></span><small>En espera</small></li>`).join('')}</ul>
+        <p class="muted" style="margin:10px 0 0">No cierres ni cambies de pantalla hasta que termine.</p>`;
+      b.parentNode.insertBefore(pp, b);
+      const barra = (extra) => { const p = Math.round(D / T * 100); $('#impn', pp).textContent = p + '%'; $('#impb', pp).style.width = Math.max(extra ? 7 : 0, Math.min(100, (D + (extra || 0)) / T * 100)) + '%'; };
+      const paso = (i, est, txt) => { const li = $('[data-i="' + i + '"]', pp); li.className = est; $('small', li).textContent = txt; };
+      barra(0.35);
       for (const [i, l] of leidos.entries()) {
         if (l.error) continue;
+        paso(i, 'run', 'Guardando…'); barra(0.35);
         try {
           if (l.tipo === 'creditos') {
             const r = await api('cargarCreditos', S.sess.token, l.filas);
@@ -1649,11 +1681,13 @@ async function vImportar(m) {
             const bb = $('[data-sinrut]', $('#res' + i)); if (bb) bb.onclick = () => abrirSinRut(r.sinRutClientes);
             continue;
           }
-          const lotes = l.tipo === 'dte' ? tandas(l.filas, 1200) : tandas(l.filas, 2000, x => String(x.Nombre) + '|' + String(x.Folio));
+          const lotes = lotesDe(l);
           const r = { importados: 0, repetidos: 0, sinVendedor: 0, guias: 0, lineas: 0, omitidas: 0, terminalesSinAsignar: [], fechas: [], productosNuevos: [], porVendedor: {} };
           for (const [k, lote] of lotes.entries()) {
-            if (lotes.length > 1) $('#res' + i).innerHTML = `<div class="muted">Importando… tanda ${k + 1} de ${lotes.length}</div>`;
+            if (lotes.length > 1) paso(i, 'run', `Parte ${k + 1} de ${lotes.length}`);
+            barra(0.35);
             const x = await api(l.tipo === 'dte' ? 'importarDTE' : 'importarDetalle', S.sess.token, lote);
+            D++; barra(0);
             ['importados', 'repetidos', 'sinVendedor', 'guias', 'lineas', 'omitidas'].forEach(c => r[c] += x[c] || 0);
             r.terminalesSinAsignar = r.terminalesSinAsignar.concat(x.terminalesSinAsignar || []); r.fechas = r.fechas.concat(x.fechas || []);
             r.productosNuevos = r.productosNuevos.concat(x.productosNuevos || []);
@@ -1666,9 +1700,12 @@ async function vImportar(m) {
             ? `Documentos nuevos: <b>${r.importados}</b>${porV ? ' (' + esc(porV) + ')' : ''}. ${r.repetidos ? r.repetidos + ' ya estaban: no se tocaron, ni lo que ya detallaron los vendedores. ' : ''}${r.sinVendedor ? `<b>${r.sinVendedor}</b> sin vendedor.` : ''}`
             : `Líneas nuevas: <b>${r.lineas}</b> de venta y ${r.guias} de guías. ${r.omitidas ? r.omitidas + ' líneas de documentos que ya estaban se dejaron como estaban. ' : ''}` +
               (r.productosNuevos.length ? `<br>Productos nuevos agregados como inactivos (revísalos en la hoja PRODUCTOS): ${esc(r.productosNuevos.join(', '))}.` : '')) + '</div>';
-        } catch (e) { $('#res' + i).innerHTML = `<div class="alert" style="margin-bottom:0">${esc(e.message)}</div>`; }
+          paso(i, 'ok', 'Listo');
+        } catch (e) { $('#res' + i).innerHTML = `<div class="alert" style="margin-bottom:0">${esc(e.message)}</div>`; paso(i, 'err', 'Con error'); }
       }
       b.remove();
+      D = T; barra(0); pp.classList.remove('run'); pp.classList.add('fin'); $('#impsp', pp).outerHTML = '<span class="okdot">✓</span>';
+      $('#impt', pp).textContent = pp.querySelector('li.err') ? 'Terminó con errores' : 'Importación terminada';
       const f = [...new Set(fechas)];
       if (f.length === 1 && f[0] !== S.fecha) { S.fecha = f[0]; $('#fecha').value = S.fecha; toast('Mostrando el ' + fechaLarga(S.fecha)); }
       if (sinT.size) toast('Hay terminales sin vendedor: ' + [...sinT].join(', ') + '. Asígnalos abajo.', true);

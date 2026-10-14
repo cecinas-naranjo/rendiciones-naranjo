@@ -210,3 +210,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Computador (≥900 px): barra lateral oscura con las pantallas agrupadas por tarea (Hoy, Ventas, Bodega, Cobranza, Caja, Más), cada una con ícono; arriba a la derecha fecha, Clave y Salir (no quedan pegadas). Celular: barra inferior con los 6 grupos y las pantallas del grupo como píldoras bajo la barra superior (que se va con el scroll). `GRUPOS` = [id, nombre, pantallas, ícono]; `TABS[rol]` = [id, nombre, ícono].
 - Vendedor y bodeguero mantienen su cabecera simple y barra inferior propia.
 - En Cobranza, el registro manual de un pago va plegado (`details.manual`): el flujo principal es "Cobrar a un cliente".
+
+## Importar: avance y transiciones (v31)
+- Al elegir archivos se muestra "Leyendo…"; al importar, panel `.impp` con barra de avance por tandas y estado por archivo (espera/guardando/listo/error). `lotesDe(l)` define las tandas.
+- Transiciones: entrada escalonada en `.enter>*`, hover de botones/tarjetas, blur en `.ov`, conteo animado de montos `.kpis b` (`animarMontos`). Respeta `prefers-reduced-motion`.
