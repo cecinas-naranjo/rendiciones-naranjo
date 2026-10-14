@@ -514,7 +514,7 @@ function importarDTE(token, filas) {
   return withLock_(() => {
     const term = mapaTerminales_();
     const existentes = {}; read_('DOCUMENTOS').forEach(d => existentes[d.folio_key] = d);
-    const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0; const fechas = {}, sinTerminal = {};
+    const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0; const fechas = {}, sinTerminal = {}, porVendedor = {};
     filas.forEach(f => {
       const tipo = String(f.Documento || '').trim();
       const folio = String(f.Folio || '').trim();
@@ -531,11 +531,11 @@ function importarDTE(token, filas) {
       nuevos.push({ folio_key: key, fecha, tipo, folio, rut: String(f.RUT || f['Datos RUT'] || '').trim(),
         cliente: String(f['Nombre Cliente'] || '').trim(), total: num_(f.Total), condicion_dte: cond,
         terminal, vendedor, estado: 'PENDIENTE', importado: now_() });
-      existentes[key] = true;
+      existentes[key] = true; porVendedor[vendedor] = (porVendedor[vendedor] || 0) + 1;
     });
     append_('DOCUMENTOS', nuevos);
     actualizarClientes_(nuevos);
-    return { importados: nuevos.length, guias, repetidos, sinVendedor, terminalesSinAsignar: Object.keys(sinTerminal), fechas: Object.keys(fechas).sort() };
+    return { importados: nuevos.length, guias, repetidos, sinVendedor, porVendedor, terminalesSinAsignar: Object.keys(sinTerminal), fechas: Object.keys(fechas).sort() };
   });
 }
 
@@ -1335,7 +1335,7 @@ function actualizarClientes_(docs) {
     if (!c) { const o = { rut: rutFmt_(k), razon_social: nom, condicion: '', vendedor: '', alias: '', actualizado: ahora }; nuevos.push(o); ex[k] = o; }
     else if (c.razon_social !== nom) { c.razon_social = nom; c.actualizado = ahora; if (c._row) cambios[c._row] = c; }
   });
-  Object.keys(cambios).forEach(r => updateRow_('CLIENTES', Number(r), cambios[r]));
+  Object.keys(cambios).slice(0, 60).forEach(r => updateRow_('CLIENTES', Number(r), cambios[r]));      // cambios de nombre: pocos; si fueran muchos, se actualizan en la siguiente importación
   if (nuevos.length) append_('CLIENTES', nuevos);
 }
 

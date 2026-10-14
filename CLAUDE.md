@@ -168,3 +168,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - **Cobranza**: COBRANZA ahora tiene `rut` y `folio_key`. Pantalla "Cobrar a un cliente" (`cobrarDesdeLista`, API `porCobrar`, el vendedor ve solo sus facturas): buscar por nombre/RUT, marcar facturas, monto editable (abonos), forma de pago (efectivo / transferencia con banco / cheque con sus datos) y `guardarCobro` (una fila de COBRANZA por factura). El registro manual sigue abajo.
 - **Planilla por cobrar** (`generarPlanillaPorCobrar`, botón en Saldos clientes): Google Sheet "Por cobrar DD-MM-AAAA" en `Cuentas por cobrar/` con POR CLIENTE, DETALLE y CHEQUES EN CARTERA (cheques de la planilla + los recibidos en la app los últimos 60 días).
 - Pendiente: marcar un cheque como cobrado (hoy los de la planilla salen de la lista al cobrarse con un pago en Cobranza).
+
+## Importar Mi DTE (reglas)
+- `cargarXLSX()` baja el lector de Excel (cdnjs, XLSX 0.18.5) la primera vez; si falla, mensaje claro y reintenta.
+- Son obligatorios los DOS informes: Ventas Diarias (tipo 'dte') e Informe de ventas (tipo 'detalle', kilos), de las mismas fechas. Sin ambos no aparece el botón Importar. Control de crédito se puede subir solo.
+- Se puede subir varias veces el mismo día: solo se agregan folios nuevos (clave `folio_key`); lo existente y lo ya detallado no se toca. Se informa por vendedor cuántos documentos nuevos entraron.
+- Las llamadas van en tandas (1200 documentos / 2000 líneas) para evitar timeouts.

@@ -1175,6 +1175,32 @@ async function imprimirInspeccion(usuario) {
 }
 
 /* ============ IMPORTAR MI DTE ============ */
+/** El lector de Excel se baja solo cuando se necesita (pesa ~900 KB). */
+let _xlsx = null;
+function cargarXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  if (_xlsx) return _xlsx;
+  _xlsx = new Promise((res, rej) => {
+    const fin = trabajando('xlsx'), sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = () => { fin(); res(); };
+    sc.onerror = () => { fin(); _xlsx = null; sc.remove(); rej(new Error('No se pudo cargar el lector de Excel. Revisa tu internet e intenta de nuevo.')); };
+    document.head.appendChild(sc);
+  });
+  return _xlsx;
+}
+const isoFecha = v => { const t = String(v == null ? '' : v).trim(); let m = t.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : (t.match(/^\d{4}-\d{2}-\d{2}/) || [t])[0]; };
+/** Parte las filas en tandas para que cada llamada al servidor sea corta. `clave` mantiene juntas las filas de un mismo documento. */
+function tandas(filas, max, clave) {
+  const out = []; let cur = [], ult = null;
+  filas.forEach(f => { const k = clave ? clave(f) : null;
+    if (cur.length >= max && (!clave || k !== ult)) { out.push(cur); cur = []; }
+    cur.push(f); ult = k; });
+  if (cur.length) out.push(cur);
+  return out;
+}
+
 const serialAFecha = v => { const d = new Date(Math.round((v - 25569) * 864e5)); return d.toISOString().slice(0, 10); };
 const CANON = { 'rut': 'RUT', 'datos rut': 'RUT', 'documento': 'Documento', 'folio': 'Folio', 'fecha': 'Fecha', 'condicion': 'Condicion',
   'nombre cliente': 'Nombre Cliente', 'emitido en': 'Emitido en', 'codigo': 'Codigo', 'descripcion': 'Descripcion', 'cantidad': 'Cantidad',
@@ -1222,7 +1248,7 @@ function leerLibro(buf) {
 async function vImportar(m) {
   cargarXLSX().catch(() => {});                 // se empieza a descargar mientras la encargada elige los archivos
   render(m, `<h2>Importar desde Mi DTE</h2>
-    <p class="lead">Sube los dos informes del día: <b>Ventas Diarias</b> (los folios y sus totales) y el <b>Informe de ventas</b> (kilos por producto). Puedes subirlos juntos. Los documentos repetidos se ignoran. También puedes subir la planilla <b>Control de crédito</b> para cargar lo que hay por cobrar: los RUT salen de los folios del DTE, así que conviene importar antes las Ventas Diarias de esas fechas.</p>
+    <p class="lead">Sube los dos informes del día: <b>Ventas Diarias</b> (los folios y sus totales) y el <b>Informe de ventas</b> (kilos por producto). Puedes subirlos juntos. Los dos son obligatorios y deben ser de las mismas fechas. Puedes subir los informes varias veces en el día (por ejemplo, cuando llega otro vendedor): solo se agregan los folios nuevos y lo ya importado o detallado no se toca. También puedes subir la planilla <b>Control de crédito</b> para cargar lo que hay por cobrar: los RUT salen de los folios del DTE, así que conviene importar antes las Ventas Diarias de esas fechas.</p>
     <label class="drop" id="drop"><input type="file" id="fi" accept=".xlsx,.xls,.csv" multiple class="sr">
       <b>Elegir archivos de Excel</b><span class="muted">o arrástralos aquí</span></label>
     <div id="pv" class="stack" style="margin-top:14px"></div>
@@ -1234,6 +1260,19 @@ async function vImportar(m) {
   drop.addEventListener('drop', e => procesar([...e.dataTransfer.files]));
   $('#fi').onchange = e => procesar([...e.target.files]);
   cargarTerminales();
+
+  /** Mi DTE entrega dos informes que van juntos: sin los dos no se importa (los kilos y las ventas deben cruzarse). */
+  function requisitos(leidos) {
+    const ok = leidos.filter(l => !l.error), dte = ok.filter(l => l.tipo === 'dte'), det = ok.filter(l => l.tipo === 'detalle');
+    if (!dte.length && !det.length) return '';
+    if (!dte.length) return 'Falta el informe <b>Ventas Diarias</b> (los folios y sus totales).';
+    if (!det.length) return 'Falta el <b>Informe de ventas</b> (los kilos por producto).';
+    const f = ls => [...new Set(ls.flatMap(l => l.filas.map(x => isoFecha(x.Fecha))))].sort();
+    const a = f(dte), b = f(det);
+    if (a.join() !== b.join()) return `Los dos informes deben ser de las mismas fechas. Ventas Diarias trae ${a.map(fcorta).join(', ')} y el Informe de ventas trae ${b.map(fcorta).join(', ')}.`;
+    return '';
+  }
+  const avisoRequisitos = leidos => { const r = requisitos(leidos); return r ? `<div class="alert" style="margin-top:12px"><b>No se puede importar todavía.</b> ${r} Súbelos juntos para continuar.</div>` : ''; };
 
   async function procesar(files) {
     await cargarXLSX();
@@ -1255,7 +1294,7 @@ async function vImportar(m) {
         <div class="muted">${esc(l.nombre)} · ${esc(fechas)}</div></div>
         <span class="chip">${l.tipo === 'dte' ? v + ' documentos' : v + ' líneas de producto'}</span>${g ? `<span class="chip">${g} ${l.tipo === 'dte' ? 'guías (se omiten)' : 'líneas de guía'}</span>` : ''}</div>
         <div id="res${i}"></div></div>`;
-    }).join('') + (leidos.some(l => !l.error) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
+    }).join('') + avisoRequisitos(leidos) + (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
     const b = $('#imp'); if (!b) return;
     b.onclick = async () => {
       b.disabled = true; const sinT = new Set(); let fechas = [];
@@ -1269,11 +1308,22 @@ async function vImportar(m) {
             const bb = $('[data-sinrut]', $('#res' + i)); if (bb) bb.onclick = () => abrirSinRut(r.sinRutClientes);
             continue;
           }
-          const r = await api(l.tipo === 'dte' ? 'importarDTE' : 'importarDetalle', S.sess.token, l.filas);
+          const lotes = l.tipo === 'dte' ? tandas(l.filas, 1200) : tandas(l.filas, 2000, x => String(x.Nombre) + '|' + String(x.Folio));
+          const r = { importados: 0, repetidos: 0, sinVendedor: 0, guias: 0, lineas: 0, omitidas: 0, terminalesSinAsignar: [], fechas: [], productosNuevos: [], porVendedor: {} };
+          for (const [k, lote] of lotes.entries()) {
+            if (lotes.length > 1) $('#res' + i).innerHTML = `<div class="muted">Importando… tanda ${k + 1} de ${lotes.length}</div>`;
+            const x = await api(l.tipo === 'dte' ? 'importarDTE' : 'importarDetalle', S.sess.token, lote);
+            ['importados', 'repetidos', 'sinVendedor', 'guias', 'lineas', 'omitidas'].forEach(c => r[c] += x[c] || 0);
+            r.terminalesSinAsignar = r.terminalesSinAsignar.concat(x.terminalesSinAsignar || []); r.fechas = r.fechas.concat(x.fechas || []);
+            r.productosNuevos = r.productosNuevos.concat(x.productosNuevos || []);
+            Object.keys(x.porVendedor || {}).forEach(v => r.porVendedor[v] = (r.porVendedor[v] || 0) + x.porVendedor[v]);
+          }
           (r.terminalesSinAsignar || []).forEach(t => sinT.add(t)); fechas = fechas.concat(r.fechas);
+          const nomV = u => ((S.cat.vendedores || []).find(v => v.usuario === u) || {}).nombre || u || 'Sin vendedor';
+          const porV = Object.keys(r.porVendedor).map(u => nomV(u).split(' ')[0] + ' ' + r.porVendedor[u]).join(', ');
           $('#res' + i).innerHTML = `<div class="alert ok" style="margin-bottom:0">` + (l.tipo === 'dte'
-            ? `Importados <b>${r.importados}</b> documentos. ${r.repetidos ? r.repetidos + ' ya existían. ' : ''}${r.sinVendedor ? `<b>${r.sinVendedor}</b> sin vendedor.` : ''}`
-            : `Importadas <b>${r.lineas}</b> líneas de venta y ${r.guias} de guías. ${r.omitidas ? r.omitidas + ' líneas de documentos ya importados se omitieron. ' : ''}` +
+            ? `Documentos nuevos: <b>${r.importados}</b>${porV ? ' (' + esc(porV) + ')' : ''}. ${r.repetidos ? r.repetidos + ' ya estaban: no se tocaron, ni lo que ya detallaron los vendedores. ' : ''}${r.sinVendedor ? `<b>${r.sinVendedor}</b> sin vendedor.` : ''}`
+            : `Líneas nuevas: <b>${r.lineas}</b> de venta y ${r.guias} de guías. ${r.omitidas ? r.omitidas + ' líneas de documentos que ya estaban se dejaron como estaban. ' : ''}` +
               (r.productosNuevos.length ? `<br>Productos nuevos agregados como inactivos (revísalos en la hoja PRODUCTOS): ${esc(r.productosNuevos.join(', '))}.` : '')) + '</div>';
         } catch (e) { $('#res' + i).innerHTML = `<div class="alert" style="margin-bottom:0">${esc(e.message)}</div>`; }
       }
