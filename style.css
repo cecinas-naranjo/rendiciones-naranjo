@@ -411,3 +411,8 @@ body:has(.ov) .toast{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto}
 .pol-t{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;background:#fff}
 .pol-d{font-weight:700;font-size:26px;line-height:1;color:#1F4E9C;display:flex;flex-direction:column;align-items:center;min-width:44px}.pol-d small{font-size:11px;font-weight:500}
 .pol-m{font-weight:600;color:#B3261E;font-size:14.5px}
+.redbar{font-size:14px;font-weight:600;text-align:center;padding:7px 12px;cursor:pointer}
+.redbar.off{background:#2A1F1A;color:#fff}.redbar.sync{background:var(--warn-soft);color:#6B4A00;border-top:1px solid #EFD9A0}.redbar.err{background:#FBE3E0;color:#8A1C14}
+.redbar[hidden]{display:none}
+.sticky-foot[hidden]{display:none}
+#mclv{white-space:nowrap}

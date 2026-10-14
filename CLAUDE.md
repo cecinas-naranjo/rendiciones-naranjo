@@ -15,7 +15,7 @@ Cualquier bug se nota en producción. Idioma de la interfaz: español de Chile. 
   **Al agregar una función nueva al backend, agregarla también a `API`.**
 - `APPS_SCRIPT.js` NO se autodespliega: tras editarlo hay que pegarlo en Apps Script e implementar
   **Nueva versión** en la implementación existente (así la URL no cambia).
-- Login: usuario + PIN (hoja USUARIOS). Token guardado en hoja SESIONES, válido 30 días (no pedir login cada hora).
+- Login: RUT o correo + clave personal (ver sección Acceso y claves). Token guardado en hoja SESIONES, válido 30 días (no pedir login cada hora).
   Errores de sesión empiezan con `SESION:` y el cliente vuelve al login.
 
 ## Proceso de negocio
@@ -96,7 +96,7 @@ Mismo esquema que la planilla "INVENTARIO <MES>": inicial − salidas (vendedore
 - Hoja CONTEO_EFECTIVO (`key = fecha|vendedor`; fila `GENERAL` guarda la caja chica). API `getConteoEfectivo` (lectura) y `guardarConteoEfectivo`. El archivo de rendición agrega la hoja "EFECTIVO A DEPOSITAR" si hay conteo.
 
 ## Devoluciones (mermas y reprocesos)
-- Producto que vuelve a la bodega y no se puede vender: **MERMA** (se descarta) o **REPROCESO** (vuelve a producción). Se justifica con una **nota de crédito**: el N° es obligatorio y se adjunta la foto de la NC (si falta, chip "Sin foto de la NC" y aviso en Rendición).
+- Producto que vuelve a la bodega y no se puede vender: **MERMA** (se descarta) o **REPROCESO** (vuelve a producción). Se justifica con una **nota de crédito**: el **N° y el monto son obligatorios**; la foto de la NC es opcional (columna `monto` en DEVOLUCIONES; el archivo de rendición trae MONTO NC).
 - Hoja DEVOLUCIONES (`id, fecha, tipo, origen, cliente, codigo, producto, unidad, cantidad, nota_credito, motivo, obs, registrado_por, registrado, adjuntos`). API `listarDevoluciones` (lectura), `guardarDevolucion`, `borrarDevolucion`; roles BODEGA, RENDICION, SUPERVISOR, ADMIN. Pantalla `vDevoluciones` (pestaña "Devoluciones" en Bodega); `origen` = vendedor de la ruta o '' (cliente/otro).
 - Fotos: tabla de adjuntos `DEVOLUCIONES` (Drive: Respaldos/Devoluciones/<AAAA-MM>/"<fecha> Devolución <tipo> NC <n> <producto> <cantidad>"). BODEGA ya puede subir adjuntos.
 - Archivo de rendición: hoja DEVOLUCIONES (solo si hubo). El resumen cuenta `totales.devoluciones`.
@@ -138,7 +138,10 @@ USUARIOS, PRODUCTOS, DESPACHO, DOCUMENTOS, VENTAS_DETALLE, PAGOS, DESCUENTOS, CO
 RENDICIONES, SESIONES. Las filas se leen por encabezado; no depender de números de fila guardados en el cliente.
 
 ## Pendientes
-- Sin modo sin conexión: si se corta internet, lo no guardado se pierde (evaluar cola offline en localStorage).
+- Fotos/archivos sin conexión: no se encolan (el registro sí); se adjuntan después con "Adjuntar".
+- Decidir si los 8 documentos "NO" con fecha de pago y los 5 PRÉSTAMO de la planilla de control cuentan como pagados (hoy quedan como crédito abierto).
+- Cheque protestado de la app (venta/cobranza): solo se marca; no vuelve a sumar deuda (sí en los de la planilla de control).
+- Ajuste de kilos/hojas por vendedor de la planilla manual, etc. (ver abajo).
 - Confirmar unidades de Cárnicos (se asumió UN salvo Chuleta vetada en KG).
 - Confirmar si SUPERMERCADO (distribuidor) y BODEGA (venta en bodega = consumo) deben rendirse como vendedores.
 - Módulo de gastos definitivo.
@@ -167,7 +170,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - `saldosClientes_` junta los créditos de la app (PAGOS CREDITO) y los cargados (los que ya están en la app no se duplican), agrupa por RUT con la razón social del DTE y aplica los pagos de COBRANZA (por `folio_key`, si no por folio/nombre/alias).
 - **Cobranza**: COBRANZA ahora tiene `rut` y `folio_key`. Pantalla "Cobrar a un cliente" (`cobrarDesdeLista`, API `porCobrar`, el vendedor ve solo sus facturas): buscar por nombre/RUT, marcar facturas, monto editable (abonos), forma de pago (efectivo / transferencia con banco / cheque con sus datos) y `guardarCobro` (una fila de COBRANZA por factura). El registro manual sigue abajo.
 - **Planilla por cobrar** (`generarPlanillaPorCobrar`, botón en Saldos clientes): Google Sheet "Por cobrar DD-MM-AAAA" en `Cuentas por cobrar/` con POR CLIENTE, DETALLE y CHEQUES EN CARTERA (cheques de la planilla + los recibidos en la app los últimos 60 días).
-- Pendiente: marcar un cheque como cobrado (hoy los de la planilla salen de la lista al cobrarse con un pago en Cobranza).
+- Cheques: ver sección Cheques en cartera.
 
 ## Importar Mi DTE (reglas)
 - `cargarXLSX()` baja el lector de Excel (cdnjs, XLSX 0.18.5) la primera vez; si falla, mensaje claro y reintenta.
@@ -178,3 +181,26 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## Política de crédito (montos NETOS, sin IVA) y folio en Cobranza
 - 7 días: $15.000–$60.000 · 14 días: $60.001–$120.000 · 21 días: $120.001–$300.000 · 28 días: más de $300.000. Constante `POLITICA` en app.js; neto = total/1,19. Se muestra en Saldos y en Cobranza (y el plazo por factura en "Cobrar a un cliente").
 - El folio es OBLIGATORIO en todo pago de Cobranza (app y `guardarMov`). Ya no se ofrece descontar de la factura más antigua; solo los registros viejos sin folio conservan ese cálculo.
+
+## Cheques en cartera (pestaña Cheques, RENDICION/SUPERVISOR/ADMIN)
+- Un cheque es crédito hasta que se cobra. `chequesTodos_()` junta los cheques de PAGOS (clave `V|id`), COBRANZA (`C|id`) y CREDITOS_CARGA estado CHEQUE (`P|folio_key`). Su estado vive en la hoja CHEQUES_ESTADO (`clave, estado, fecha, registrado_por, registrado, obs`): sin fila = CARTERA; COBRADO; PROTESTADO.
+- API `listarCheques` (lectura; cobrados solo los últimos 45 días) y `marcarCheque(token, claves[], estado, fecha, obs)` (estado CARTERA devuelve a la cartera).
+- Efecto en saldos: un cheque de la planilla de control marcado COBRADO deja de ser deuda; PROTESTADO vuelve a ser crédito normal. La planilla por cobrar usa solo los cheques en CARTERA.
+- Pantalla `vCheques`: KPIs (en cartera, cobrables hoy, a fecha próximos 7 días), filtros (para cobrar hoy / a fecha / toda la cartera / cobrados / protestados), buscador y selección múltiple con fecha de cobro.
+
+## Acceso y claves (hoja USUARIOS)
+- Columnas nuevas: `rut, correo, clave_hash, sal, cambiar_clave, intentos, bloqueado_hasta`. La clave se guarda con sal y SHA-256 repetido 1000 veces; nunca en texto. La columna `pin` queda vacía.
+- Se entra con RUT o correo (también acepta el código interno) + clave. No hay lista de usuarios en el login (`listaUsuarios` ya no existe). El rol lo asigna solo ADMIN; la persona no lo elige.
+- Clave temporal (usuario nuevo o restablecida): `login` devuelve `{cambiarClave:true}` y la app pide crear la clave personal (`cambiarClaveInicial`, mínimo 6 caracteres, rechaza claves triviales). Restablecer o desactivar cierra todas sus sesiones (`cerrarSesionesDe_`). "Clave" en la cabecera → `cambiarMiClave`.
+- 5 intentos fallidos bloquean la cuenta 15 minutos; además hay un tope por identificador en CacheService.
+- Pantalla Usuarios (solo ADMIN): crear/editar (nombre, rol, RUT con dígito verificador, correo, terminales si es vendedor, activo), restablecer clave (muestra la temporal una vez). No permite quitarse el rol de ADMIN ni dejar el sistema sin administrador activo. APIs `listarUsuariosAdmin`, `guardarUsuario`, `restablecerClave`.
+- Migración: `migrarUsuarios()` (la llama `setup`) da una clave temporal a quien no tenga y las escribe en el registro de ejecución del editor de Apps Script (Logger). Mientras NADIE tenga clave todavía, el login acepta el PIN antiguo (solo para no dejar la app bloqueada antes de migrar).
+
+## Modo sin conexión
+- Guardados que se encolan (`COLA_FN`): guardarDetalle, guardarVarios, guardarMov, borrarMov, guardarCobro, guardarDevolucion, saveDespacho, guardarDeposito, guardarConteoEfectivo. Sin internet (o si se corta a mitad) quedan en localStorage `rn_cola` y `sincronizar()` los envía en orden al volver la conexión (evento online, cada 20 s, al volver a la app). Los args se guardan sin token; al enviar se usa el token vigente. Cada elemento queda ligado a su usuario.
+- Si el servidor rechaza uno (día cerrado, etc.), queda con error y se abre el panel "Cambios por enviar" (Reintentar / Descartar). Si es un error de red se reintenta más tarde.
+- Sin duplicados: cada envío lleva `op`; si es un reenvío (`rep`), el servidor revisa la hoja OPERACIONES (funciones que agregan filas: `NO_REPETIR_`) y responde `{duplicado:true}`. Los demás guardados son idempotentes (reemplazan o fijan valores).
+- Lecturas: `superponer(fn,args,data)` aplica lo pendiente sobre lo que se muestra (folios, movimientos, devoluciones, por cobrar). Sin conexión se acepta la caché de cualquier edad. Vendedor y bodeguero precargan todas sus pantallas al ingresar para poder trabajar sin internet. Registros pendientes tienen id `pend_<op>`: se pueden borrar (se cancelan) pero no adjuntar.
+- Barra `#redbar` bajo la cabecera: "Sin conexión · N cambios por enviar" / "Enviando…" / errores. Al salir con pendientes se pide confirmación.
+- Arranque sin internet: la sesión y la caché permiten abrir; si falla la carga inicial se muestra "Sin conexión / Reintentar" (ya no cierra la sesión).
+- Pruebas: Playwright con `context.set_offline` y rutas a script.google.com (ver /tmp/claude-0/t/t10.py durante el desarrollo).

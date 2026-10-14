@@ -88,6 +88,7 @@ function activarAdjuntarDespues(cont, alTerminar) {
   let inp = $('#adjLater');
   if (!inp) { inp = document.createElement('input'); inp.type = 'file'; inp.id = 'adjLater'; inp.accept = 'image/*,application/pdf'; inp.multiple = true; inp.className = 'sr'; document.body.appendChild(inp); }
   cont.addEventListener('click', e => { const b = e.target.closest('[data-adj]'); if (!b) return;
+    if (String(b.dataset.adj).indexOf('pend_') === 0) return toast('Este registro aún no se envía. Podrás adjuntar el archivo cuando se envíe.', true);
     inp.value = ''; inp.onchange = async () => { const fs = [...inp.files]; if (!fs.length) return;
       try { await subirArchivos(b.dataset.tabla, b.dataset.adj, fs); } finally { alTerminar(); } };
     inp.click(); });
@@ -105,11 +106,11 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
-  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', porCobrar: 'Buscando lo que hay por cobrar…', cargarCreditos: 'Cargando la lista de créditos…', generarPlanillaPorCobrar: 'Armando la planilla por cobrar…', reintentarRut: 'Buscando RUT…', historial: 'Cargando historial…' };
+  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', porCobrar: 'Buscando lo que hay por cobrar…', listarCheques: 'Cargando los cheques…', listarUsuariosAdmin: 'Cargando usuarios…', guardarUsuario: 'Guardando el usuario…', restablecerClave: 'Generando la clave…', marcarCheque: 'Guardando…', cargarCreditos: 'Cargando la lista de créditos…', generarPlanillaPorCobrar: 'Armando la planilla por cobrar…', reintentarRut: 'Buscando RUT…', historial: 'Cargando historial…' };
 const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
   : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
 
@@ -119,7 +120,7 @@ let tGuardarCache = 0;
 function guardarCache() {
   clearTimeout(tGuardarCache);
   tGuardarCache = setTimeout(() => {
-    const ult = [...CACHE.entries()].sort((a, b) => b[1].t - a[1].t).slice(0, 30);
+    const ult = [...CACHE.entries()].sort((a, b) => b[1].t - a[1].t).slice(0, 60);
     try { localStorage.setItem('rn_cache', JSON.stringify(Object.fromEntries(ult))); }
     catch (e) { try { localStorage.removeItem('rn_cache'); } catch (e2) {} }
   }, 400);
@@ -165,19 +166,23 @@ function trabajando(fn, escritura) {
   };
 }
 
-async function llamar(fn, args) {
-  let r;
+async function llamar(fn, args, extra) {
+  let r; const ctl = new AbortController(), reloj = setTimeout(() => ctl.abort(), extra && extra.op ? 45000 : 60000);
   try {
-    const res = await fetch(CONFIG.APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn, args }) });
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ fn, args }, extra || {})), signal: ctl.signal });
     r = await res.json();
-  } catch (e) { throw new Error('Sin conexión con el servidor. Revisa tu internet e intenta de nuevo.'); }
+  } catch (e) {
+    EN_LINEA = false; pintarRed();
+    const er = new Error('Sin conexión con el servidor. Revisa tu internet e intenta de nuevo.'); er.red = true; throw er;
+  } finally { clearTimeout(reloj); }
+  if (!EN_LINEA) { EN_LINEA = true; pintarRed(); setTimeout(sincronizar, 50); }
   if (!r.ok) throw new Error(r.error);
   return r.data;
 }
 const EN_CURSO = new Map();
-function pedir(fn, args, key) {                    // si ya se está pidiendo lo mismo, se reutiliza esa respuesta
+function pedir(fn, args, key, extra) {                    // si ya se está pidiendo lo mismo, se reutiliza esa respuesta
   if (EN_CURSO.has(key)) return EN_CURSO.get(key);
-  const p = llamar(fn, args).then(d => { if (LECTURA.has(fn)) { CACHE.set(key, { t: Date.now(), d }); guardarCache(); } return d; })
+  const p = llamar(fn, args, extra).then(d => { if (LECTURA.has(fn)) { CACHE.set(key, { t: Date.now(), d }); guardarCache(); } return d; })
     .finally(() => EN_CURSO.delete(key));
   EN_CURSO.set(key, p); return p;
 }
@@ -199,18 +204,160 @@ function errorApi(e) {
 }
 
 async function api(fn, ...args) {
+  if (S.sess && COLA_FN.has(fn)) return escribir(fn, args);
+  if ((fn === 'borrarMov' && String(args[2]).indexOf('pend_') === 0) || (fn === 'borrarDevolucion' && String(args[1]).indexOf('pend_') === 0)) {
+    const id = String(args[fn === 'borrarMov' ? 2 : 1]); PEND = PEND.filter(p => 'pend_' + p.op !== id); guardarPend(); return true;       // aún no se había enviado: solo se cancela
+  }
   const lectura = LECTURA.has(fn), key = claveApi(fn, args);
-  if (lectura && CACHE.has(key) && Date.now() - CACHE.get(key).t < 12 * 3600e3) {
+  if (lectura && CACHE.has(key) && (Date.now() - CACHE.get(key).t < 12 * 3600e3 || !EN_LINEA)) {
     const e = CACHE.get(key);
-    if (e.viejo || Date.now() - e.t > FRESCURA) revalidar(fn, args, key);
-    return copia(e.d);
+    if (EN_LINEA && (e.viejo || Date.now() - e.t > FRESCURA)) revalidar(fn, args, key);
+    return superponer(fn, args, copia(e.d));
   }
   if (!lectura) olvidarCache(false);
   const fin = trabajando(fn, !lectura);
-  try { return copia(await pedir(fn, args, key)); }
-  catch (e) { errorApi(e); throw e; }
+  try { return superponer(fn, args, copia(await pedir(fn, args, key))); }
+  catch (e) {
+    if (e.red && lectura) { toast('Sin conexión: esta pantalla todavía no se había abierto con internet.', true); throw e; }
+    errorApi(e); throw e; }
   finally { fin(); }
 }
+
+/* ---------- modo sin conexión ----------
+   Lo que se guarda sin internet queda en el teléfono (cola persistente, sobrevive aunque se cierre la app) y se envía solo, en orden,
+   cuando vuelve la conexión. Las pantallas ya vistas se muestran desde la memoria del teléfono con lo pendiente superpuesto.
+   El servidor reconoce los reenvíos (`op`) para no duplicar registros. */
+const COLA_FN = new Set(['guardarDetalle', 'guardarVarios', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDevolucion', 'saveDespacho', 'guardarDeposito', 'guardarConteoEfectivo']);
+let EN_LINEA = navigator.onLine !== false, sincronizando = false;
+let PEND = []; try { PEND = JSON.parse(localStorage.getItem('rn_cola') || '[]'); } catch (e) {}
+const idOp = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const pendDe = () => PEND.filter(p => S.sess && p.usuario === S.sess.usuario);
+const pendActivos = () => pendDe().filter(p => !p.error);
+function guardarPend() {
+  try { localStorage.setItem('rn_cola', JSON.stringify(PEND)); }
+  catch (e) { toast('El teléfono no tiene espacio para guardar más cambios sin conexión.', true); }
+  pintarRed();
+}
+async function escribir(fn, args) {
+  const resto = args.slice(1), op = idOp(); let enviado = false;
+  if (EN_LINEA && !pendActivos().length) {
+    const key = claveApi(fn, args), fin = trabajando(fn, true);
+    try { const r = copia(await pedir(fn, args, key, { op })); olvidarCache(false); return r; }
+    catch (e) { if (!e.red) { errorApi(e); throw e; } enviado = true; }        // se cortó: puede haber llegado o no; el reenvío lo comprueba
+    finally { fin(); }
+  }
+  PEND.push({ op, fn, args: resto, usuario: S.sess.usuario, t: Date.now(), enviado, error: '' });
+  guardarPend(); olvidarCache(false);
+  if (EN_LINEA) setTimeout(sincronizar, 50);
+  return { _pendiente: true, id: 'pend_' + op };
+}
+async function sincronizar() {
+  if (sincronizando || !S.sess || !pendActivos().length) return;
+  sincronizando = true; pintarRed(); let enviados = 0, rechazados = 0;
+  try {
+    for (;;) {
+      const x = pendActivos()[0]; if (!x) break;
+      try { await llamar(x.fn, [S.sess.token].concat(x.args), { op: x.op, rep: !!x.enviado }); PEND = PEND.filter(p => p !== x); enviados++; guardarPend(); }
+      catch (e) {
+        if (e.red) { x.enviado = true; guardarPend(); break; }                      // sigue sin conexión: se intenta más tarde
+        if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; return salir(true); }
+        x.error = String(e.message || e).replace('SESION: ', ''); rechazados++; guardarPend();    // el servidor lo rechazó (p. ej. el día ya se cerró): queda para que se revise
+      }
+    }
+  } finally { sincronizando = false; pintarRed(); }
+  if (enviados) {
+    olvidarCache(false);
+    toast(enviados === 1 ? 'Se envió lo que estaba pendiente.' : 'Se enviaron ' + enviados + ' cambios que estaban pendientes.');
+    if (!$('.ov') && !S.tocado && S.sess) ir(S.tab, true);
+  }
+  if (rechazados) abrirPendientes(true);
+}
+/** Aplica sobre lo que se ve (guardado en el teléfono) los cambios que aún no llegaron al servidor. */
+function docLocal(d, lineas) {
+  const aprob = (d.descuentos || []).filter(x => x.estado === 'APROBADO').reduce((a, x) => a + x.monto, 0);
+  const ls = lineas.map(l => Object.assign({}, l, { monto: soloDigitos(l.monto) })), pagado = ls.reduce((a, l) => a + l.monto, 0);
+  return Object.assign({}, d, { estado: 'DETALLADO', pagos: ls, pagado, diferencia: d.total - pagado - aprob, sinEnviar: true });
+}
+function superponer(fn, args, data) {
+  const ps = pendActivos(); if (!ps.length || !data) return data;
+  try {
+    if (fn === 'misDocumentos') {
+      ps.forEach(p => {
+        if (p.fn === 'guardarDetalle' && p.args[0] === args[1]) { const i = data.docs.findIndex(d => d.folio_key === p.args[1]); if (i >= 0) data.docs[i] = docLocal(data.docs[i], p.args[2]); }
+        if (p.fn === 'guardarVarios' && p.args[0] === args[1]) p.args[1].forEach(it => { const i = data.docs.findIndex(d => d.folio_key === it.folio_key); if (i < 0) return;
+          const d = data.docs[i], aprob = (d.descuentos || []).filter(x => x.estado === 'APROBADO').reduce((a, x) => a + x.monto, 0);
+          data.docs[i] = docLocal(d, [Object.assign({}, it, { referencia: '', monto: d.total - aprob })]); });
+      });
+    } else if (fn === 'listarMov') {
+      ps.forEach(p => {
+        if (p.fn === 'guardarMov' && p.args[0] === args[1] && p.args[1] === args[2]) data.push(Object.assign({}, p.args[2], { id: 'pend_' + p.op, fecha: p.args[1], monto: soloDigitos(p.args[2].monto), adjuntos: [], sinEnviar: true,
+          vendedor: p.args[2].vendedor || (S.sess.rol === 'VENDEDOR' ? S.sess.usuario : '') }));
+        if (p.fn === 'borrarMov' && p.args[0] === args[1]) data = data.filter(r => r.id !== p.args[1]);
+      });
+    } else if (fn === 'listarDevoluciones') {
+      ps.forEach(p => { if (p.fn === 'guardarDevolucion' && p.args[0] === args[1]) { const o = p.args[1], pr = (S.cat.productos || []).find(x => String(x.codigo) === String(o.codigo)) || {};
+        data.push(Object.assign({}, o, { id: 'pend_' + p.op, fecha: p.args[0], cantidad: Number(o.cantidad) || 0, monto: soloDigitos(o.monto), producto: pr.nombre || o.codigo, unidad: pr.unidad || 'UN', adjuntos: [], sinEnviar: true })); } });
+    } else if (fn === 'porCobrar' && data.clientes) {
+      ps.filter(p => p.fn === 'guardarCobro').forEach(p => p.args[2].forEach(it => data.clientes.forEach(c => c.facturas.forEach(f => { if (f.folio_key === it.folio_key) { const q = Math.min(f.saldo, soloDigitos(it.monto)); f.saldo -= q; c.deuda -= q; } }))));
+      data.clientes = data.clientes.filter(c => c.facturas.some(f => f.saldo > 0));
+      data.clientes.forEach(c => { c.facturas = c.facturas.filter(f => f.saldo > 0); });
+    }
+  } catch (e) { /* si algo no calza, se muestra lo guardado tal cual */ }
+  return data;
+}
+const fechaDe = p => String(p.args.find(a => /^\d{4}-\d{2}-\d{2}$/.test(String(a))) || '');
+const NOMBRE_TABLA = { COBRANZA: 'Cobranza', GASTOS: 'Gasto', PROVEEDORES: 'Proveedor', DEPOSITOS: 'Depósito', CONSUMO: 'Consumo' };
+function descPend(x) {
+  const a = x.args;
+  switch (x.fn) {
+    case 'guardarDetalle': return 'Forma de pago del folio ' + String(a[1]).replace(/^[A-Za-z]+-/, '');
+    case 'guardarVarios': return 'Forma de pago de ' + a[1].length + ' folios';
+    case 'guardarMov': return (NOMBRE_TABLA[a[0]] || a[0]) + ' ' + clp(soloDigitos(a[2].monto)) + (a[2].cliente ? ' · ' + a[2].cliente : a[2].concepto ? ' · ' + a[2].concepto : a[2].proveedor ? ' · ' + a[2].proveedor : '');
+    case 'borrarMov': return 'Borrar un registro de ' + (NOMBRE_TABLA[a[0]] || a[0]);
+    case 'guardarCobro': return 'Cobro a ' + a[1].cliente + ' · ' + clp(a[3].reduce((t, i) => t + soloDigitos(i.monto), 0));
+    case 'guardarDevolucion': return 'Devolución (' + String(a[1].tipo || '').toLowerCase() + ') NC ' + a[1].nota_credito;
+    case 'saveDespacho': return 'Despacho de ' + a[1];
+    case 'guardarDeposito': return 'Depósito ' + clp(soloDigitos(a[1].monto));
+    case 'guardarConteoEfectivo': return 'Conteo de efectivo';
+  }
+  return x.fn;
+}
+function pintarRed() {
+  const el = $('#redbar'); if (!el) return;
+  const n = pendActivos().length, err = pendDe().filter(p => p.error).length, plural = k => k + ' cambio' + (k > 1 ? 's' : '');
+  let txt = '', cls = '';
+  if (!EN_LINEA) { txt = 'Sin conexión' + (n ? ' · ' + plural(n) + ' por enviar' : ' · puedes seguir trabajando'); cls = 'off'; }
+  else if (sincronizando) { txt = 'Enviando ' + plural(n) + '…'; cls = 'sync'; }
+  else if (n) { txt = plural(n) + ' por enviar'; cls = 'sync'; }
+  else if (err) { txt = plural(err) + ' no se pudo enviar · tocar para revisar'; cls = 'err'; }
+  el.hidden = !txt; el.className = 'redbar ' + cls; el.textContent = txt;
+}
+/** Lista de lo pendiente: lo que espera conexión y lo que el servidor rechazó (con opción de reintentar o descartar). */
+function abrirPendientes(soloSiHayErrores) {
+  const xs = pendDe(); if (!xs.length || $('#pendov')) return;
+  const ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'pendov';
+  const pintar = () => { const ys = pendDe();
+    $('.body', ov).innerHTML = `<div style="font-weight:700;font-size:19px">Cambios por enviar</div>
+      <p class="muted" style="margin:4px 0 10px">Se guardaron en este teléfono y se envían solos cuando hay internet. Si el servidor rechaza alguno (por ejemplo, si el día ya se cerró), queda aquí para que lo revises.</p>
+      ${ys.length ? ys.map(p => `<div class="cfac"><div class="row" style="gap:8px"><span class="grow"><b>${esc(descPend(p))}</b><div class="muted">${fcorta(fechaDe(p))}</div>
+        ${p.error ? `<div style="color:var(--bad)">${esc(p.error)}</div>` : '<div class="muted">Esperando conexión</div>'}</span>
+        ${p.error ? `<button class="btn ghost sm" data-r="${esc(p.op)}">Reintentar</button>` : ''}<button class="btn ghost sm" data-d="${esc(p.op)}">Descartar</button></div></div>`).join('') : '<div class="alert ok">No queda nada pendiente.</div>'}`; };
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Cambios por enviar"><div class="grip"></div><div class="body"></div>
+    <div class="foot"><button class="btn ghost" id="pcx">Cerrar</button><span class="grow"></span><button class="btn cu" id="pcs">Enviar ahora</button></div></div>`;
+  document.body.appendChild(ov); pintar();
+  $('#pcx', ov).onclick = () => cerrarHoja(ov);
+  $('#pcs', ov).onclick = () => { pendDe().forEach(p => { p.error = ''; }); guardarPend(); sincronizar(); setTimeout(pintar, 600); };
+  ov.onclick = e => {
+    if (e.target === ov) return cerrarHoja(ov);
+    const r = e.target.closest('[data-r]'), d = e.target.closest('[data-d]');
+    if (r) { const p = PEND.find(x => x.op === r.dataset.r); if (p) { p.error = ''; guardarPend(); sincronizar(); setTimeout(pintar, 600); } }
+    if (d && confirm('¿Descartar este cambio? No se enviará al servidor.')) { PEND = PEND.filter(x => x.op !== d.dataset.d); guardarPend(); pintar(); if (!pendDe().length) setTimeout(() => cerrarHoja(ov), 400); }
+  };
+}
+window.addEventListener('online', () => { EN_LINEA = true; pintarRed(); sincronizar(); });
+window.addEventListener('offline', () => { EN_LINEA = false; pintarRed(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (pendActivos().length) sincronizar(); else if (!EN_LINEA) llamar('ping', []).catch(() => {}); } });
+setInterval(() => { if (!S.sess) return; if (pendActivos().length) sincronizar(); else if (!EN_LINEA) llamar('ping', []).catch(() => {}); }, 20000);
 /** Pide por detrás la versión nueva de algo que se mostró desde la memoria del teléfono. */
 function revalidar(fn, args, key) {
   const antes = JSON.stringify(CACHE.get(key).d), vista = S.vistaId;
@@ -226,12 +373,13 @@ function revalidar(fn, args, key) {
 function precargar(tabs) {
   const tok = S.sess && S.sess.token, F = S.fecha, esV = S.sess && S.sess.rol === 'VENDEDOR';
   const q = { folios: ['misDocumentos', [tok, F, S.vend]], inventario: ['getInventario', [tok, F]], resumen: ['getResumen', [tok, F]],
-    saldos: ['getSaldosClientes', [tok]], descuentos: ['descuentosPendientes', [tok]], depositos: ['efectivoParaDepositar', [tok, F, esV ? '' : S.vend]],
+    saldos: ['getSaldosClientes', [tok]], cheques: ['listarCheques', [tok]], descuentos: ['descuentosPendientes', [tok]], depositos: ['efectivoParaDepositar', [tok, F, esV ? '' : S.vend]],
     despacho: (S.vend || (S.cat.vendedores[0] || {}).usuario) ? ['getDespacho', [tok, F, S.vend || S.cat.vendedores[0].usuario]] : null,
     devoluciones: ['listarDevoluciones', [tok, F]], efectivo: ['getConteoEfectivo', [tok, F]],
     historial: ['historial', [tok]] };
   const lista = [];
   tabs.forEach(t => {
+    if (t === 'COBRANZA') lista.push(['porCobrar', [tok]]);
     const x = q[t] || (/^[A-Z]+$/.test(t) ? ['listarMov', [tok, t, F]] : null);
     if (!x) return;
     const e = CACHE.get(claveApi(x[0], x[1]));
@@ -250,18 +398,19 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 const TABS = {
   VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
   BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
-  RENDICION: [['resumen', 'Rendición'], ['efectivo', 'Efectivo'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['devoluciones', 'Devoluciones'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'],
+  RENDICION: [['resumen', 'Rendición'], ['efectivo', 'Efectivo'], ['importar', 'Importar Mi DTE'], ['folios', 'Detallar ventas'], ['despacho', 'Kilos'], ['devoluciones', 'Devoluciones'], ['inventario', 'Inventario'], ['COBRANZA', 'Cobranza'], ['saldos', 'Saldos clientes'], ['cheques', 'Cheques'],
     ['depositos', 'Depósitos'], ['PROVEEDORES', 'Proveedores'], ['CONSUMO', 'Consumo'], ['GASTOS', 'Gastos'], ['historial', 'Historial']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos']], TABS.RENDICION.slice(1));
-TABS.ADMIN = TABS.SUPERVISOR;
+TABS.ADMIN = TABS.SUPERVISOR.concat([['usuarios', 'Usuarios']]);
 // En oficina, las pestañas se agrupan en 5 secciones para no tener 12 opciones a la vista
 const GRUPOS = [['g-rend', 'Rendición', ['resumen', 'efectivo']], ['g-ventas', 'Ventas', ['folios', 'importar', 'descuentos']],
-  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
-  ['g-hist', 'Historial', ['historial']]];
+  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario']], ['g-dinero', 'Dinero', ['COBRANZA', 'saldos', 'cheques', 'depositos', 'PROVEEDORES', 'GASTOS', 'CONSUMO']],
+  ['g-hist', 'Historial', ['historial']], ['g-adm', 'Usuarios', ['usuarios']]];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
 function salir(expirada) {
+  if (!expirada && pendActivos().length && !confirm('Tienes ' + pendActivos().length + ' cambio(s) guardados en el teléfono que aún no se envían. Si sales, se enviarán cuando vuelvas a ingresar con tu usuario. ¿Salir igual?')) return;
   if (!expirada && S.sess) api('logout', S.sess.token).catch(() => {});
   S.sess = null; S.cat = null; S.tab = null;
   olvidarCache(false);
@@ -271,31 +420,76 @@ function salir(expirada) {
 }
 
 /* ---------- ingreso ---------- */
-async function pantallaLogin() {
-  const app = $('#app');
+/** Cada persona entra con su RUT (o correo) y su clave; el rol ya viene asignado por la administración. */
+function pantallaLogin() {
+  const app = $('#app'); let ult = ''; try { ult = localStorage.getItem('rn_ident') || ''; } catch (e) {}
   render(app, `<div class="login"><img class="logo" src="icon-192.png" alt="Cecinas Naranjo" width="96" height="96">
-    <h1>Rendiciones</h1><p class="lead">Elige tu nombre e ingresa tu PIN.</p>
-    <div class="who" id="who">${skeleton(1)}</div>
-    <label class="sr" for="pin">PIN</label>
-    <input id="pin" class="in pin" type="password" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off">
-    <button class="btn cu block" style="margin-top:12px" id="go">Ingresar</button></div>`);
-  let sel = null;
-  const us = await api('listaUsuarios');
-  $('#who').innerHTML = us.map(u => `<button type="button" data-u="${esc(u.usuario)}">${esc(u.nombre)}<small>${ROL[u.rol] || u.rol}</small></button>`).join('');
-  $('#who').onclick = e => { const b = e.target.closest('button'); if (!b) return; sel = b.dataset.u;
-    $$('#who button').forEach(x => x.classList.toggle('on', x === b)); $('#pin').focus(); };
+    <h1>Rendiciones</h1><p class="lead">Ingresa con tu RUT o correo y tu clave.</p>
+    <label class="f" for="lid">RUT o correo</label>
+    <input id="lid" class="in" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="12.345.678-5" value="${esc(ult)}">
+    <label class="f" for="lpw" style="margin-top:12px">Clave</label>
+    <div class="row" style="gap:8px"><input id="lpw" class="in grow" type="password" autocomplete="current-password" placeholder="Tu clave">
+      <button type="button" class="btn ghost sm" id="lver" aria-label="Mostrar u ocultar la clave">Ver</button></div>
+    <button class="btn cu block" style="margin-top:14px" id="go">Ingresar</button>
+    <p class="muted" style="margin-top:14px">Si olvidaste tu clave o es tu primera vez, pide a la administración que te dé una clave temporal.</p></div>`);
+  $('#lver').onclick = () => { const p = $('#lpw'); p.type = p.type === 'password' ? 'text' : 'password'; $('#lver').textContent = p.type === 'password' ? 'Ver' : 'Ocultar'; };
   const go = async () => {
-    if (!sel) return toast('Elige tu nombre primero', true);
+    const id = $('#lid').value.trim(), pw = $('#lpw').value;
+    if (!id || !pw) return toast('Escribe tu RUT o correo y tu clave.', true);
     try {
-      const s = await api('login', sel, $('#pin').value, hoyCL());
-      const lote = s.lote || []; delete s.lote;
-      lote.forEach(x => CACHE.set(claveApi(x.fn, x.args), { t: Date.now(), d: x.data }));      // catálogo y primera pantalla ya vienen listos
-      if (lote.length) guardarCache();
-      S.sess = s; try { localStorage.setItem('rn_sess', JSON.stringify(s)); } catch (e) {}
-      iniciar();
-    } catch (e) { const p = $('#pin'); p.value = ''; p.classList.remove('shake'); void p.offsetWidth; p.classList.add('shake'); }
+      const s = await api('login', id, pw, hoyCL());
+      try { localStorage.setItem('rn_ident', id); } catch (e) {}
+      if (s.cambiarClave) return pantallaNuevaClave(id, pw, s.nombre);
+      entrar(s);
+    } catch (e) { const p = $('#lpw'); p.value = ''; p.classList.remove('shake'); void p.offsetWidth; p.classList.add('shake'); }
   };
-  $('#go').onclick = go; $('#pin').onkeydown = e => { if (e.key === 'Enter') go(); };
+  $('#go').onclick = go; $('#lpw').onkeydown = $('#lid').onkeydown = e => { if (e.key === 'Enter') go(); };
+  ($('#lid').value ? $('#lpw') : $('#lid')).focus();
+}
+function entrar(s) {
+  const lote = s.lote || []; delete s.lote;
+  lote.forEach(x => CACHE.set(claveApi(x.fn, x.args), { t: Date.now(), d: x.data }));      // catálogo y primera pantalla ya vienen listos
+  if (lote.length) guardarCache();
+  S.sess = s; try { localStorage.setItem('rn_sess', JSON.stringify(s)); } catch (e) {}
+  iniciar();
+}
+/** Primera entrada o clave restablecida: la persona crea su propia clave. */
+function pantallaNuevaClave(ident, temporal, nombre) {
+  render($('#app'), `<div class="login"><img class="logo" src="icon-192.png" alt="" width="96" height="96">
+    <h1>Hola, ${esc(String(nombre || '').split(' ')[0])}</h1><p class="lead">Crea tu clave personal. Solo tú debes conocerla: con ella se registra todo lo que hagas en la app.</p>
+    <label class="f" for="np1">Clave nueva (mínimo 6 caracteres)</label><input id="np1" class="in" type="password" autocomplete="new-password">
+    <label class="f" for="np2" style="margin-top:12px">Repite la clave</label><input id="np2" class="in" type="password" autocomplete="new-password">
+    <button class="btn cu block" style="margin-top:14px" id="npg">Guardar y entrar</button>
+    <button class="btn ghost block" style="margin-top:8px" id="npc">Cancelar</button></div>`);
+  $('#npc').onclick = () => pantallaLogin();
+  const go = async () => {
+    const a = $('#np1').value, b = $('#np2').value;
+    if (a.length < 6) return toast('La clave debe tener al menos 6 caracteres.', true);
+    if (a !== b) return toast('Las dos claves no son iguales.', true);
+    try { await api('cambiarClaveInicial', ident, temporal, a); const s = await api('login', ident, a, hoyCL()); toast('Clave guardada'); entrar(s); } catch (e) { /* api ya mostró el motivo */ }
+  };
+  $('#npg').onclick = go; $('#np2').onkeydown = e => { if (e.key === 'Enter') go(); };
+  $('#np1').focus();
+}
+/** Cambiar la propia clave estando dentro de la app. */
+function abrirMiClave() {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Cambiar mi clave"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Cambiar mi clave</div>
+    <label class="f" for="mc0">Clave actual</label><input id="mc0" class="in" type="password" autocomplete="current-password">
+    <label class="f" for="mc1" style="margin-top:10px">Clave nueva (mínimo 6 caracteres)</label><input id="mc1" class="in" type="password" autocomplete="new-password">
+    <label class="f" for="mc2" style="margin-top:10px">Repite la clave nueva</label><input id="mc2" class="in" type="password" autocomplete="new-password"></div>
+    <div class="foot"><button class="btn ghost" id="mcx">Cancelar</button><span class="grow"></span><button class="btn cu" id="mcg">Guardar</button></div></div>`;
+  document.body.appendChild(ov);
+  $('#mcx', ov).onclick = () => cerrarHoja(ov);
+  $('#mcg', ov).onclick = async () => {
+    const a = $('#mc0', ov).value, b = $('#mc1', ov).value, c = $('#mc2', ov).value;
+    if (!a) return toast('Escribe tu clave actual.', true);
+    if (b.length < 6) return toast('La clave nueva debe tener al menos 6 caracteres.', true);
+    if (b !== c) return toast('Las claves nuevas no son iguales.', true);
+    await api('cambiarMiClave', S.sess.token, a, b); toast('Clave cambiada'); cerrarHoja(ov);
+  };
+  $('#mc0', ov).focus();
 }
 
 /* ---------- estructura ---------- */
@@ -316,14 +510,15 @@ async function iniciar() {
         <div class="sp"></div>
         <div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha">
           <button id="next" aria-label="Día siguiente">›</button></div>
-        <button class="icon-btn" id="out">Salir</button></div>
+        <button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">Clave</button><button class="icon-btn" id="out">Salir</button></div>
+      <div id="redbar" class="redbar" role="status" hidden></div>
       ${abajo || unica ? '<div class="progress" aria-hidden="true"><i id="prog"></i></div>'
         : `<nav class="top" id="nav">${grupos.map(g => `<button data-g="${g[0]}">${g[1]}</button>`).join('')}</nav><nav class="sub" id="sub"></nav>`}
       <div class="otrodia" id="otrodia" hidden><span></span><button type="button" id="hoyBtn">Volver a hoy</button></div>
     </header>
     <main id="main"></main>
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
-  $('#out').onclick = () => salir();
+  $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
   const cambiarFecha = f => { S.fecha = f; $('#fecha').value = f; ir(S.tab); };
   $('#fecha').onchange = e => e.target.value && cambiarFecha(e.target.value);
   $('#prev').onclick = () => cambiarFecha(sumarDias(S.fecha, -1));
@@ -336,6 +531,8 @@ async function iniciar() {
   // si la persona escribe algo, no se le cambia la pantalla por una actualización de fondo
   $('#main').addEventListener('input', () => { S.tocado = true; });
   ir(S.tab);
+  sincronizar();
+  if (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA') setTimeout(() => precargar(tabs.map(t => t[0])), 2500);      // deja lista cada pantalla para poder trabajar sin conexión
 }
 function ir(t, silencioso) {
   S.tab = t;
@@ -356,7 +553,7 @@ function ir(t, silencioso) {
   const y = window.scrollY;
   if (!silencioso) m.innerHTML = skeleton(4);
   S.silencio = !!silencioso;
-  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   Promise.resolve(v(m, t)).catch(() => {
     if (!silencioso && m.querySelector('.sk')) m.innerHTML = `<div class="empty"><b>No se pudo cargar</b>Revisa tu conexión.<br><button class="btn ghost sm" style="margin-top:10px" onclick="ir(S.tab)">Reintentar</button></div>`;
   }).finally(() => {
@@ -518,11 +715,10 @@ function abrirDetalleCompleto(d, estadoDia, alGuardar) {
     for (const c of $$('.lch', ls)) { const r = leerCheque(c); if (r.error) return toast(r.error, true); Object.assign(lineas[c.dataset.i], r.datos); }
     ok.disabled = true;
     try {
-      const nuevo = await api('guardarDetalle', S.sess.token, S.fecha, d.folio_key,
-        lineas.map(l => Object.assign({ forma: l.forma, banco: l.banco, monto: soloDigitos(l.monto), referencia: l.referencia || '' },
-          l.forma === 'CHEQUE' ? { cheque_numero: l.cheque_numero, cheque_fecha: l.cheque_fecha, cheque_titular: l.cheque_titular } : {})),
-        desc.on ? { monto: soloDigitos(desc.monto), motivo: desc.motivo } : null);
-      toast('Folio ' + d.folio + ' guardado'); cerrarHoja(ov); alGuardar(nuevo);
+      const ls = lineas.map(l => Object.assign({ forma: l.forma, banco: l.banco, monto: soloDigitos(l.monto), referencia: l.referencia || '' },
+          l.forma === 'CHEQUE' ? { cheque_numero: l.cheque_numero, cheque_fecha: l.cheque_fecha, cheque_titular: l.cheque_titular } : {}));
+      const nuevo = await api('guardarDetalle', S.sess.token, S.fecha, d.folio_key, ls, desc.on ? { monto: soloDigitos(desc.monto), motivo: desc.motivo } : null);
+      toast(nuevo._pendiente ? 'Folio ' + d.folio + ' guardado en el teléfono (sin conexión)' : 'Folio ' + d.folio + ' guardado'); cerrarHoja(ov); alGuardar(nuevo._pendiente ? docLocal(d, ls) : nuevo);
     } catch (e) { ok.disabled = false; }
   };
   dibujar();
@@ -705,7 +901,13 @@ function marcarVarios(docs, alGuardar) {
     const items = ks.map(k => sel[k][0] === 'CHEQUE' ? Object.assign({ folio_key: k, forma: 'CHEQUE' }, cheques[k]) : { folio_key: k, forma: sel[k][0], banco: sel[k][1] });
     try {
       const r = await api('guardarVarios', S.sess.token, S.fecha, items);
-      cerrarHoja(ov); alGuardar(r.docs);
+      cerrarHoja(ov);
+      if (r._pendiente) {
+        alGuardar(items.map(it => { const d = pend.find(x => x.folio_key === it.folio_key), aprob = d.descuentos.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + x.monto, 0);
+          return docLocal(d, [Object.assign({}, it, { referencia: '', monto: d.total - aprob })]); }));
+        toast(`${items.length} folio${items.length === 1 ? '' : 's'} guardado${items.length === 1 ? '' : 's'} en el teléfono (sin conexión)`); return;
+      }
+      alGuardar(r.docs);
       toast(`${r.guardados} folio${r.guardados === 1 ? '' : 's'} guardado${r.guardados === 1 ? '' : 's'}${r.saltados ? ` · ${r.saltados} se saltaron` : ''}`);
     } catch (e) {}
   };
@@ -719,18 +921,19 @@ async function vDevoluciones(m) {
   const cats = {}; S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
   const opcProd = Object.keys(cats).map(c => `<optgroup label="${esc(CATS[c] || c)}">${cats[c].map(p => `<option value="${esc(p.codigo)}" data-u="${esc(p.unidad)}">${esc(p.nombre)}</option>`).join('')}</optgroup>`).join('');
   let tipo = 'MERMA';
-  render(m, `<h2>Devoluciones</h2><p class="lead">Producto que vuelve y no se puede vender. <b>Merma</b>: se descarta. <b>Reproceso</b>: vuelve a producción. Cada una se justifica con una nota de crédito.</p>
+  render(m, `<h2>Devoluciones</h2><p class="lead">Producto que vuelve y no se puede vender. <b>Merma</b>: se descarta. <b>Reproceso</b>: vuelve a producción. Cada una se justifica con una nota de crédito: el N° y el monto son obligatorios; la foto es opcional.</p>
     <div class="card" id="dvf">
       <div class="seg" id="dvt" style="width:100%;display:grid;grid-template-columns:1fr 1fr"><button type="button" data-t="MERMA" class="on">Merma</button><button type="button" data-t="REPROCESO">Reproceso</button></div>
       <div class="grid g3" style="margin-top:12px">
         <div><label class="f" for="dv_p">Producto</label><select class="in" id="dv_p"><option value="">Elige un producto…</option>${opcProd}</select></div>
         <div><label class="f" for="dv_c">Cantidad <span class="muted" id="dv_u"></span></label><input class="in n" id="dv_c" inputmode="decimal" placeholder="0"></div>
         <div><label class="f" for="dv_oc">N° nota de crédito</label><input class="in" id="dv_oc" inputmode="numeric" autocomplete="off"></div>
+        <div><label class="f" for="dv_mt">Monto de la nota de crédito</label><input class="in n" id="dv_mt" inputmode="numeric" placeholder="$0"></div>
         <div><label class="f" for="dv_o">Viene de</label><select class="in" id="dv_o"><option value="">Cliente / otro</option>${opcVend('')}</select></div>
         <div><label class="f" for="dv_cl">Cliente (si corresponde)</label><input class="in" id="dv_cl" autocomplete="off"></div>
         <div><label class="f" for="dv_m">Motivo</label><select class="in" id="dv_m">${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select></div>
         <div><label class="f" for="dv_ob">Observación</label><input class="in" id="dv_ob" autocomplete="off"></div>
-        ${campoArchivos('dvf_a').replace('Foto o archivo de respaldo', 'Foto de la nota de crédito')}
+        ${campoArchivos('dvf_a').replace('Foto o archivo de respaldo', 'Foto de la nota de crédito (opcional)')}
       </div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="dv_ad">Registrar devolución</button></div></div>
     <div id="dvl" style="margin-top:16px"></div>`);
@@ -740,11 +943,11 @@ async function vDevoluciones(m) {
   const fmt = (n, u) => u === 'UN' ? String(Math.round(n * 100) / 100).replace('.', ',') + ' un' : kg(n) + ' kg';
   function lista(rs) {
     const res = t => { const xs = rs.filter(r => r.tipo === t), k = xs.filter(r => r.unidad !== 'UN').reduce((a, r) => a + r.cantidad, 0), u = xs.filter(r => r.unidad === 'UN').reduce((a, r) => a + r.cantidad, 0);
-      return `<div><span>${t === 'MERMA' ? 'Mermas' : 'Reprocesos'}</span><b>${xs.length}</b><small>${[k ? kg(k) + ' kg' : '', u ? u + ' un' : ''].filter(Boolean).join(' · ') || '—'}</small></div>`; };
+      return `<div><span>${t === 'MERMA' ? 'Mermas' : 'Reprocesos'}</span><b>${xs.length}</b><small>${[k ? kg(k) + ' kg' : '', u ? u + ' un' : '', xs.length ? clp(xs.reduce((a, r) => a + r.monto, 0)) : ''].filter(Boolean).join(' · ') || '—'}</small></div>`; };
     $('#dvl').innerHTML = rs.length ? `<div class="dvres">${res('MERMA')}${res('REPROCESO')}</div>` + rs.map(r => `<div class="dev">
         <div class="row"><span class="grow"><span class="chip ${r.tipo === 'MERMA' ? 'bad' : 'warn'}">${r.tipo === 'MERMA' ? 'Merma' : 'Reproceso'}</span> <b>${esc(r.producto)}</b></span><b>${fmt(r.cantidad, r.unidad)}</b></div>
-        <div class="muted">NC N° <b>${esc(r.nota_credito)}</b>${r.motivo ? ' · ' + esc(r.motivo) : ''}${r.origen ? ' · viene de ' + esc((S.cat.vendedores.find(v => v.usuario === r.origen) || {}).nombre || r.origen) : ''}${r.cliente ? ' · ' + esc(r.cliente) : ''}${r.obs ? ' · ' + esc(r.obs) : ''}</div>
-        <div class="row" style="margin-top:6px">${r.adjuntos.length ? chipsAdj(r.adjuntos, 'DEVOLUCIONES', r.id, true) : `<span class="chip warn">Sin foto de la NC</span>${chipsAdj([], 'DEVOLUCIONES', r.id, true)}`}<span class="grow"></span>
+        <div class="muted">NC N° <b>${esc(r.nota_credito)}</b> · <b>${clp(r.monto)}</b>${r.motivo ? ' · ' + esc(r.motivo) : ''}${r.origen ? ' · viene de ' + esc((S.cat.vendedores.find(v => v.usuario === r.origen) || {}).nombre || r.origen) : ''}${r.cliente ? ' · ' + esc(r.cliente) : ''}${r.obs ? ' · ' + esc(r.obs) : ''}</div>
+        <div class="row" style="margin-top:6px">${chipsAdj(r.adjuntos, 'DEVOLUCIONES', r.id, true)}<span class="grow"></span>
           <button class="x" style="min-height:34px;width:34px" data-id="${esc(r.id)}" aria-label="Borrar">×</button></div></div>`).join('')
       : '<div class="empty">Sin devoluciones este día.</div>';
   }
@@ -754,16 +957,18 @@ async function vDevoluciones(m) {
   $('#dvl').addEventListener('click', async e => { const id = e.target.dataset && e.target.dataset.id; if (!id || !confirm('¿Borrar esta devolución?')) return;
     await api('borrarDevolucion', S.sess.token, id); await recargar(); });
   $('#dv_ad').onclick = async () => {
-    const o = { tipo, codigo: sel.value, cantidad: String(dec($('#dv_c').value)), nota_credito: $('#dv_oc').value.trim(), origen: $('#dv_o').value, cliente: $('#dv_cl').value.trim(), motivo: $('#dv_m').value, obs: $('#dv_ob').value.trim() };
+    const o = { tipo, codigo: sel.value, cantidad: String(dec($('#dv_c').value)), nota_credito: $('#dv_oc').value.trim(), monto: String(soloDigitos($('#dv_mt').value)), origen: $('#dv_o').value, cliente: $('#dv_cl').value.trim(), motivo: $('#dv_m').value, obs: $('#dv_ob').value.trim() };
     if (!o.codigo) return toast('Elige el producto.', true);
     if (!(dec(o.cantidad) > 0)) return toast('Ingresa la cantidad.', true);
     if (!o.nota_credito) return toast('Falta el N° de la nota de crédito.', true);
+    if (o.monto === '0') return toast('Falta el monto de la nota de crédito.', true);
     const b = $('#dv_ad'); b.disabled = true;
     try {
-      const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, o); toast('Devolución registrada');
+      const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, o); toast(nuevo._pendiente ? 'Devolución guardada en el teléfono (sin conexión)' : 'Devolución registrada');
       const fs = [...$('#dvf_a').files];
-      if (fs.length) { try { await subirArchivos('DEVOLUCIONES', nuevo.id, fs); } catch (e) { toast('Quedó registrada, pero la foto no subió. Usa "Adjuntar" en la devolución.', true); } }
-      ['#dv_c', '#dv_oc', '#dv_cl', '#dv_ob'].forEach(x => $(x).value = ''); sel.value = ''; sel.onchange(); $('#dvf_a').value = ''; $('#dvf_a').onchange();
+      if (fs.length && nuevo._pendiente) toast('Sin conexión: la foto no se puede subir ahora. Cuando se envíe la devolución, usa "Adjuntar".', true);
+      else if (fs.length) { try { await subirArchivos('DEVOLUCIONES', nuevo.id, fs); } catch (e) { toast('Quedó registrada, pero la foto no subió. Usa "Adjuntar" en la devolución.', true); } }
+      ['#dv_c', '#dv_oc', '#dv_mt', '#dv_cl', '#dv_ob'].forEach(x => $(x).value = ''); sel.value = ''; sel.onchange(); $('#dvf_a').value = ''; $('#dvf_a').onchange();
       await recargar();
     } finally { b.disabled = false; }
   };
@@ -975,6 +1180,106 @@ const plazoPolitica = neto => (POLITICA.find(t => neto >= t.desde && neto <= t.h
 function tarjetaPolitica() {
   return `<div class="card pol"><b>Política de crédito</b><span class="muted"> · montos netos (sin IVA)</span>
     <div class="pol-g">${POLITICA.map(t => `<div class="pol-t"><span class="pol-d">${t.dias}<small>días</small></span><span class="pol-m">${t.hasta === Infinity ? 'Más de ' + clp(t.desde - 1) : clp(t.desde) + ' a ' + clp(t.hasta)}</span></div>`).join('')}</div></div>`;
+}
+
+/* ============ USUARIOS (solo administración) ============ */
+async function vUsuarios(m) {
+  const us = await api('listarUsuariosAdmin', S.sess.token);
+  render(m, `<h2>Usuarios</h2><p class="lead" style="margin:0 0 12px">Cada persona entra con su RUT o correo y su propia clave; el rol lo asignas tú aquí. Al crear a alguien o restablecer su clave se genera una clave temporal que debes entregarle en privado: la cambia al entrar.</p>
+    <div class="row" style="margin-bottom:10px"><button class="btn cu sm" id="un">+ Nuevo usuario</button></div>
+    <div id="ul">${us.map(u => `<div class="cfac"><div class="row" style="gap:10px"><span class="grow"><b>${esc(u.nombre)}</b> <span class="chip">${ROL[u.rol] || u.rol}</span>
+        ${u.activo ? '' : '<span class="chip bad">Desactivado</span>'}${u.bloqueado ? '<span class="chip bad">Bloqueado</span>' : ''}${!u.tieneClave ? '<span class="chip warn">Sin clave</span>' : u.debeCambiar ? '<span class="chip warn">Clave temporal pendiente</span>' : ''}
+        <div class="muted">${esc([u.rut, u.correo].filter(Boolean).join(' · ') || 'Sin RUT ni correo: no puede ingresar')} · código ${esc(u.usuario)}${u.terminales ? ' · terminales ' + esc(u.terminales) : ''}</div></span>
+        <button class="btn ghost sm" data-e="${esc(u.usuario)}">Editar</button><button class="btn ghost sm" data-r="${esc(u.usuario)}">Restablecer clave</button></div></div>`).join('')}</div>`);
+  const mostrarClave = (nombre, temporal) => {
+    const ov = document.createElement('div'); ov.className = 'ov';
+    ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div><div class="body"><div style="font-weight:700;font-size:19px">Clave temporal de ${esc(nombre)}</div>
+      <div style="font-size:38px;font-weight:700;letter-spacing:6px;text-align:center;margin:18px 0;color:var(--cu)">${esc(temporal)}</div>
+      <p class="muted">Entrégala en privado. Al ingresar por primera vez, ${esc(nombre.split(' ')[0])} creará su propia clave. Esta no se vuelve a mostrar: si se pierde, restablece la clave de nuevo.</p></div><div class="foot"><span class="grow"></span><button class="btn cu" id="okc">Listo</button></div></div>`;
+    document.body.appendChild(ov); $('#okc', ov).onclick = () => { cerrarHoja(ov); ir('usuarios'); };
+  };
+  const editar = u => {
+    const ov = document.createElement('div'); ov.className = 'ov'; const nuevo = !u; u = u || { nombre: '', rol: 'VENDEDOR', rut: '', correo: '', terminales: '', activo: true, usuario: '' };
+    ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div><div class="body"><div style="font-weight:700;font-size:19px">${nuevo ? 'Nuevo usuario' : 'Editar a ' + esc(u.nombre)}</div>
+      <label class="f" for="u1">Nombre</label><input class="in" id="u1" value="${esc(u.nombre)}" autocomplete="off">
+      <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
+      <label class="f" for="u3" style="margin-top:10px">RUT</label><input class="in" id="u3" value="${esc(u.rut)}" placeholder="12.345.678-5" autocomplete="off">
+      <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
+      <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off"></div>
+      <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u6" ${u.activo ? 'checked' : ''}> Activo (si lo desactivas, no puede ingresar)</label></div>
+      <div class="foot"><button class="btn ghost" id="ux">Cancelar</button><span class="grow"></span><button class="btn cu" id="ug">Guardar</button></div></div>`;
+    document.body.appendChild(ov);
+    const rolCh = () => { $('#u5w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
+    $('#ux', ov).onclick = () => cerrarHoja(ov);
+    $('#ug', ov).onclick = async () => {
+      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked };
+      if (!o.nombre) return toast('Escribe el nombre.', true);
+      if (!o.rut && !o.correo) return toast('Indica el RUT o el correo.', true);
+      const r = await api('guardarUsuario', S.sess.token, o); cerrarHoja(ov);
+      olvidarCache(true);
+      if (r.temporal) mostrarClave(o.nombre, r.temporal); else { toast('Guardado'); ir('usuarios'); }
+    };
+    $('#u1', ov).focus();
+  };
+  $('#un').onclick = () => editar(null);
+  $('#ul').onclick = async e => {
+    const be = e.target.closest('[data-e]'), br = e.target.closest('[data-r]');
+    if (be) editar(us.find(x => x.usuario === be.dataset.e));
+    if (br) { const u = us.find(x => x.usuario === br.dataset.r); if (!confirm('¿Restablecer la clave de ' + u.nombre + '? Se cerrarán sus sesiones abiertas.')) return;
+      const r = await api('restablecerClave', S.sess.token, u.usuario); olvidarCache(true); mostrarClave(u.nombre, r.temporal); }
+  };
+}
+
+/* ============ CHEQUES EN CARTERA ============ */
+async function vCheques(m) {
+  const r = await api('listarCheques', S.sess.token);
+  const hoy = r.hoy, en7 = (() => { const d = new Date(hoy + 'T12:00:00'); d.setDate(d.getDate() + 7); return d.toLocaleDateString('en-CA'); })();
+  const todos = r.cheques, cartera = todos.filter(c => c.estado === 'CARTERA');
+  const suma = xs => xs.reduce((a, c) => a + c.monto, 0);
+  const listos = cartera.filter(c => !c.aFecha), aFecha = cartera.filter(c => c.aFecha), semana = aFecha.filter(c => c.fechaCheque <= en7);
+  const FIL = { listos: ['Para cobrar hoy', c => c.estado === 'CARTERA' && !c.aFecha], fecha: ['A fecha', c => c.estado === 'CARTERA' && c.aFecha], todos: ['Toda la cartera', c => c.estado === 'CARTERA'],
+    cobrados: ['Cobrados', c => c.estado === 'COBRADO'], protes: ['Protestados', c => c.estado === 'PROTESTADO'] };
+  let fil = 'listos', q = '';
+  render(m, `<h2>Cheques en cartera</h2><p class="lead" style="margin:0 0 12px">Un cheque sigue siendo crédito hasta que se cobra en el banco. Márcalo cuando lo cobres para que salga de la cartera.</p>
+    <div class="kpis"><div><span>En cartera</span><b>${clp(suma(cartera))}</b><small>${cartera.length} cheque${cartera.length === 1 ? '' : 's'}</small></div>
+      <div><span>Se pueden cobrar hoy</span><b>${clp(suma(listos))}</b><small>${listos.length} al día</small></div>
+      <div><span>A fecha (próximos 7 días)</span><b>${clp(suma(semana))}</b><small>${semana.length} cheque${semana.length === 1 ? '' : 's'}</small></div></div>
+    <div class="row" style="margin:14px 0 8px;flex-wrap:wrap"><div class="seg" id="chf" style="flex-wrap:wrap">${Object.keys(FIL).map(k => `<button type="button" data-f="${k}" class="${k === fil ? 'on' : ''}">${FIL[k][0]} <small>${todos.filter(FIL[k][1]).length}</small></button>`).join('')}</div>
+      <input class="in grow" id="chq" placeholder="Buscar cliente, RUT o N° de cheque" style="min-width:200px"></div>
+    <div id="chl"></div>
+    <div class="sticky-foot" id="chb" hidden><div class="card"><div><div class="muted"><span id="chn">0</span> seleccionados</div><b id="cht" style="font-size:20px"></b></div>
+      <div class="row" style="gap:8px"><label class="muted" id="chfw" style="display:flex;gap:6px;align-items:center">Cobrado el <input type="date" class="in" id="chd" value="${hoy}" style="width:auto"></label>
+      <button class="btn ghost" id="chp">Protestado</button><button class="btn cu" id="chc">Marcar cobrado</button><button class="btn ghost" id="chv" hidden>Devolver a cartera</button></div></div></div>`);
+  const sel = new Set();
+  const norm = t => normBus(t || '');
+  const lista = () => {
+    const xs = todos.filter(FIL[fil][1]).filter(c => !q || [c.cliente, c.rut, c.numero, c.documento].some(t => norm(t).indexOf(norm(q)) >= 0));
+    $('#chl').innerHTML = xs.length ? xs.map(c => { const dias = c.fechaCheque ? Math.round((new Date(c.fechaCheque + 'T12:00:00') - new Date(hoy + 'T12:00:00')) / 864e5) : null;
+      return `<label class="cfac" style="display:block"><div class="row" style="gap:10px"><input type="checkbox" data-k="${esc(c.clave)}" ${sel.has(c.clave) ? 'checked' : ''}>
+        <span class="grow"><b>${esc(c.cliente || 'Sin nombre')}</b> <span class="muted">${esc(c.rut)}</span>
+          <div class="muted">${esc(c.documento)} · ${esc(c.origen)}${c.vendedor ? ' · ' + esc(c.vendedor) : ''}</div>
+          <div>${c.numero ? `<span class="chip">N° ${esc(c.numero)}</span> ` : ''}${c.banco ? `<span class="chip">${esc(c.banco)}</span> ` : ''}${c.estado === 'COBRADO' ? `<span class="chip ok">Cobrado ${fcorta(c.fechaEstado)}</span>` : c.estado === 'PROTESTADO' ? `<span class="chip bad">Protestado</span>`
+            : c.fechaCheque ? (c.aFecha ? `<span class="chip warn">A fecha: ${fcorta(c.fechaCheque)}${dias != null ? ' (en ' + dias + ' d)' : ''}</span>` : `<span class="chip ok">Al día · ${fcorta(c.fechaCheque)}</span>`) : '<span class="chip">Sin fecha de cheque</span>'}
+            ${c.recibido ? `<span class="muted"> · recibido ${fcorta(c.recibido)}</span>` : ''}</div></span>
+        <b>${clp(c.monto)}</b></div></label>`; }).join('') : '<div class="empty">Nada en esta lista.</div>';
+    barra();
+  };
+  const barra = () => { const xs = todos.filter(c => sel.has(c.clave)); $('#chb').hidden = !xs.length; $('#chn').textContent = xs.length; $('#cht').textContent = clp(suma(xs));
+    const cartera_ = fil === 'listos' || fil === 'fecha' || fil === 'todos'; $('#chc').hidden = !cartera_; $('#chp').hidden = !cartera_; $('#chfw').hidden = !cartera_; $('#chv').hidden = cartera_; };
+  $('#chf').onclick = e => { const b = e.target.closest('[data-f]'); if (!b) return; fil = b.dataset.f; sel.clear(); $$('#chf button').forEach(x => x.classList.toggle('on', x === b)); lista(); };
+  $('#chq').oninput = e => { q = e.target.value; lista(); };
+  $('#chl').onchange = e => { const k = e.target.dataset.k; if (k === undefined) return; e.target.checked ? sel.add(k) : sel.delete(k); barra(); };
+  const marcar = async (estado, msg) => {
+    const xs = [...sel]; if (!xs.length) return;
+    if (estado === 'PROTESTADO' && !confirm('¿Marcar ' + xs.length + ' cheque(s) como protestado(s)?')) return;
+    const bs = ['#chc', '#chp', '#chv'].map(x => $(x)); bs.forEach(b => b.disabled = true);
+    try { await api('marcarCheque', S.sess.token, xs, estado, $('#chd').value || hoy, '');
+      toast(msg); const ka = [S.sess.token]; await pedir('listarCheques', ka, claveApi('listarCheques', ka)); ir('cheques'); } finally { bs.forEach(b => b.disabled = false); }
+  };
+  $('#chc').onclick = () => marcar('COBRADO', 'Cheques marcados como cobrados');
+  $('#chp').onclick = () => marcar('PROTESTADO', 'Marcados como protestados');
+  $('#chv').onclick = () => marcar('CARTERA', 'Devueltos a la cartera');
+  lista();
 }
 
 async function vSaldos(m) {
@@ -1558,9 +1863,10 @@ async function vDepositos(m) {
     try {
       const nuevo = await api('guardarDeposito', S.sess.token, S.fecha, { vendedor: esV ? '' : S.vend, banco: $('#db').value, monto: soloDigitos(dm.value), referencia: $('#dr').value,
         folios: s2.filter(x => x.tipo === 'f').map(x => x.key), cobranzas: s2.filter(x => x.tipo === 'c').map(x => x.key) });
-      toast('Depósito registrado');
+      toast(nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado');
       const fs = [...$('#dfile').files];
-      if (fs.length) { try { await subirArchivos('DEPOSITOS', nuevo.id, fs); } catch (e) { toast('El depósito quedó guardado, pero el comprobante no subió. Usa "Adjuntar".', true); } }
+      if (fs.length && nuevo._pendiente) toast('Sin conexión: el comprobante no se puede subir ahora. Cuando se envíe el depósito, usa "Adjuntar".', true);
+      else if (fs.length) { try { await subirArchivos('DEPOSITOS', nuevo.id, fs); } catch (e) { toast('El depósito quedó guardado, pero el comprobante no subió. Usa "Adjuntar".', true); } }
       ir('depositos');
     } finally { b.disabled = false; }
   };
@@ -1630,8 +1936,8 @@ async function cobrarDesdeLista(box, alTerminar) {
       if (forma.value === 'CHEQUE') { const ch = leerCheque($('.cheque', pan)); if (ch.error) return toast(ch.error, true); Object.assign(pago, ch.datos); }
       const b = $('#cok', pan); b.disabled = true;
       try {
-        await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pago, items.map(i => ({ folio_key: i.folio_key, folio: i.folio, monto: i.monto })));
-        toast('Cobro registrado: ' + clp(items.reduce((a, i) => a + i.monto, 0)));
+        const r = await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pago, items.map(i => ({ folio_key: i.folio_key, folio: i.folio, monto: i.monto })));
+        toast((r._pendiente ? 'Cobro guardado en el teléfono (sin conexión): ' : 'Cobro registrado: ') + clp(items.reduce((a, i) => a + i.monto, 0)));
         await alTerminar();
       } finally { b.disabled = false; }
     };
@@ -1678,7 +1984,7 @@ async function vMov(m, tabla) {
   if (tabla === 'COBRANZA') {
     const panel = () => cobrarDesdeLista($('#cbx'), async () => {
       const ka = [S.sess.token], kb = [S.sess.token, tabla, S.fecha];
-      await Promise.all([pedir('porCobrar', ka, claveApi('porCobrar', ka)), pedir('listarMov', kb, claveApi('listarMov', kb))]);
+      if (EN_LINEA && !pendActivos().length) await Promise.all([pedir('porCobrar', ka, claveApi('porCobrar', ka)), pedir('listarMov', kb, claveApi('listarMov', kb))]).catch(() => {});
       lista(await api('listarMov', S.sess.token, tabla, S.fecha)); panel();
     });
     panel();
@@ -1699,9 +2005,10 @@ async function vMov(m, tabla) {
     if ((o.forma === 'TRANSFERENCIA' || o.forma === 'DEP_EFECTIVO') && 'banco' in o && !o.banco) return toast('Indica el banco.', true);
     const b = $('#ad'); b.disabled = true;
     try {
-      const nuevo = await api('guardarMov', S.sess.token, tabla, S.fecha, o); toast('Agregado');
+      const nuevo = await api('guardarMov', S.sess.token, tabla, S.fecha, o); toast(nuevo._pendiente ? 'Guardado en el teléfono (sin conexión)' : 'Agregado');
       const fs = conAdj ? [...$('#mf').files] : [];
-      if (fs.length) { try { await subirArchivos(tabla, nuevo.id, fs); } catch (e) { toast('El registro quedó guardado, pero el archivo no subió. Usa "Adjuntar" en la fila.', true); } }
+      if (fs.length && nuevo._pendiente) toast('Sin conexión: el archivo no se puede subir ahora. Cuando se envíe el registro, usa "Adjuntar".', true);
+      else if (fs.length) { try { await subirArchivos(tabla, nuevo.id, fs); } catch (e) { toast('El registro quedó guardado, pero el archivo no subió. Usa "Adjuntar" en la fila.', true); } }
       $$('input', $('#fm')).forEach(x => x.value = ''); if (conAdj) $('#mf').onchange();
       if (mch) { $$('input:not([type=date])', mch).forEach(x => x.value = ''); $('[data-c="banco"]', mch).value = ''; }
       await recargar();
@@ -1712,7 +2019,12 @@ async function vMov(m, tabla) {
 /* ---------- arranque ---------- */
 if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.indexOf('PEGA_AQUI') >= 0)
   $('#app').innerHTML = '<div class="login"><img class="logo" src="icon-192.png" alt=""><h1>Falta configurar</h1><p class="lead">Pega la URL de la implementación de Apps Script en <b>config.js</b>.</p></div>';
-else S.sess ? iniciar().catch(() => salir(true)) : pantallaLogin();
+else S.sess ? iniciar().catch(e => /SESION/.test(String((e && e.message) || e)) ? salir(true) : sinConexionInicio()) : pantallaLogin();
+function sinConexionInicio() {
+  $('#app').innerHTML = `<div class="login"><img class="logo" src="icon-192.png" alt="" width="96" height="96"><h1>Sin conexión</h1><p class="lead">No se pudo abrir la app. Tus cambios guardados siguen en el teléfono. Revisa tu internet e intenta de nuevo.</p>
+    <button class="btn cu block" id="rei">Reintentar</button></div>`;
+  $('#rei').onclick = () => iniciar().catch(e => /SESION/.test(String((e && e.message) || e)) ? salir(true) : sinConexionInicio());
+}
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => {
   const habia = !!navigator.serviceWorker.controller;

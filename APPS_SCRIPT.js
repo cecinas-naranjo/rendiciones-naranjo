@@ -30,7 +30,7 @@ const CFG = {
 };
 
 const SCHEMA = {
-  USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo'],
+  USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo','rut','correo','clave_hash','sal','cambiar_clave','intentos','bloqueado_hasta'],
   PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo','seccion','nombre_inv'],
   INVENTARIO_MOV: ['key','fecha','codigo','tipo','destino','cantidad','obs','registrado_por','registrado'],
   DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado'],
@@ -44,9 +44,11 @@ const SCHEMA = {
   CONTEO_EFECTIVO: ['key','fecha','vendedor','b20000','b10000','b5000','b2000','b1000','monedas','caja_chica','obs','registrado_por','registrado'],
   CLIENTES:    ['rut','razon_social','condicion','vendedor','alias','actualizado'],
   CREDITOS_CARGA: ['folio_key','rut','cliente_excel','tipo','folio','fecha','monto','condicion','vendedor','estado','recepcion','metodo','obs','cargado'],
-  DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','nota_credito','motivo','obs','registrado_por','registrado','adjuntos'],
+  DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','nota_credito','motivo','obs','registrado_por','registrado','adjuntos','monto'],
   GASTOS:      ['id','fecha','responsable','concepto','monto','respaldo','obs','registrado_por','registrado','adjuntos'],
   DEPOSITOS:   ['id','fecha','vendedor','banco','monto','referencia','folios','cobranzas','obs','registrado_por','registrado','adjuntos'],
+  OPERACIONES: ['op','fn','fecha'],
+  CHEQUES_ESTADO: ['clave','estado','fecha','registrado_por','registrado','obs'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado']
 };
@@ -130,6 +132,7 @@ function setup() {
   ss.getSheetByName('VENTAS_DETALLE').getRange('A:F').setNumberFormat('@');
   ss.getSheetByName('PRODUCTOS').getRange('A:A').setNumberFormat('@');
   ss.getSheetByName('USUARIOS').getRange('D:E').setNumberFormat('@');
+  ss.getSheetByName('USUARIOS').getRange('G:J').setNumberFormat('@');
 
   const us = ss.getSheetByName('USUARIOS');
   if (us.getLastRow() === 1) {
@@ -158,6 +161,7 @@ function setup() {
   ['Hoja 1','Sheet1'].forEach(n => { const d = ss.getSheetByName(n); if (d && ss.getSheets().length > 1) ss.deleteSheet(d); });
   Object.keys(CACHEADAS_).forEach(limpiarCache_);
   invalidarTodo_();
+  migrarUsuarios();
   return 'Listo';
 }
 
@@ -165,9 +169,9 @@ function setup() {
 
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
-  batch, listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
+  batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -181,7 +185,12 @@ function doPost(e) {
     if (!fn) throw new Error('Acción desconocida: ' + req.fn);
     // Solo las consultas (que no escriben) pueden usar la caché por día; cualquier otra acción lee siempre la planilla.
     FRESCO_ = !LECTURAS_[req.fn];
-    return json_({ ok: true, data: fn.apply(null, req.args || []) });
+    // Guardados que la app envía de nuevo desde su cola (se cortó internet): si ya se aplicó, no se repite.
+    const op = req.op ? String(req.op).slice(0, 40) : '';
+    if (op && req.rep && NO_REPETIR_[req.fn] && opAplicada_(op)) return json_({ ok: true, data: { duplicado: true } });
+    const data = fn.apply(null, req.args || []);
+    if (op && NO_REPETIR_[req.fn]) registrarOp_(op, req.fn);
+    return json_({ ok: true, data });
   } catch (err) {
     return json_({ ok: false, error: String(err.message || err) });
   } finally {
@@ -189,8 +198,20 @@ function doPost(e) {
   }
 }
 
+/** Guardados que agregan filas: si la app los reenvía (se cortó internet y no se supo si llegaron), se reconocen por su `op` y no se duplican. */
+const NO_REPETIR_ = { guardarMov: 1, guardarCobro: 1, guardarDevolucion: 1, guardarDeposito: 1 };
+function opAplicada_(op) { return read_('OPERACIONES').some(x => x.op === op); }
+function registrarOp_(op, fn) {
+  withLock_(() => {
+    const xs = read_('OPERACIONES');
+    if (xs.length > 3000) deleteRows_('OPERACIONES', xs.slice(0, 1500).map(x => x._row));       // solo importan las operaciones recientes
+    append_('OPERACIONES', [{ op, fn, fecha: now_() }]);
+  });
+}
+function ping() { return true; }
+
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
+const LECTURAS_ = { ping: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -378,11 +399,108 @@ function withLock_(fn) {
 
 const SESION_DIAS = 30; // la sesión dura 30 días en el celular: nadie tiene que reingresar cada hora
 
-function login(usuario, pin, fecha) {
-  const u = read_('USUARIOS').find(x =>
-    String(x.usuario).toUpperCase() === String(usuario).toUpperCase() &&
-    String(x.pin) === String(pin) && String(x.activo).toUpperCase() !== 'FALSE');
-  if (!u) { Utilities.sleep(800); throw new Error('Usuario o PIN incorrecto.'); }
+/* ---------- claves ----------
+   Cada persona entra con su RUT (o correo) y su clave personal; el rol lo asigna la administración. La clave se guarda con sal y
+   SHA-256 repetido (nunca en texto). Una clave nueva o restablecida es temporal: la persona debe cambiarla al entrar.
+   5 intentos fallidos bloquean la cuenta 15 minutos. */
+const CLAVE_MIN = 6, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR'];
+function hashClave_(clave, sal) {
+  const D = Utilities.DigestAlgorithm.SHA_256;
+  let h = Utilities.computeDigest(D, String(sal) + '|' + String(clave), Utilities.Charset.UTF_8);
+  for (let i = 0; i < 999; i++) h = Utilities.computeDigest(D, h);
+  return h.map(b => ('0' + (b & 255).toString(16)).slice(-2)).join('');
+}
+function aleatorio_(n) { return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, n); }
+function claveTemporal_() {
+  const al = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789', h = Utilities.getUuid().replace(/-/g, ''); let s = '';
+  for (let i = 0; i < 6; i++) s += al[parseInt(h.substr(i * 2, 2), 16) % al.length];
+  return s;
+}
+const activo_ = u => String(u.activo).toUpperCase() !== 'FALSE';
+function rutValido_(r) {
+  const n = rutNorm_(r); if (n.length < 8 || n.length > 9) return false;
+  const cuerpo = n.slice(0, -1), dv = n.slice(-1); let s = 0, m = 2;
+  for (let i = cuerpo.length - 1; i >= 0; i--) { s += Number(cuerpo[i]) * m; m = m === 7 ? 2 : m + 1; }
+  const e = 11 - (s % 11), esp = e === 11 ? '0' : e === 10 ? 'K' : String(e);
+  return esp === dv;
+}
+function buscarUsuario_(ident) {
+  const t = String(ident || '').trim(); if (!t) return null;
+  const sinPuntos = t.replace(/[.\-\s]/g, ''), esRut = /^[0-9]{7,9}[0-9kK]$/.test(sinPuntos), arroba = t.indexOf('@') >= 0;
+  return read_('USUARIOS').find(u => (esRut && rutNorm_(u.rut) === rutNorm_(t)) || (arroba && String(u.correo || '').trim().toLowerCase() === t.toLowerCase())
+    || String(u.usuario).toUpperCase() === t.toUpperCase()) || null;
+}
+function claveNuevaValida_(clave, u, actual) {
+  clave = String(clave || '');
+  if (clave.length < CLAVE_MIN) throw new Error('La clave debe tener al menos ' + CLAVE_MIN + ' caracteres.');
+  if (/^(.)\1+$/.test(clave) || /^(0123456|123456|1234567|12345678|654321|abcdef|abc123|password|clave123)/i.test(clave)) throw new Error('Esa clave es muy fácil de adivinar. Elige otra.');
+  if (u && (rutNorm_(u.rut) === clave.toUpperCase().replace(/[^0-9K]/g, '') && rutNorm_(u.rut))) throw new Error('La clave no puede ser tu RUT.');
+  if (actual && String(actual) === clave) throw new Error('La clave nueva debe ser distinta de la actual.');
+}
+/** Comprueba la clave de una persona con control de intentos. Devuelve el usuario o lanza el error. */
+function verificarCredenciales_(ident, clave) {
+  const cc = CacheService.getScriptCache(), kk = 'lg_' + String(ident || '').toLowerCase().replace(/[^a-z0-9@]/g, '').slice(0, 40), n = Number(cc.get(kk) || 0);
+  if (n >= 10) throw new Error('Demasiados intentos. Espera ' + BLOQUEO_MIN + ' minutos e intenta de nuevo.');
+  const malo = () => { cc.put(kk, String(n + 1), 900); Utilities.sleep(700); throw new Error('RUT, correo o clave incorrectos.'); };
+  const u = buscarUsuario_(ident);
+  if (!u || !activo_(u)) malo();
+  if (u.bloqueado_hasta && new Date(u.bloqueado_hasta) > new Date()) throw new Error('Cuenta bloqueada por intentos fallidos. Prueba en unos minutos o pide a la administración que restablezca tu clave.');
+  const antiguo = !read_('USUARIOS').some(x => String(x.clave_hash || ''));      // antes de migrar las claves se acepta el PIN antiguo
+  let ok;
+  if (antiguo) ok = String(u.pin || '') !== '' && String(u.pin) === String(clave);
+  else if (!u.clave_hash) throw new Error('Tu usuario aún no tiene clave. Pide a la administración que te la asigne.');
+  else ok = hashClave_(clave, u.sal) === String(u.clave_hash);
+  if (!ok) {
+    withLock_(() => { const f = read_('USUARIOS').find(x => x.usuario === u.usuario); if (!f) return;
+      f.intentos = num_(f.intentos) + 1;
+      if (f.intentos >= MAX_INTENTOS) { f.bloqueado_hasta = new Date(Date.now() + BLOQUEO_MIN * 60000).toISOString(); f.intentos = 0; }
+      updateRow_('USUARIOS', f._row, f); });
+    malo();
+  }
+  if (num_(u.intentos) || u.bloqueado_hasta) withLock_(() => { const f = read_('USUARIOS').find(x => x.usuario === u.usuario); if (f) { f.intentos = 0; f.bloqueado_hasta = ''; updateRow_('USUARIOS', f._row, f); } });
+  cc.remove(kk);
+  return { u, antiguo };
+}
+/** Cierra todas las sesiones abiertas de una persona (dentro de withLock_). */
+function cerrarSesionesDe_(usuario) {
+  const cc = CacheService.getScriptCache(), ss = read_('SESIONES').filter(s => s.usuario === usuario);
+  ss.forEach(s => cc.remove('s_' + s.token));
+  if (ss.length) deleteRows_('SESIONES', ss.map(s => s._row));
+}
+function aplicarClave_(usuario, clave, temporal) {        // debe llamarse dentro de withLock_
+  const f = read_('USUARIOS').find(x => x.usuario === usuario); if (!f) throw new Error('Usuario no encontrado.');
+  f.sal = aleatorio_(8); f.clave_hash = hashClave_(clave, f.sal); f.cambiar_clave = temporal ? 'TRUE' : 'FALSE'; f.pin = ''; f.intentos = 0; f.bloqueado_hasta = '';
+  updateRow_('USUARIOS', f._row, f);
+  if (temporal) cerrarSesionesDe_(usuario);
+}
+const fijarClave_ = (usuario, clave, temporal) => withLock_(() => aplicarClave_(usuario, clave, temporal));
+/** Primera entrada (o clave restablecida): valida la clave temporal y fija la clave personal. */
+function cambiarClaveInicial(ident, temporal, nueva) {
+  const c = verificarCredenciales_(ident, temporal);
+  claveNuevaValida_(nueva, c.u, temporal);
+  fijarClave_(c.u.usuario, nueva, false);
+  return true;
+}
+function cambiarMiClave(token, actual, nueva) {
+  const u = auth_(token);
+  if (!u.clave_hash || hashClave_(actual, u.sal) !== String(u.clave_hash)) { Utilities.sleep(700); throw new Error('La clave actual no es correcta.'); }
+  claveNuevaValida_(nueva, u, actual);
+  fijarClave_(u.usuario, nueva, false);
+  return true;
+}
+/** Para el editor de Apps Script (también lo llama setup): da una clave temporal a quien no tenga y borra los PIN antiguos. */
+function migrarUsuarios() {
+  const salida = [];
+  read_('USUARIOS').forEach(u => { if (String(u.clave_hash || '')) return;
+    const t = claveTemporal_(); u.sal = aleatorio_(8); u.clave_hash = hashClave_(t, u.sal); u.cambiar_clave = 'TRUE'; u.pin = ''; u.intentos = 0; u.bloqueado_hasta = '';
+    updateRow_('USUARIOS', u._row, u); salida.push(u.usuario + ' (' + u.nombre + ', ' + u.rol + '): clave temporal ' + t); });
+  if (salida.length) Logger.log('CLAVES TEMPORALES (entregar en privado; cada persona la cambia al entrar):\n' + salida.join('\n'));
+  return salida;
+}
+
+function login(ident, clave, fecha) {
+  const c = verificarCredenciales_(ident, clave), u = c.u;
+  if (!c.antiguo && String(u.cambiar_clave).toUpperCase() === 'TRUE') return { cambiarClave: true, nombre: u.nombre };
   const token = Utilities.getUuid();
   withLock_(() => {
     const lim = new Date(Date.now() - SESION_DIAS * 864e5);
@@ -426,9 +544,47 @@ function auth_(token, roles) {
   return u;
 }
 
-function listaUsuarios() {
-  return read_('USUARIOS').filter(u => String(u.activo).toUpperCase() !== 'FALSE')
-    .map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol }));
+/* ---------- administración de usuarios (solo ADMIN) ---------- */
+function listarUsuariosAdmin(token) {
+  auth_(token, ['ADMIN']);
+  return read_('USUARIOS').map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol, rut: u.rut ? rutFmt_(u.rut) : '', correo: u.correo || '', terminales: u.terminales || '',
+    activo: activo_(u), tieneClave: !!String(u.clave_hash || ''), debeCambiar: String(u.cambiar_clave).toUpperCase() === 'TRUE',
+    bloqueado: !!(u.bloqueado_hasta && new Date(u.bloqueado_hasta) > new Date()) }));
+}
+function guardarUsuario(token, o) {
+  const yo = auth_(token, ['ADMIN']);
+  const nombre = String(o.nombre || '').trim(), rol = String(o.rol || '').toUpperCase();
+  const rut = String(o.rut || '').trim(), correo = String(o.correo || '').trim().toLowerCase();
+  if (!nombre) throw new Error('Escribe el nombre.');
+  if (ROLES_VALIDOS.indexOf(rol) < 0) throw new Error('Elige el rol.');
+  if (!rut && !correo) throw new Error('Indica el RUT o el correo con el que va a entrar.');
+  if (rut && !rutValido_(rut)) throw new Error('El RUT no es válido. Revisa el dígito verificador.');
+  if (correo && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(correo)) throw new Error('El correo no es válido.');
+  return withLock_(() => {
+    const us = read_('USUARIOS'); let codigo = String(o.usuario || '').trim().toUpperCase().replace(/\s+/g, '');
+    const ex = codigo ? us.find(u => u.usuario === codigo) : null;
+    if (!ex) { if (!codigo) codigo = nombre.split(/\s+/).pop().toUpperCase().replace(/[^A-ZÑÁÉÍÓÚ0-9]/g, '');
+      if (!codigo) throw new Error('Indica un código para el usuario.');
+      if (us.some(u => u.usuario === codigo)) throw new Error('Ya existe un usuario con el código ' + codigo + '. Escribe otro.'); }
+    if (rut && us.some(u => u.usuario !== codigo && rutNorm_(u.rut) === rutNorm_(rut))) throw new Error('Ese RUT ya está asignado a otra persona.');
+    if (correo && us.some(u => u.usuario !== codigo && String(u.correo || '').toLowerCase() === correo)) throw new Error('Ese correo ya está asignado a otra persona.');
+    const activo = o.activo === false || String(o.activo).toUpperCase() === 'FALSE' ? false : true;
+    if (ex && ex.usuario === yo.usuario && (rol !== 'ADMIN' || !activo)) throw new Error('No puedes quitarte a ti mismo el rol de administrador ni desactivarte.');
+    if (ex && ex.rol === 'ADMIN' && (rol !== 'ADMIN' || !activo) && !us.some(u => u.usuario !== ex.usuario && u.rol === 'ADMIN' && activo_(u))) throw new Error('Debe quedar al menos un administrador activo.');
+    const fila = Object.assign({}, ex || { usuario: codigo, pin: '', clave_hash: '', sal: '', cambiar_clave: 'TRUE', intentos: 0, bloqueado_hasta: '' },
+      { nombre, rol, rut: rut ? rutFmt_(rut) : '', correo, terminales: rol === 'VENDEDOR' ? String(o.terminales || '').trim() : (ex ? ex.terminales : ''), activo });
+    let temporal = '';
+    if (ex) { updateRow_('USUARIOS', ex._row, fila); if (!activo) cerrarSesionesDe_(ex.usuario); }
+    else { append_('USUARIOS', [fila]); }
+    if (!ex || !fila.clave_hash) { temporal = claveTemporal_(); aplicarClave_(fila.usuario, temporal, true); }
+    return { usuario: fila.usuario, temporal };
+  });
+}
+function restablecerClave(token, usuario) {
+  auth_(token, ['ADMIN']);
+  const u = read_('USUARIOS').find(x => x.usuario === usuario); if (!u) throw new Error('Usuario no encontrado.');
+  const t = claveTemporal_(); fijarClave_(usuario, t, true);
+  return { usuario, nombre: u.nombre, temporal: t };
 }
 
 function vendedores_() {
@@ -1243,7 +1399,7 @@ function cargarSaldoDesdePlanilla(idPlanilla, nombreHoja, fechaInicio) {
 // Lo que no se puede asociar a ninguna factura queda como "abono sin factura" del cliente.
 function getSaldosClientes(token) {
   auth_(token, ['RENDICION','SUPERVISOR']);
-  return conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES'], () => saldosClientes_());
+  return conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_());
 }
 function saldosClientes_() {
   const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
@@ -1272,13 +1428,15 @@ function saldosClientes_() {
   // 1b) créditos cargados desde la planilla de control (saldo inicial), salvo los que ya están como crédito en la app
   const porKey = {};
   const vNom = {}; vendedores_().forEach(v => vNom[normTxt_(v.nombre)] = v);
+  const chEst = {}; read_('CHEQUES_ESTADO').forEach(e => chEst[e.clave] = String(e.estado));
   read_('CREDITOS_CARGA').forEach(x => {
     if (cred[x.folio_key] > 0 || String(x.estado) === 'PAGADO') return;
+    const ce = chEst['P|' + x.folio_key]; if (ce === 'COBRADO') return;            // cheque cobrado: la deuda quedó pagada
     const c = cli(x.rut, x.cliente_excel), v = vNom[normTxt_(x.vendedor)];
     if (x.condicion && !c.condicion) c.condicion = num_(x.condicion);
     const f = { folio_key: x.folio_key, fecha: String(x.fecha), tipo: x.tipo, folio: String(x.folio), total: num_(x.monto), credito: num_(x.monto), pagado: 0,
       vendedor: v ? v.usuario : String(x.vendedor || '').trim(), vendedorNombre: v ? v.nombre : String(x.vendedor || '').trim(), pagos: [], origen: 'CARGA',
-      cheque: String(x.estado) === 'CHEQUE', metodo: x.metodo || '', obs: x.obs || '', recepcion: x.recepcion instanceof Date ? normFecha_(x.recepcion) : String(x.recepcion || '') };
+      cheque: String(x.estado) === 'CHEQUE' && ce !== 'PROTESTADO', metodo: x.metodo || '', obs: x.obs || '', recepcion: x.recepcion instanceof Date ? normFecha_(x.recepcion) : String(x.recepcion || '') };
     c.facturas.push(f); c.vendedores[f.vendedorNombre] = 1; porKey[x.folio_key] = { c, f };
     (porFolio[String(x.folio).trim()] = porFolio[String(x.folio).trim()] || []).push({ c, f });
   });
@@ -1419,7 +1577,7 @@ function listaClientesRut_() { return read_('CLIENTES').map(c => ({ rut: c.rut, 
 /** Lo que hay por cobrar, para la pantalla de Cobranza. El vendedor ve solo sus facturas. */
 function porCobrar(token) {
   const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
-  const r = conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES'], () => saldosClientes_());
+  const r = conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_());
   const out = [];
   r.clientes.forEach(c => {
     const fs = c.facturas.filter(f => f.saldo > 0 && (u.rol !== 'VENDEDOR' || f.vendedor === u.usuario));
@@ -1484,17 +1642,66 @@ function generarPlanillaPorCobrar(token) {
     B.escribir([100, 300, 80, 75, 85, 85, 55, 95, 95, 130, 120, 200]);
     // 3) cheques en cartera: los de la planilla de control (ya incluidos arriba) y los recibidos desde la app en los últimos 60 días
     const C = new Hoja_(ss, 'CHEQUES EN CARTERA', 10); C.titulo('CHEQUES EN CARTERA ' + ft, 'Cheques que se cobran en el banco: mientras no se cobren siguen siendo crédito');
-    const desde = sumarDias_(hoy, -60), nomRut = {}; r.clientes.forEach(c => { c.facturas.forEach(f => nomRut[f.folio_key] = c); });
-    const ch = [];
-    r.clientes.forEach(c => c.facturas.forEach(f => { if (f.cheque && f.saldo > 0) ch.push([c.rut || 'SIN RUT', c.cliente, f.tipo.replace(' Electrónica', '') + ' ' + f.folio, f.saldo, '', '', fx(f.recepcion), '', 'Planilla de control', f.metodo || '']); }));
-    read_('COBRANZA').filter(x => x.forma === 'CHEQUE' && x.fecha >= desde).forEach(x => { const c = nomRut[x.folio_key];
-      ch.push([x.rut ? rutFmt_(x.rut) : (c ? c.rut : ''), c ? c.cliente : x.cliente, x.folio ? 'Folio ' + x.folio : 'Cobranza', num_(x.monto), x.cheque_numero, x.banco, fx(x.fecha), fx(x.cheque_fecha), 'Cobranza ' + fx(x.fecha), x.cheque_fecha && x.cheque_fecha > hoy ? 'A fecha' : 'Al día']); });
-    read_('PAGOS').filter(x => x.forma === 'CHEQUE' && x.fecha >= desde).forEach(x => { const d = read_('DOCUMENTOS').find(y => y.folio_key === x.folio_key) || {};
-      ch.push([d.rut ? rutFmt_(d.rut) : '', d.cliente || '', (d.tipo || '').replace(' Electrónica', '') + ' ' + (d.folio || ''), num_(x.monto), x.cheque_numero, x.banco, fx(x.fecha), fx(x.cheque_fecha), 'Venta ' + fx(x.fecha), x.cheque_fecha && x.cheque_fecha > hoy ? 'A fecha' : 'Al día']); });
+    const ch = chequesTodos_().filter(x => x.estado === 'CARTERA').sort((p, q) => (p.fechaCheque || p.recibido || '').localeCompare(q.fechaCheque || q.recibido || ''))
+      .map(x => [x.rut || 'SIN RUT', x.cliente, x.documento, x.monto, x.numero, x.banco, fx(x.recibido), fx(x.fechaCheque), x.origen, x.fechaCheque ? (x.aFecha ? 'A fecha' : 'Al día') : (x.obs || '')]);
     C.tabla('', [{ h: 'RUT' }, { h: 'RAZÓN SOCIAL (DTE)' }, { h: 'DOCUMENTO' }, { h: 'MONTO', t: '$', sum: 1 }, { h: 'N° CHEQUE' }, { h: 'BANCO' }, { h: 'RECIBIDO' }, { h: 'FECHA CHEQUE' }, { h: 'ORIGEN' }, { h: 'ESTADO' }], ch);
     C.escribir([100, 300, 130, 95, 85, 110, 85, 95, 150, 90]);
     try { ss.deleteSheet(ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1')); } catch (e) {}
     return { url: ss.getUrl(), clientes: cls.length, documentos: filas.length, total: filas.reduce((a, f) => a + f[8], 0) };
+  });
+}
+
+/* ============================ CHEQUES EN CARTERA ============================ */
+// Un cheque es crédito hasta que se cobra. Salen de tres lugares: ventas con cheque (PAGOS), cobranza con cheque (COBRANZA) y los cheques de la
+// planilla de control (CREDITOS_CARGA). Su estado (CARTERA → COBRADO / PROTESTADO) se guarda en CHEQUES_ESTADO con la clave 'V|id', 'C|id' o 'P|folio_key'.
+function chequesTodos_() {
+  const hoy = hoy_(), est = {}; read_('CHEQUES_ESTADO').forEach(e => est[e.clave] = e);
+  const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
+  const maestro = {}; read_('CLIENTES').forEach(c => maestro[rutNorm_(c.rut)] = c);
+  const nom = {}; vendedores_().forEach(v => nom[v.usuario] = v.nombre);
+  const razon = (rut, otro) => { const m = rut ? maestro[rutNorm_(rut)] : null; return m ? m.razon_social : (otro || ''); };
+  const out = [];
+  const poner = (clave, o) => { const e = est[clave] || {}; o.clave = clave; o.estado = e.estado || 'CARTERA'; o.fechaEstado = e.fecha || ''; o.obsEstado = e.obs || '';
+    o.fechaCheque = o.fechaCheque ? String(o.fechaCheque).slice(0, 10) : ''; o.monto = Math.round(num_(o.monto));
+    o.aFecha = !!(o.fechaCheque && o.fechaCheque > hoy); out.push(o); };
+  read_('PAGOS').filter(x => x.forma === 'CHEQUE').forEach(x => { const d = docs[x.folio_key] || {};
+    poner('V|' + x.id, { origen: 'Venta', rut: d.rut ? rutFmt_(d.rut) : '', cliente: razon(d.rut, d.cliente), documento: ((d.tipo || '').replace(' Electrónica', '') + ' ' + (d.folio || '')).trim(),
+      monto: x.monto, numero: x.cheque_numero || '', banco: x.banco || '', recibido: String(x.fecha), fechaCheque: x.cheque_fecha, vendedor: nom[x.vendedor] || x.vendedor, titular: x.cheque_titular || '' }); });
+  read_('COBRANZA').filter(x => x.forma === 'CHEQUE').forEach(x => { const d = docs[x.folio_key] || {}, rut = x.rut || d.rut || '';
+    poner('C|' + x.id, { origen: 'Cobranza', rut: rut ? rutFmt_(rut) : '', cliente: razon(rut, x.cliente), documento: x.folio ? 'Folio ' + x.folio : 'Cobranza',
+      monto: x.monto, numero: x.cheque_numero || '', banco: x.banco || '', recibido: String(x.fecha), fechaCheque: x.cheque_fecha, vendedor: nom[x.vendedor] || x.vendedor, titular: x.cheque_titular || '' }); });
+  read_('CREDITOS_CARGA').filter(x => String(x.estado) === 'CHEQUE').forEach(x => {
+    poner('P|' + x.folio_key, { origen: 'Planilla de control', rut: x.rut ? rutFmt_(x.rut) : '', cliente: razon(x.rut, x.cliente_excel), documento: (String(x.tipo || '').replace(' Electrónica', '') + ' ' + x.folio).trim(),
+      monto: x.monto, numero: '', banco: '', recibido: x.recepcion instanceof Date ? normFecha_(x.recepcion) : String(x.recepcion || ''), fechaCheque: '', vendedor: x.vendedor || '', titular: '', obs: x.metodo || '' }); });
+  return out;
+}
+function listarCheques(token) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return conCache_('cheques', ['PAGOS', 'COBRANZA', 'CREDITOS_CARGA', 'DOCUMENTOS', 'CLIENTES', 'CHEQUES_ESTADO', 'USUARIOS'], () => {
+    const hoy = hoy_(), desde = sumarDias_(hoy, -45);
+    // los cobrados se muestran solo los últimos 45 días
+    const xs = chequesTodos_().filter(c => c.estado !== 'COBRADO' || String(c.fechaEstado) >= desde);
+    xs.sort((p, q) => (p.fechaCheque || p.recibido || '').localeCompare(q.fechaCheque || q.recibido || ''));
+    return { hoy, cheques: xs };
+  });
+}
+/** Marca cheques como COBRADO o PROTESTADO (o los devuelve a CARTERA). `fecha` = día en que se cobró. */
+function marcarCheque(token, claves, estado, fecha, obs) {
+  const u = auth_(token, ['RENDICION','SUPERVISOR']);
+  estado = String(estado || '').toUpperCase();
+  if (['COBRADO','PROTESTADO','CARTERA'].indexOf(estado) < 0) throw new Error('Estado de cheque no válido.');
+  claves = (claves || []).map(String).filter(String); if (!claves.length) throw new Error('Marca al menos un cheque.');
+  return withLock_(() => {
+    const ex = {}; read_('CHEQUES_ESTADO').forEach(e => ex[e.clave] = e);
+    const nuevos = [], borrar = [];
+    claves.forEach(k => {
+      const fila = { clave: k, estado, fecha: fecha || hoy_(), registrado_por: u.usuario, registrado: now_(), obs: String(obs || '') };
+      if (estado === 'CARTERA') { if (ex[k]) borrar.push(ex[k]._row); return; }
+      if (ex[k]) updateRow_('CHEQUES_ESTADO', ex[k]._row, fila); else nuevos.push(fila);
+    });
+    if (nuevos.length) append_('CHEQUES_ESTADO', nuevos);
+    if (borrar.length) deleteRows_('CHEQUES_ESTADO', borrar);
+    return { ok: true, cantidad: claves.length };
   });
 }
 
@@ -1556,13 +1763,13 @@ function borrarDeposito(token, id) {
 
 /* ============================ DEVOLUCIONES (mermas y reprocesos) ============================ */
 // Producto que vuelve a la bodega y no se puede vender: MERMA (se descarta) o REPROCESO (vuelve a producción).
-// Cada una se justifica con una nota de crédito (N° obligatorio; la foto de la NC se adjunta y, si falta, avisa en la Rendición).
+// Cada una se justifica con una nota de crédito: N° y monto obligatorios; la foto de la NC es opcional.
 const DEV_ROLES = ['BODEGA','RENDICION','SUPERVISOR'];
 const DEV_TIPOS = ['MERMA','REPROCESO'];
 
 function listarDevoluciones(token, fecha) {
   auth_(token, DEV_ROLES);
-  return byFecha_('DEVOLUCIONES', fecha).map(r => { delete r._row; r.cantidad = num_(r.cantidad); r.adjuntos = adjuntosDe_(r); return r; })
+  return byFecha_('DEVOLUCIONES', fecha).map(r => { delete r._row; r.cantidad = num_(r.cantidad); r.monto = num_(r.monto); r.adjuntos = adjuntosDe_(r); return r; })
     .sort((a, b) => String(a.registrado) < String(b.registrado) ? 1 : -1);
 }
 
@@ -1576,10 +1783,12 @@ function guardarDevolucion(token, fecha, o) {
   if (!(cantidad > 0)) throw new Error('Ingresa la cantidad.');
   const oc = String(o.nota_credito || '').trim();
   if (!oc) throw new Error('Falta el N° de la nota de crédito que justifica la devolución.');
+  const monto = Math.round(num_(o.monto));
+  if (!(monto > 0)) throw new Error('Ingresa el monto de la nota de crédito.');
   const p = read_('PRODUCTOS').find(x => codeKey_(x.codigo) === codeKey_(o.codigo));
   if (!p) throw new Error('Elige el producto.');
   return withLock_(() => {
-    const r = { id: uid_(), fecha, tipo, origen: String(o.origen || ''), cliente: String(o.cliente || '').trim(), codigo: codeKey_(p.codigo), producto: p.nombre,
+    const r = { id: uid_(), fecha, tipo, monto, origen: String(o.origen || ''), cliente: String(o.cliente || '').trim(), codigo: codeKey_(p.codigo), producto: p.nombre,
       unidad: p.unidad, cantidad, nota_credito: oc, motivo: String(o.motivo || '').trim(), obs: String(o.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
     append_('DEVOLUCIONES', [r]); return r;
   });
@@ -1725,7 +1934,6 @@ function resumen_(fecha) {
       .concat(porVendedor.filter(t => t.sinRetorno).map(t => t.vendedor + ': falta registrar retorno de ' + t.sinRetorno + ' producto(s)'))
       .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(2).replace('.', ',') + ' kg ($' + Math.abs(t.kilos.diferenciaPesos).toLocaleString('es-CL') + ') ' +
         (t.kilos.diferencia > 0 ? 'salieron y no volvieron ni se facturaron' : 'facturados de más respecto a lo que salió')))
-      .concat(devs.filter(x => !lista_(x.adjuntos).length).length ? [devs.filter(x => !lista_(x.adjuntos).length).length + ' devolución(es) sin foto de la nota de crédito'] : [])
       .concat(fecha && !hayDetalle && desp.length ? ['Falta importar el Informe de ventas (kilos por producto) para cruzar kilos'] : [])
   };
 }
@@ -2053,10 +2261,10 @@ function generarArchivo_(fecha, r, borrador) {
   K.escribir([220, 80, 100, 130, 220]);
   const dvs = byFecha_('DEVOLUCIONES', fecha);
   if (dvs.length) {
-    const DV = new Hoja_(ss, 'DEVOLUCIONES', 9); DV.titulo('DEVOLUCIONES (MERMAS Y REPROCESOS) ' + fechaTxt);
-    DV.tabla('', [{ h: 'TIPO' }, { h: 'PRODUCTO' }, { h: 'CANTIDAD', t: 'kg', sum: 0 }, { h: 'UNIDAD' }, { h: 'VIENE DE' }, { h: 'CLIENTE' }, { h: 'N° NOTA DE CRÉDITO' }, { h: 'MOTIVO' }, { h: 'FOTO NC' }],
-      dvs.map(x => [x.tipo, x.producto, num_(x.cantidad), x.unidad, x.origen ? ((usuarios[x.origen] || {}).nombre || x.origen) : 'Cliente / otro', x.cliente, x.nota_credito, x.motivo, linkAdj_(x)]));
-    DV.escribir([90, 220, 80, 70, 150, 200, 140, 200, 80]);
+    const DV = new Hoja_(ss, 'DEVOLUCIONES', 10); DV.titulo('DEVOLUCIONES (MERMAS Y REPROCESOS) ' + fechaTxt);
+    DV.tabla('', [{ h: 'TIPO' }, { h: 'PRODUCTO' }, { h: 'CANTIDAD', t: 'kg', sum: 0 }, { h: 'UNIDAD' }, { h: 'VIENE DE' }, { h: 'CLIENTE' }, { h: 'N° NOTA DE CRÉDITO' }, { h: 'MONTO NC', t: '$', sum: 1 }, { h: 'MOTIVO' }, { h: 'FOTO NC' }],
+      dvs.map(x => [x.tipo, x.producto, num_(x.cantidad), x.unidad, x.origen ? ((usuarios[x.origen] || {}).nombre || x.origen) : 'Cliente / otro', x.cliente, x.nota_credito, num_(x.monto), x.motivo, linkAdj_(x)]));
+    DV.escribir([90, 220, 80, 70, 150, 200, 140, 100, 200, 80]);
   }
   const cef = byFecha_('CONTEO_EFECTIVO', fecha);
   if (cef.length) {
