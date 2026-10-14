@@ -1638,7 +1638,9 @@ function nombreInforme(tipo, iso) { const [a, m, d] = iso.split('-'); return tip
 /** Un archivo ordenado por cada fecha que traiga el informe. Devuelve [{nombre, tipo, iso, libro}] */
 function libroOrdenado(l) {
   const porFecha = {}; l.filas.forEach(f => { (porFecha[isoFecha(f.Fecha)] = porFecha[isoFecha(f.Fecha)] || []).push(f); });
-  return Object.keys(porFecha).sort().map(iso => {
+  // Un día que solo trae notas de crédito movidas no genera archivo: reemplazaría el informe completo de ese día en el Drive.
+  const solo = f => f._ncMovida;
+  return Object.keys(porFecha).sort().filter(iso => !porFecha[iso].every(solo)).map(iso => {
     const filas = porFecha[iso], wb = XLSX.utils.book_new();
     if (l.tipo === 'dte') {
       const ws = XLSX.utils.aoa_to_sheet([['RUT', 'Documento', 'Folio', 'Fecha', 'Total', 'Condicion', 'Nombre Cliente', 'Caja', 'Emitido en']]
@@ -1731,6 +1733,24 @@ async function vImportar(m) {
     }
     leidos.sort((a, b) => (a.tipo === 'dte' ? 0 : 1) - (b.tipo === 'dte' ? 0 : 1)); // primero los folios
     try { ordenarInformes(leidos); } catch (e) { console.error(e); }
+    const pintar = () => {
+    /** Las notas de crédito suelen emitirse otro día; la encargada les pone la fecha de la factura que corrigen para que queden en ese día. */
+    const ncs = () => (leidos.find(l => !l.error && l.tipo === 'dte') || { filas: [] }).filas.filter(f => /nota de cr/i.test(f.Documento));
+    const tarjetaNC = () => { const n = ncs(); if (!n.length) return '';
+      return `<div class="card ordc"><b>Notas de crédito (${n.length})</b>
+        <p class="muted" style="margin:4px 0 8px">Si una nota corrige una factura de otro día, pon la fecha de esa factura: la nota queda en ese día, con su detalle.</p>
+        <ul class="ordl">${n.map(f => `<li><span class="grow">NC ${esc(f.Folio)} · ${esc(f['Nombre Cliente'])} · <b>${clp(f.Total)}</b></span>
+          <input type="date" class="in" style="min-height:36px;width:auto" data-nc="${esc(f.Folio)}" value="${isoFecha(f.Fecha)}" aria-label="Fecha de la factura que corrige la NC ${esc(f.Folio)}"></li>`).join('')}</ul></div>`; };
+    const moverNC = (folio, iso) => {
+      const [a, m, d] = iso.split('-');
+      for (const l of leidos) { if (l.error) continue;
+        for (const f of l.filas) {
+          if (String(f.Folio) !== String(folio) || !/nota de cr/i.test(l.tipo === 'dte' ? f.Documento : f.Nombre)) continue;
+          if (isoFecha(f.Fecha) !== iso) f._ncMovida = true;
+          if (l.tipo === 'dte') { f.Fecha = d + '-' + m + '-' + a; delete f._fo; }
+          else { const ant = typeof f._fo === 'number' ? f._fo % 1 : 0; f.Fecha = iso; if (typeof f._fo === 'number') f._fo = Math.floor(Date.UTC(+a, m - 1, +d) / 864e5 + 25569) + ant; }
+        } }
+    };
     const resumenOrden = () => {
       const d = leidos.find(l => l.orden && l.tipo === 'dte'), k = leidos.find(l => l.orden && l.tipo === 'detalle'), o = d && d.orden, tot = o ? o.SUPERMERCADO + o.DISTRIBUIDORA + o.BODEGA : 0;
       const calc = k ? k.orden.completadas : 0;
@@ -1753,7 +1773,8 @@ async function vImportar(m) {
         <div class="muted">${esc(l.nombre)} · ${esc(fechas)}</div></div>
         <span class="chip">${l.tipo === 'dte' ? v + ' documentos' : v + ' líneas de producto'}</span>${g ? `<span class="chip">${g} ${l.tipo === 'dte' ? 'guías (se omiten)' : 'líneas de guía'}</span>` : ''}</div>
         <div id="res${i}"></div></div>`;
-    }).join('') + resumenOrden() + avisoRequisitos(leidos) + (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
+    }).join('') + resumenOrden() + tarjetaNC() + avisoRequisitos(leidos) + (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
+    $$('[data-nc]').forEach(inp => inp.onchange = () => { if (!inp.value) return; moverNC(inp.dataset.nc, inp.value); pintar(); });
     const b = $('#imp'); if (!b) return;
     const lotesDe = l => l.tipo === 'creditos' ? [l.filas] : l.tipo === 'dte' ? tandas(l.filas, 1200) : tandas(l.filas, 2000, x => String(x.Nombre) + '|' + String(x.Folio));
     b.onclick = async () => {
@@ -1812,6 +1833,8 @@ async function vImportar(m) {
       if (sinT.size) toast('Hay terminales sin vendedor: ' + [...sinT].join(', ') + '. Asígnalos abajo.', true);
       cargarTerminales([...sinT]);
     };
+    };
+    pintar();
   }
   /** Genera los Excel ordenados y los sube al Drive; si no se puede, quedan para descargar. */
   async function guardarOrdenados(leidos, pp) {
