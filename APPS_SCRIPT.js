@@ -38,10 +38,12 @@ const SCHEMA = {
   VENTAS_DETALLE: ['linea_key','fecha','folio_key','tipo','folio','codigo','producto','cantidad','precio','total','neto','terminal','vendedor','categoria','pago','es_guia','importado'],
   PAGOS:       ['id','folio_key','fecha','vendedor','forma','banco','monto','referencia','registrado_por','registrado','cheque_numero','cheque_fecha','cheque_titular'],
   DESCUENTOS:  ['id','folio_key','fecha','vendedor','cliente','monto','motivo','estado','solicitado_por','autorizado_por','resuelto'],
-  COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado','adjuntos','cheque_numero','cheque_fecha','cheque_titular'],
+  COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado','adjuntos','cheque_numero','cheque_fecha','cheque_titular','rut','folio_key'],
   PROVEEDORES: ['id','fecha','proveedor','documento','folio','monto','forma','obs','registrado_por','registrado','adjuntos'],
   CONSUMO:     ['id','fecha','cliente','folio','monto','forma','obs','registrado_por','registrado'],
   CONTEO_EFECTIVO: ['key','fecha','vendedor','b20000','b10000','b5000','b2000','b1000','monedas','caja_chica','obs','registrado_por','registrado'],
+  CLIENTES:    ['rut','razon_social','condicion','vendedor','alias','actualizado'],
+  CREDITOS_CARGA: ['folio_key','rut','cliente_excel','tipo','folio','fecha','monto','condicion','vendedor','estado','recepcion','metodo','obs','cargado'],
   DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','nota_credito','motivo','obs','registrado_por','registrado','adjuntos'],
   GASTOS:      ['id','fecha','responsable','concepto','monto','respaldo','obs','registrado_por','registrado','adjuntos'],
   DEPOSITOS:   ['id','fecha','vendedor','banco','monto','referencia','folios','cobranzas','obs','registrado_por','registrado','adjuntos'],
@@ -165,7 +167,7 @@ function setup() {
 const API = {
   batch, listaUsuarios, login, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -188,7 +190,7 @@ function doPost(e) {
 }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, getConteoEfectivo: 1, getInventario: 1,
+const LECTURAS_ = { listaUsuarios: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -532,6 +534,7 @@ function importarDTE(token, filas) {
       existentes[key] = true;
     });
     append_('DOCUMENTOS', nuevos);
+    actualizarClientes_(nuevos);
     return { importados: nuevos.length, guias, repetidos, sinVendedor, terminalesSinAsignar: Object.keys(sinTerminal), fechas: Object.keys(fechas).sort() };
   });
 }
@@ -1239,7 +1242,7 @@ function cargarSaldoDesdePlanilla(idPlanilla, nombreHoja, fechaInicio) {
 // Lo que no se puede asociar a ninguna factura queda como "abono sin factura" del cliente.
 function getSaldosClientes(token) {
   auth_(token, ['RENDICION','SUPERVISOR']);
-  return conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS'], () => saldosClientes_());
+  return conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES'], () => saldosClientes_());
 }
 function saldosClientes_() {
   const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
@@ -1247,8 +1250,12 @@ function saldosClientes_() {
   const hoy = hoy_(), dias = f => Math.max(0, Math.round((new Date(hoy + 'T12:00:00') - new Date(String(f) + 'T12:00:00')) / 864e5));
   const clientes = {};
   const clave = (rut, nom) => rut ? 'R' + String(rut).replace(/[^0-9kK]/g, '').toUpperCase() : 'N' + normTxt_(nom);
-  const cli = (rut, nom) => { const k = clave(rut, nom); return clientes[k] = clientes[k] || { clave: k, cliente: String(nom || 'SIN NOMBRE').trim(), rut: rut || '',
-    facturas: [], abonos: [], vendedores: {} }; };
+  const maestro = {}, aliasRut = {};
+  read_('CLIENTES').forEach(c => { const k = rutNorm_(c.rut); if (!k) return; maestro[k] = c; lista_p_(c.alias).forEach(a => aliasRut[a] = k); aliasRut[normTxt_(c.razon_social)] = k; });
+  const cli = (rut, nom) => { if (!rut) rut = aliasRut[normTxt_(nom)] || '';
+    const k = clave(rut, nom), mc = rut ? maestro[rutNorm_(rut)] : null;
+    return clientes[k] = clientes[k] || { clave: k, cliente: String((mc && mc.razon_social) || nom || 'SIN NOMBRE').trim(), rut: mc ? mc.rut : (rut ? rutFmt_(rut) : ''),
+      condicion: mc ? num_(mc.condicion) : 0, facturas: [], abonos: [], vendedores: {} }; };
   // 1) facturas a crédito
   const cred = {};
   read_('PAGOS').filter(p => p.forma === 'CREDITO').forEach(p => cred[p.folio_key] = (cred[p.folio_key] || 0) + num_(p.monto));
@@ -1261,18 +1268,33 @@ function saldosClientes_() {
     c.facturas.push(f); c.vendedores[f.vendedorNombre] = 1;
     (porFolio[String(d.folio).trim()] = porFolio[String(d.folio).trim()] || []).push({ c, f });
   });
+  // 1b) créditos cargados desde la planilla de control (saldo inicial), salvo los que ya están como crédito en la app
+  const porKey = {};
+  const vNom = {}; vendedores_().forEach(v => vNom[normTxt_(v.nombre)] = v);
+  read_('CREDITOS_CARGA').forEach(x => {
+    if (cred[x.folio_key] > 0 || String(x.estado) === 'PAGADO') return;
+    const c = cli(x.rut, x.cliente_excel), v = vNom[normTxt_(x.vendedor)];
+    if (x.condicion && !c.condicion) c.condicion = num_(x.condicion);
+    const f = { folio_key: x.folio_key, fecha: String(x.fecha), tipo: x.tipo, folio: String(x.folio), total: num_(x.monto), credito: num_(x.monto), pagado: 0,
+      vendedor: v ? v.usuario : String(x.vendedor || '').trim(), vendedorNombre: v ? v.nombre : String(x.vendedor || '').trim(), pagos: [], origen: 'CARGA',
+      cheque: String(x.estado) === 'CHEQUE', metodo: x.metodo || '', obs: x.obs || '', recepcion: x.recepcion instanceof Date ? normFecha_(x.recepcion) : String(x.recepcion || '') };
+    c.facturas.push(f); c.vendedores[f.vendedorNombre] = 1; porKey[x.folio_key] = { c, f };
+    (porFolio[String(x.folio).trim()] = porFolio[String(x.folio).trim()] || []).push({ c, f });
+  });
   const buscarCliente = nom => {
     const n = normTxt_(nom); if (!n) return null;
+    if (aliasRut[n] && clientes['R' + aliasRut[n]]) return clientes['R' + aliasRut[n]];
     const lista = Object.keys(clientes).map(k => clientes[k]);
     return lista.find(c => normTxt_(c.cliente) === n) || lista.find(c => { const m = normTxt_(c.cliente); return m.indexOf(n) >= 0 || n.indexOf(m) >= 0; }) || null;
   };
   const aplicar = (f, monto, pago) => { const q = Math.min(monto, f.credito - f.pagado); if (q <= 0) return 0; f.pagado += q; f.pagos.push({ fecha: pago.fecha, monto: q, forma: pago.forma }); return q; };
   // 2) pagos: primero los que traen folio, después el resto (en orden de fecha)
-  const cobros = read_('COBRANZA').map(x => ({ fecha: x.fecha, cliente: x.cliente, folio: String(x.folio || '').replace(/[^0-9]/g, ''), monto: num_(x.monto), forma: x.forma }))
+  const cobros = read_('COBRANZA').map(x => ({ fecha: x.fecha, cliente: x.cliente, folio: String(x.folio || '').replace(/[^0-9]/g, ''), folio_key: x.folio_key || '', monto: num_(x.monto), forma: x.forma }))
     .sort((a, b) => (a.folio ? 0 : 1) - (b.folio ? 0 : 1) || String(a.fecha).localeCompare(String(b.fecha)));
   cobros.forEach(p => {
     let resto = p.monto, c = null;
-    if (p.folio && porFolio[p.folio]) {
+    if (p.folio_key && porKey[p.folio_key]) { c = porKey[p.folio_key].c; resto -= aplicar(porKey[p.folio_key].f, resto, p); }
+    else if (p.folio && porFolio[p.folio]) {
       const cands = porFolio[p.folio];
       const m = cands.find(x => buscarCliente(p.cliente) === x.c && x.f.pagado < x.f.credito) || cands.find(x => x.f.pagado < x.f.credito) || cands[0];
       c = m.c; resto -= aplicar(m.f, resto, p);
@@ -1289,11 +1311,190 @@ function saldosClientes_() {
     c.facturas.forEach(f => { f.saldo = Math.round(f.credito - f.pagado); f.dias = dias(f.fecha); });
     const pend = c.facturas.filter(f => f.saldo > 0).sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
     const abonos = c.abonos.reduce((a, x) => a + x.monto, 0);
-    return { clave: c.clave, cliente: c.cliente, rut: c.rut, vendedores: Object.keys(c.vendedores),
+    return { clave: c.clave, cliente: c.cliente, rut: c.rut, condicion: c.condicion || 0, vendedores: Object.keys(c.vendedores),
       deuda: pend.reduce((a, f) => a + f.saldo, 0) - abonos, abonos: c.abonos, pendientes: pend.length, diasMax: pend.length ? pend[0].dias : 0,
       ultimoPago: c.ultimoPago || '', facturas: c.facturas.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))) };
   }).sort((a, b) => b.deuda - a.deuda);
-  return { hoy, clientes: lista, total: lista.reduce((a, c) => a + Math.max(0, c.deuda), 0) };
+  return { hoy, clientes: lista, total: lista.reduce((a, c) => a + Math.max(0, c.deuda), 0), sinRut: lista.filter(c => !c.rut && c.deuda > 0).length };
+}
+
+/* ============================ CLIENTES (RUT) Y LISTA DE CRÉDITOS ============================ */
+// El RUT es lo que une todo: el nombre que vale es la razón social del DTE (la más reciente por RUT). Los nombres que usa la planilla
+// de control de crédito quedan como "alias" del RUT.
+const rutNorm_ = r => String(r || '').replace(/[^0-9kK]/g, '').toUpperCase();
+const rutFmt_ = r => { const n = rutNorm_(r); if (n.length < 2) return n; return n.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '-' + n.slice(-1); };
+const lista_p_ = v => String(v || '').split('|').map(x => x.trim()).filter(String);
+
+/** Pone al día la hoja CLIENTES con los documentos del DTE: razón social por RUT. Solo guarda cambios. */
+function actualizarClientes_(docs) {
+  const nuevos = [], ahora = now_(), cambios = {};
+  const ex = {}; read_('CLIENTES').forEach(c => ex[rutNorm_(c.rut)] = c);
+  docs.slice().sort((a, b) => String(a.fecha) < String(b.fecha) ? -1 : 1).forEach(d => {
+    const k = rutNorm_(d.rut); if (k.length < 7 || !String(d.cliente || '').trim()) return;
+    const nom = String(d.cliente).trim(), c = ex[k];
+    if (!c) { const o = { rut: rutFmt_(k), razon_social: nom, condicion: '', vendedor: '', alias: '', actualizado: ahora }; nuevos.push(o); ex[k] = o; }
+    else if (c.razon_social !== nom) { c.razon_social = nom; c.actualizado = ahora; if (c._row) cambios[c._row] = c; }
+  });
+  Object.keys(cambios).forEach(r => updateRow_('CLIENTES', Number(r), cambios[r]));
+  if (nuevos.length) append_('CLIENTES', nuevos);
+}
+
+const tipoDoc_ = t => /bol/i.test(String(t)) ? 'Boleta Electrónica' : 'Factura Electrónica';
+
+/** Intenta poner RUT a los créditos cargados que no lo tienen: por folio en los documentos del DTE y por nombre (alias / razón social). */
+function resolverRut_() {
+  const docs = {}; read_('DOCUMENTOS').forEach(d => { if (rutNorm_(d.rut)) docs[d.folio_key] = d; });
+  const cl = {}, alias = {};
+  read_('CLIENTES').forEach(c => { const k = rutNorm_(c.rut); if (!k) return; cl[k] = c; alias[normTxt_(c.razon_social)] = k; lista_p_(c.alias).forEach(a => alias[a] = k); });
+  const nuevosAlias = {}; let n = 0;
+  const aprender = (x, k) => { const a = normTxt_(x.cliente_excel);        // el nombre de la planilla queda como alias del RUT
+    if (a && alias[a] !== k) { alias[a] = k; (nuevosAlias[k] = nuevosAlias[k] || {})[a] = 1; } };
+  read_('CREDITOS_CARGA').forEach(x => {
+    if (rutNorm_(x.rut)) { if (cl[rutNorm_(x.rut)]) aprender(x, rutNorm_(x.rut)); return; }
+    const d = docs[x.folio_key], porNombre = alias[normTxt_(x.cliente_excel)];
+    const k = d ? rutNorm_(d.rut) : porNombre;
+    if (!k) return;
+    x.rut = rutFmt_(k); updateRow_('CREDITOS_CARGA', x._row, x); n++; aprender(x, k);
+  });
+  Object.keys(nuevosAlias).forEach(k => { const c = cl[k]; if (!c || !c._row) return;
+    c.alias = lista_p_(c.alias).concat(Object.keys(nuevosAlias[k])).filter((v, i, a) => a.indexOf(v) === i).join('|'); updateRow_('CLIENTES', c._row, c); });
+  return n;
+}
+
+/** filas: [{tipo, cliente, condicion, folio, fecha, monto, estado:'CREDITO'|'CHEQUE', vendedor, recepcion, metodo, obs}] (solo los documentos abiertos de la planilla) */
+function cargarCreditos(token, filas) {
+  const u = auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => {
+    const ex = {}; read_('CREDITOS_CARGA').forEach(x => ex[x.folio_key] = x);
+    const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
+    const nuevos = [], vistos = {}; let actualizados = 0, saltados = 0, duplicados = 0;
+    (filas || []).forEach(f => {
+      const tipo = tipoDoc_(f.tipo), folio = String(f.folio || '').trim(), monto = Math.round(num_(f.monto));
+      if (!folio || !(monto > 0)) { saltados++; return; }
+      // folios que no son un número ("P", "182-183"): la clave incluye al cliente para no confundir documentos distintos
+      const key = folioKey_(tipo, /^\d+$/.test(folio) ? folio : folio + '·' + normTxt_(f.cliente).slice(0, 24)), d = docs[key];
+      if (vistos[key]) { duplicados++; return; }          // el mismo documento dos veces en el archivo: vale el primero
+      vistos[key] = true;
+      const o = { folio_key: key, rut: d && rutNorm_(d.rut) ? rutFmt_(d.rut) : '', cliente_excel: String(f.cliente || '').trim(), tipo, folio, fecha: String(f.fecha || ''),
+        monto, condicion: num_(f.condicion) || '', vendedor: String(f.vendedor || '').trim(), estado: f.estado === 'CHEQUE' ? 'CHEQUE' : 'CREDITO',
+        recepcion: String(f.recepcion || '').slice(0, 10), metodo: String(f.metodo || ''), obs: String(f.obs || ''), cargado: now_() };
+      const p = ex[key];
+      if (p) { if (rutNorm_(p.rut)) o.rut = p.rut; if (String(p.estado) === 'PAGADO') return; o.cargado = p.cargado; updateRow_('CREDITOS_CARGA', p._row, o); actualizados++; }
+      else { nuevos.push(o); ex[key] = o; }
+    });
+    if (nuevos.length) append_('CREDITOS_CARGA', nuevos);
+    const resueltos = resolverRut_();
+    const todos = read_('CREDITOS_CARGA'), sin = todos.filter(x => !rutNorm_(x.rut) && String(x.estado) !== 'PAGADO');
+    return { nuevos: nuevos.length, actualizados, saltados, duplicados, conRut: todos.length - sin.length, sinRut: sin.length, resueltos, sinRutClientes: sinRutClientes_(sin) };
+  });
+}
+function sinRutClientes_(sin) {
+  const m = {};
+  sin.forEach(x => { const k = normTxt_(x.cliente_excel); const o = m[k] = m[k] || { alias: k, cliente: x.cliente_excel, docs: 0, monto: 0 }; o.docs++; o.monto += num_(x.monto); });
+  return Object.keys(m).map(k => m[k]).sort((a, b) => b.monto - a.monto);
+}
+
+/** Vincula a mano un nombre de la planilla con un RUT (queda como alias y se aplica a todos sus documentos). */
+function vincularRut(token, alias, rut, razon) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  const k = rutNorm_(rut);
+  if (k.length < 8) throw new Error('El RUT no parece válido.');
+  return withLock_(() => {
+    const a = normTxt_(alias); let c = read_('CLIENTES').find(x => rutNorm_(x.rut) === k);
+    if (!c) { append_('CLIENTES', [{ rut: rutFmt_(k), razon_social: String(razon || alias).trim(), condicion: '', vendedor: '', alias: a, actualizado: now_() }]); }
+    else { c.alias = lista_p_(c.alias).concat([a]).filter((v, i, z) => z.indexOf(v) === i).join('|'); updateRow_('CLIENTES', c._row, c); }
+    let n = 0; read_('CREDITOS_CARGA').forEach(x => { if (!rutNorm_(x.rut) && normTxt_(x.cliente_excel) === a) { x.rut = rutFmt_(k); updateRow_('CREDITOS_CARGA', x._row, x); n++; } });
+    return { documentos: n };
+  });
+}
+function reintentarRut(token) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => { const n = resolverRut_(); const sin = read_('CREDITOS_CARGA').filter(x => !rutNorm_(x.rut) && String(x.estado) !== 'PAGADO');
+    return { resueltos: n, sinRut: sin.length, sinRutClientes: sinRutClientes_(sin) }; });
+}
+// Clientes disponibles para vincular (razón social del DTE) — para el buscador de la pantalla
+function listaClientesRut_() { return read_('CLIENTES').map(c => ({ rut: c.rut, razon: c.razon_social })); }
+
+/** Lo que hay por cobrar, para la pantalla de Cobranza. El vendedor ve solo sus facturas. */
+function porCobrar(token) {
+  const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
+  const r = conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES'], () => saldosClientes_());
+  const out = [];
+  r.clientes.forEach(c => {
+    const fs = c.facturas.filter(f => f.saldo > 0 && (u.rol !== 'VENDEDOR' || f.vendedor === u.usuario));
+    if (!fs.length) return;
+    out.push({ clave: c.clave, cliente: c.cliente, rut: c.rut, condicion: c.condicion, deuda: fs.reduce((a, f) => a + f.saldo, 0),
+      facturas: fs.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))).map(f => ({ folio_key: f.folio_key, tipo: f.tipo, folio: f.folio, fecha: f.fecha, saldo: f.saldo, total: f.credito,
+        dias: f.dias, vendedor: f.vendedorNombre, cheque: !!f.cheque, venc: f.fecha && c.condicion ? sumarDias_(f.fecha, c.condicion) : '' })) });
+  });
+  return { hoy: r.hoy, clientes: out.sort((a, b) => a.cliente.localeCompare(b.cliente)) };
+}
+function sumarDias_(iso, n) { const d = new Date(String(iso) + 'T12:00:00'); d.setDate(d.getDate() + num_(n)); return Utilities.formatDate(d, 'America/Santiago', 'yyyy-MM-dd'); }
+
+/** Registra un cobro de un cliente repartido entre sus facturas. items: [{folio_key, folio, monto}], pago: {forma, banco, cheque_numero, cheque_fecha, cheque_titular}, cli: {cliente, rut} */
+function guardarCobro(token, fecha, cli, pago, items) {
+  const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
+  assertAbierta_(fecha);
+  if (!items || !items.length) throw new Error('Elige al menos una factura.');
+  const forma = String(pago.forma || '');
+  if (FORMAS.indexOf(forma) < 0 || forma === 'CREDITO' || forma === 'NOTA_CREDITO') throw new Error('Forma de pago no válida.');
+  if ((forma === 'TRANSFERENCIA' || forma === 'DEP_EFECTIVO') && BANCOS.indexOf(pago.banco) < 0) throw new Error('Indica el banco.');
+  const ch = forma === 'CHEQUE' ? datosCheque_(pago) : {};
+  return withLock_(() => {
+    const vend = u.rol === 'VENDEDOR' ? u.usuario : String(pago.vendedor || '');
+    const filas = items.map(i => { const m = Math.round(num_(i.monto)); if (!(m > 0)) throw new Error('Hay un monto en cero.');
+      return Object.assign({ id: uid_(), fecha, vendedor: vend, cliente: String(cli.cliente || '').trim(), folio: String(i.folio || ''), folio_key: String(i.folio_key || ''), rut: String(cli.rut || ''),
+        monto: m, forma, banco: forma === 'CHEQUE' ? (pago.banco || '') : (pago.banco || ''), referencia: forma === 'CHEQUE' ? 'Cheque N° ' + (ch.cheque_numero || '') : '',
+        registrado_por: u.usuario, registrado: now_() }, ch); });
+    append_('COBRANZA', filas);
+    return { id: filas[0].id, ids: filas.map(f => f.id), total: filas.reduce((a, f) => a + f.monto, 0) };
+  });
+}
+
+/** Planilla única de cuentas por cobrar: crédito + cheques en cartera, por RUT y con la razón social del DTE. */
+function generarPlanillaPorCobrar(token) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => {
+    const r = saldosClientes_(), hoy = r.hoy, ft = hoy.split('-').reverse().join('-');
+    const nombre = 'Por cobrar ' + ft;
+    const ss = SpreadsheetApp.create(nombre), file = DriveApp.getFileById(ss.getId());
+    try {
+      const root = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), dest = sub_(root, 'Cuentas por cobrar');
+      const prev = dest.getFilesByName(nombre); while (prev.hasNext()) prev.next().setTrashed(true);
+      file.moveTo(dest);
+    } catch (e) { /* queda en Mi unidad */ }
+    const fx = iso => iso ? String(iso).split('-').reverse().join('-') : '';
+    const cls = r.clientes.filter(c => c.deuda > 0 || c.facturas.some(f => f.saldo > 0));
+    const pend = c => c.facturas.filter(f => f.saldo > 0);
+    // 1) resumen por cliente
+    const A = new Hoja_(ss, 'POR CLIENTE', 11); A.titulo('CUENTAS POR COBRAR ' + ft, 'Crédito y cheques en cartera, por RUT · razón social según el DTE · Cecinas Naranjo');
+    A.tabla('', [{ h: 'RUT' }, { h: 'RAZÓN SOCIAL (DTE)' }, { h: 'VENDEDOR' }, { h: 'COND. (DÍAS)' }, { h: 'DOCS', sum: 1 }, { h: 'CRÉDITO', t: '$', sum: 1 }, { h: 'EN CHEQUE', t: '$', sum: 1 },
+      { h: 'TOTAL', t: '$', sum: 1 }, { h: 'DÍAS MÁX.' }, { h: 'ÚLTIMO PAGO' }, { h: 'AVISO' }],
+      cls.map(c => { const p = pend(c), ch = p.filter(f => f.cheque).reduce((a, f) => a + f.saldo, 0), tot = p.reduce((a, f) => a + f.saldo, 0);
+        return [c.rut || 'SIN RUT', c.cliente, c.vendedores.join(', '), c.condicion || '', p.length, tot - ch, ch, tot, c.diasMax, fx(c.ultimoPago), c.rut ? '' : 'Falta RUT']; }));
+    A.escribir([100, 300, 150, 80, 55, 100, 100, 100, 75, 95, 80]);
+    // 2) detalle de documentos
+    const B = new Hoja_(ss, 'DETALLE', 12); B.titulo('DETALLE DE DOCUMENTOS POR COBRAR ' + ft);
+    const filas = [];
+    cls.forEach(c => pend(c).forEach(f => filas.push([c.rut || 'SIN RUT', c.cliente, f.tipo.replace(' Electrónica', ''), Number(f.folio) || f.folio, fx(f.fecha),
+      f.fecha && c.condicion ? fx(sumarDias_(f.fecha, c.condicion)) : '', f.dias, f.credito, f.saldo, f.vendedorNombre, f.cheque ? 'Cheque en cartera' : 'Crédito', f.obs || f.metodo || ''])));
+    B.tabla('', [{ h: 'RUT' }, { h: 'RAZÓN SOCIAL (DTE)' }, { h: 'DOCUMENTO' }, { h: 'FOLIO' }, { h: 'FECHA' }, { h: 'VENCE' }, { h: 'DÍAS' }, { h: 'MONTO', t: '$', sum: 1 },
+      { h: 'SALDO', t: '$', sum: 1 }, { h: 'VENDEDOR' }, { h: 'ESTADO' }, { h: 'OBSERVACIÓN' }], filas);
+    B.escribir([100, 300, 80, 75, 85, 85, 55, 95, 95, 130, 120, 200]);
+    // 3) cheques en cartera: los de la planilla de control (ya incluidos arriba) y los recibidos desde la app en los últimos 60 días
+    const C = new Hoja_(ss, 'CHEQUES EN CARTERA', 10); C.titulo('CHEQUES EN CARTERA ' + ft, 'Cheques que se cobran en el banco: mientras no se cobren siguen siendo crédito');
+    const desde = sumarDias_(hoy, -60), nomRut = {}; r.clientes.forEach(c => { c.facturas.forEach(f => nomRut[f.folio_key] = c); });
+    const ch = [];
+    r.clientes.forEach(c => c.facturas.forEach(f => { if (f.cheque && f.saldo > 0) ch.push([c.rut || 'SIN RUT', c.cliente, f.tipo.replace(' Electrónica', '') + ' ' + f.folio, f.saldo, '', '', fx(f.recepcion), '', 'Planilla de control', f.metodo || '']); }));
+    read_('COBRANZA').filter(x => x.forma === 'CHEQUE' && x.fecha >= desde).forEach(x => { const c = nomRut[x.folio_key];
+      ch.push([x.rut ? rutFmt_(x.rut) : (c ? c.rut : ''), c ? c.cliente : x.cliente, x.folio ? 'Folio ' + x.folio : 'Cobranza', num_(x.monto), x.cheque_numero, x.banco, fx(x.fecha), fx(x.cheque_fecha), 'Cobranza ' + fx(x.fecha), x.cheque_fecha && x.cheque_fecha > hoy ? 'A fecha' : 'Al día']); });
+    read_('PAGOS').filter(x => x.forma === 'CHEQUE' && x.fecha >= desde).forEach(x => { const d = read_('DOCUMENTOS').find(y => y.folio_key === x.folio_key) || {};
+      ch.push([d.rut ? rutFmt_(d.rut) : '', d.cliente || '', (d.tipo || '').replace(' Electrónica', '') + ' ' + (d.folio || ''), num_(x.monto), x.cheque_numero, x.banco, fx(x.fecha), fx(x.cheque_fecha), 'Venta ' + fx(x.fecha), x.cheque_fecha && x.cheque_fecha > hoy ? 'A fecha' : 'Al día']); });
+    C.tabla('', [{ h: 'RUT' }, { h: 'RAZÓN SOCIAL (DTE)' }, { h: 'DOCUMENTO' }, { h: 'MONTO', t: '$', sum: 1 }, { h: 'N° CHEQUE' }, { h: 'BANCO' }, { h: 'RECIBIDO' }, { h: 'FECHA CHEQUE' }, { h: 'ORIGEN' }, { h: 'ESTADO' }], ch);
+    C.escribir([100, 300, 130, 95, 85, 110, 85, 95, 150, 90]);
+    try { ss.deleteSheet(ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1')); } catch (e) {}
+    return { url: ss.getUrl(), clientes: cls.length, documentos: filas.length, total: filas.reduce((a, f) => a + f[8], 0) };
+  });
 }
 
 /* ============================ DEPÓSITOS DE EFECTIVO ============================ */

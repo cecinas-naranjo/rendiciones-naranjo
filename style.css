@@ -242,6 +242,14 @@ body:has(.ov) .toast{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto}
 .dfolio.pend{border-left:3px solid var(--cu);padding-left:10px;background:var(--cu-soft)}
 .dfolio .muted{font-size:13px;margin-top:2px}
 
+/* ---------- cobrar desde la lista ---------- */
+.cli{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:6px;min-height:52px}
+.cli small{display:block;color:var(--mut);font-size:13px}
+.cpan{margin-top:6px}
+.cfac{border-bottom:1px solid var(--line-2);padding:8px 0}
+.cfac input[type=checkbox]{width:22px;height:22px;accent-color:var(--cu);flex:none}
+.cmonto{margin:6px 0 2px 32px;max-width:220px}
+
 /* ---------- efectivo ---------- */
 .bill{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:10px 0 6px}
 @media(max-width:640px){.bill{grid-template-columns:repeat(3,1fr)}}

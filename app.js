@@ -105,11 +105,11 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
-  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', historial: 'Cargando historial…' };
+  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', porCobrar: 'Buscando lo que hay por cobrar…', cargarCreditos: 'Cargando la lista de créditos…', generarPlanillaPorCobrar: 'Armando la planilla por cobrar…', reintentarRut: 'Buscando RUT…', historial: 'Cargando historial…' };
 const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
   : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
 
@@ -949,6 +949,25 @@ async function vInventario(m) {
 }
 
 /* ============ SALDOS DE CLIENTES ============ */
+/** Clientes de la lista de créditos que todavía no tienen RUT: se escribe el RUT y queda vinculado (con el nombre del DTE si ya existe). */
+function abrirSinRut(lista) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet ancha" role="dialog" aria-modal="true" aria-label="Completar RUT"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Clientes sin RUT</div>
+    <p class="muted" style="margin:4px 0 10px">Escribe el RUT de cada uno. Desde ahí todo se une por RUT y el nombre que vale es el del DTE (si el RUT aún no aparece en el DTE, se usa este nombre hasta que llegue). Si importas más Ventas Diarias, "Buscar RUT otra vez" los completa solo.</p>
+    <div id="sr"></div></div><div class="foot"><button class="btn ghost" id="srx">Cerrar</button><span class="grow"></span><button class="btn ghost" id="srb">Buscar RUT otra vez</button></div></div>`;
+  document.body.appendChild(ov);
+  const pintar = xs => { $('#sr', ov).innerHTML = xs.length ? xs.map((c, i) => `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-a="${esc(c.alias)}" data-n="${esc(c.cliente)}">
+      <span class="grow"><b>${esc(c.cliente)}</b><div class="muted">${c.docs} documento${c.docs > 1 ? 's' : ''} · ${clp(c.monto)}</div></span>
+      <input class="in" style="width:150px;min-height:40px" placeholder="12.345.678-9" data-rut><button class="btn cu sm" data-v>Vincular</button></div>`).join('') : '<div class="alert ok">Todos tienen RUT.</div>'; };
+  pintar(lista);
+  $('#srx', ov).onclick = () => cerrarHoja(ov);
+  $('#srb', ov).onclick = async () => { const r = await api('reintentarRut', S.sess.token); toast(r.resueltos ? r.resueltos + ' completados' : 'No se encontró ninguno nuevo'); lista = r.sinRutClientes; pintar(lista); };
+  $('#sr', ov).onclick = async e => { const b = e.target.closest('[data-v]'); if (!b) return; const fila = b.closest('.dfila'), rut = $('[data-rut]', fila).value.trim();
+    if (rut.replace(/[^0-9kK]/g, '').length < 8) return toast('Escribe el RUT completo.', true);
+    b.disabled = true; try { await api('vincularRut', S.sess.token, fila.dataset.a, rut, fila.dataset.n); lista = lista.filter(x => x.alias !== fila.dataset.a); pintar(lista); toast('Vinculado'); } finally { b.disabled = false; } };
+}
+
 async function vSaldos(m) {
   const r = await api('getSaldosClientes', S.sess.token);
   const fc = iso => { const [a, mm, d] = String(iso).split('-'); return d + '-' + mm + '-' + a.slice(2); };
@@ -956,7 +975,9 @@ async function vSaldos(m) {
   const vends = [...new Set(r.clientes.flatMap(c => c.vendedores))].sort();
   const conDeuda = r.clientes.filter(c => c.deuda > 0);
   render(m, `<h2>Saldos de clientes</h2>
-    <p class="lead" style="margin:0 0 12px">Facturas a crédito menos los pagos anotados en Cobranza.</p>
+    <p class="lead" style="margin:0 0 12px">Facturas a crédito (las de la lista de créditos y las nuevas) menos los pagos anotados en Cobranza. Todo se une por RUT y el nombre es el del DTE.</p>
+    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn cu sm" id="pl">Generar planilla por cobrar (crédito + cheques)</button>
+      ${r.sinRut ? `<button class="btn ghost sm" id="sr">${r.sinRut} cliente${r.sinRut > 1 ? 's' : ''} sin RUT: completar</button>` : ''}<span class="grow"></span><span class="muted" id="plr"></span></div>
     <div class="kpis"><div><span>Total adeudado</span><b>${clp(r.total)}</b></div>
       <div><span>Clientes con deuda</span><b>${conDeuda.length}</b></div>
       <div><span>Con facturas de más de 30 días</span><b>${conDeuda.filter(c => c.diasMax > 30).length}</b></div></div>
@@ -967,17 +988,20 @@ async function vSaldos(m) {
     <div id="sl"></div>
     <p class="muted" style="margin-top:14px">Al registrar un pago en Cobranza, anota el folio de la factura para que se descuente de esa. Sin folio, se descuenta de la factura más antigua del cliente.</p>`);
   const abiertos = {};
+  $('#pl').onclick = async () => { const b = $('#pl'); b.disabled = true; try { const p = await api('generarPlanillaPorCobrar', S.sess.token);
+      $('#plr').innerHTML = `<a class="chip cu" href="${esc(p.url)}" target="_blank" rel="noopener">Abrir planilla · ${p.clientes} clientes · ${clp(p.total)}</a>`; window.open(p.url, '_blank'); } finally { b.disabled = false; } };
+  if ($('#sr')) $('#sr').onclick = async () => { const x = await api('reintentarRut', S.sess.token); abrirSinRut(x.sinRutClientes); };
   const pintar = () => {
     const q = normTxt($('#bq').value), v = $('#bv').value, todos = $('#bp').checked;
     const lista = r.clientes.filter(c => (todos || c.deuda > 0) && (!v || c.vendedores.indexOf(v) >= 0) &&
       (!q || normTxt(c.cliente).indexOf(q) >= 0 || String(c.rut).replace(/\W/g, '').indexOf(q.replace(/\W/g, '')) >= 0));
     $('#sl').innerHTML = lista.length ? lista.map(c => `<div class="card sc" data-k="${esc(c.clave)}" style="margin-bottom:8px;cursor:pointer">
-      <div class="row"><div class="grow"><b>${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')} · ${esc(c.vendedores.join(', '))}</div></div>
+      <div class="row"><div class="grow"><b>${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')}${c.condicion ? ' · ' + c.condicion + ' días' : ''} · ${esc(c.vendedores.join(', '))}</div></div>
         <div style="text-align:right"><b style="font-size:20px">${clp(c.deuda)}</b><div>${c.pendientes
           ? `<span class="chip ${edad(c.diasMax)}">${c.pendientes} pendiente${c.pendientes > 1 ? 's' : ''} · ${c.diasMax} días</span>` : '<span class="chip ok">Al día</span>'}</div></div></div>
       ${abiertos[c.clave] ? `<div style="margin-top:10px;border-top:1px solid var(--line-2);padding-top:8px">
         ${c.facturas.map(f => `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line-2)">
-          <div class="grow">${esc(f.tipo)} N° ${esc(f.folio)} <span class="muted">· ${fc(f.fecha)} · ${esc(f.vendedorNombre)}</span>
+          <div class="grow">${esc(f.tipo)} N° ${esc(f.folio)} ${f.cheque ? '<span class="chip warn">Cheque en cartera</span>' : ''}<span class="muted">· ${fc(f.fecha)} · ${esc(f.vendedorNombre)}</span>
             ${f.pagos.length ? `<div class="muted">Pagado: ${f.pagos.map(p => fc(p.fecha) + ' ' + clp(p.monto) + ' ' + esc(String(p.forma || '').toLowerCase())).join(' · ')}</div>` : ''}</div>
           <div style="text-align:right">${f.saldo > 0 ? `<b>${clp(f.saldo)}</b><div><span class="chip ${edad(f.dias)}">${f.dias} días</span></div>` : '<span class="chip ok">Pagada</span>'}
             <div class="muted">de ${clp(f.credito)}</div></div></div>`).join('')}
@@ -1156,6 +1180,25 @@ const CANON = { 'rut': 'RUT', 'datos rut': 'RUT', 'documento': 'Documento', 'fol
   'nombre cliente': 'Nombre Cliente', 'emitido en': 'Emitido en', 'codigo': 'Codigo', 'descripcion': 'Descripcion', 'cantidad': 'Cantidad',
   'precio': 'Precio', 'nombre': 'Nombre', 'razon social': 'Razon social', 'pago': 'Pago', 'equipo': 'Equipo', 'neto': 'NETO', 'productos': 'PRODUCTOS' };
 
+/** Planilla "Control de crédito": se quedan solo los documentos que siguen abiertos (¿Pagó? distinto de SI). */
+function leerCreditos(rows, hi, head) {
+  const ix = f => head.findIndex(h => f.test(h));
+  const c = { tipo: ix(/^documento$/), cliente: ix(/^cliente$/), cond: ix(/^condicion/), folio: ix(/^folio$/), fecha: ix(/^fecha$/), monto: ix(/^monto$/),
+    recep: ix(/^recepcion/), pago: ix(/^¿?pag[oó]\??$/), vend: ix(/^vendedor$/), metodo: ix(/^metodo/) };
+  const fecha = v => typeof v === 'number' ? serialAFecha(v) : (m => m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : String(v || ''))(String(v || '').match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/));
+  const out = [];
+  rows.slice(hi + 1).forEach(r => {
+    const pago = String(r[c.pago] || '').trim().toUpperCase(), monto = Number(r[c.monto]);
+    if (pago === 'SI' || !r[c.cliente] || !(monto > 0)) return;
+    const recep = r[c.recep], esPrestamo = typeof recep === 'string' && /prestamo/i.test(recep);
+    out.push({ tipo: String(r[c.tipo] || '').trim() || 'Factura Electrónica', cliente: String(r[c.cliente]).replace(/\s+/g, ' ').trim(), condicion: Number(r[c.cond]) || '',
+      folio: String(r[c.folio] || '').trim(), fecha: fecha(r[c.fecha]), monto: Math.round(monto), estado: /cheque/i.test(pago) ? 'CHEQUE' : 'CREDITO',
+      vendedor: String(r[c.vend] || '').trim(), recepcion: typeof recep === 'number' ? serialAFecha(recep) : '', metodo: String(r[c.metodo] || '').slice(0, 60),
+      obs: [esPrestamo ? 'PRÉSTAMO' : '', pago === 'PENDIENTE' ? 'PENDIENTE' : ''].filter(Boolean).join(' · ') });
+  });
+  return out;
+}
+
 /** Busca en todas las hojas del Excel la tabla con encabezado "Folio" y reconoce si es Ventas Diarias o Informe de ventas. */
 function leerLibro(buf) {
   const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
@@ -1164,6 +1207,8 @@ function leerLibro(buf) {
     const hi = rows.findIndex(r => r.some(c => norm(c) === 'folio'));
     if (hi < 0) continue;
     const head = rows[hi].map(h => norm(h));
+    if (head.includes('cliente') && head.includes('monto') && head.some(h => /^¿?pag[oó]\??$/.test(h)))
+      return { tipo: 'creditos', filas: leerCreditos(rows, hi, head) };
     const tipo = head.includes('descripcion') && head.includes('cantidad') ? 'detalle' : head.includes('documento') && head.includes('total') ? 'dte' : null;
     if (!tipo) continue;
     const keys = head.map(h => h === 'total' ? (tipo === 'dte' ? 'Total' : 'TOTAL') : CANON[h] || h);
@@ -1177,7 +1222,7 @@ function leerLibro(buf) {
 async function vImportar(m) {
   cargarXLSX().catch(() => {});                 // se empieza a descargar mientras la encargada elige los archivos
   render(m, `<h2>Importar desde Mi DTE</h2>
-    <p class="lead">Sube los dos informes del día: <b>Ventas Diarias</b> (los folios y sus totales) y el <b>Informe de ventas</b> (kilos por producto). Puedes subirlos juntos. Los documentos repetidos se ignoran.</p>
+    <p class="lead">Sube los dos informes del día: <b>Ventas Diarias</b> (los folios y sus totales) y el <b>Informe de ventas</b> (kilos por producto). Puedes subirlos juntos. Los documentos repetidos se ignoran. También puedes subir la planilla <b>Control de crédito</b> para cargar lo que hay por cobrar: los RUT salen de los folios del DTE, así que conviene importar antes las Ventas Diarias de esas fechas.</p>
     <label class="drop" id="drop"><input type="file" id="fi" accept=".xlsx,.xls,.csv" multiple class="sr">
       <b>Elegir archivos de Excel</b><span class="muted">o arrástralos aquí</span></label>
     <div id="pv" class="stack" style="margin-top:14px"></div>
@@ -1200,6 +1245,9 @@ async function vImportar(m) {
     leidos.sort((a, b) => (a.tipo === 'dte' ? 0 : 1) - (b.tipo === 'dte' ? 0 : 1)); // primero los folios
     $('#pv').innerHTML = leidos.map((l, i) => {
       if (l.error) return `<div class="card fcard"><b>${esc(l.nombre)}</b><div class="alert" style="margin-bottom:0">${esc(l.error)}</div></div>`;
+      if (l.tipo === 'creditos') { const ch = l.filas.filter(x => x.estado === 'CHEQUE'), tot = l.filas.reduce((a, x) => a + x.monto, 0);
+        return `<div class="card fcard"><div class="row"><div class="grow"><b>Control de crédito</b><div class="muted">${esc(l.nombre)} · solo los documentos que siguen abiertos</div></div>
+          <span class="chip warn">${l.filas.length - ch.length} por cobrar</span><span class="chip cu">${ch.length} en cheque</span><span class="chip">${clp(tot)}</span></div><div id="res${i}"></div></div>`; }
       const esG = x => /gu[ií]a/i.test(l.tipo === 'dte' ? x.Documento : x.Nombre);
       const g = l.filas.filter(esG).length, v = l.filas.length - g;
       const fechas = [...new Set(l.filas.map(x => String(x.Fecha)))].join(', ');
@@ -1214,6 +1262,13 @@ async function vImportar(m) {
       for (const [i, l] of leidos.entries()) {
         if (l.error) continue;
         try {
+          if (l.tipo === 'creditos') {
+            const r = await api('cargarCreditos', S.sess.token, l.filas);
+            $('#res' + i).innerHTML = `<div class="alert ok" style="margin-bottom:0">Cargados <b>${r.nuevos}</b> documentos nuevos${r.actualizados ? ` y actualizados ${r.actualizados}` : ''}${r.saltados || r.duplicados ? ` (${[r.saltados ? r.saltados + ' sin folio o monto' : '', r.duplicados ? r.duplicados + ' repetidos en el archivo' : ''].filter(Boolean).join(', ')}: omitidos)` : ''}.
+              <b>${r.conRut}</b> ya tienen RUT${r.sinRut ? `, <b>${r.sinRut}</b> no` : ''}.</div>${r.sinRut ? `<button class="btn ghost sm" style="margin-top:8px" data-sinrut>Completar RUT de ${r.sinRutClientes.length} cliente${r.sinRutClientes.length > 1 ? 's' : ''}</button>` : ''}`;
+            const bb = $('[data-sinrut]', $('#res' + i)); if (bb) bb.onclick = () => abrirSinRut(r.sinRutClientes);
+            continue;
+          }
           const r = await api(l.tipo === 'dte' ? 'importarDTE' : 'importarDetalle', S.sess.token, l.filas);
           (r.terminalesSinAsignar || []).forEach(t => sinT.add(t)); fechas = fechas.concat(r.fechas);
           $('#res' + i).innerHTML = `<div class="alert ok" style="margin-bottom:0">` + (l.tipo === 'dte'
@@ -1459,6 +1514,69 @@ async function vHistorial(m) {
     : '<div class="empty"><b>Todavía no hay cierres</b>Cuando cierres una rendición, aparecerá aquí.</div>'));
 }
 
+/* ============ COBRAR A UN CLIENTE (desde la lista de créditos) ============ */
+const normBus = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const fcorta = iso => { const [a, m, d] = String(iso || '').split('-'); return d ? d + '-' + m + '-' + a.slice(2) : ''; };
+/** Panel de la sección Cobranza: buscar al cliente, ver lo que debe y registrar el pago de una o varias facturas. */
+async function cobrarDesdeLista(box, alTerminar) {
+  box.innerHTML = '<div class="card"><div class="sk" style="height:46px;margin:0"></div></div>';
+  let r; try { r = await api('porCobrar', S.sess.token); } catch (e) { box.innerHTML = ''; return; }
+  const clientes = r.clientes;
+  if (!clientes.length) { box.innerHTML = '<div class="card"><b>Por cobrar</b><p class="muted" style="margin:4px 0 0">No hay créditos por cobrar cargados. La encargada puede subir la lista en <b>Importar Mi DTE</b>.</p></div>'; return; }
+  const edad = d => d > 60 ? 'bad' : d > 30 ? 'warn' : 'ok';
+  box.innerHTML = `<div class="card"><div class="row"><b class="grow" style="font-size:17px">Cobrar a un cliente</b><span class="muted">${clientes.length} con deuda · ${clp(clientes.reduce((a, c) => a + c.deuda, 0))}</span></div>
+    <input class="in" id="cq" placeholder="Buscar por nombre o RUT" autocomplete="off" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
+  const res = $('#cres', box), pan = $('#cpan', box);
+  const lista = q => {
+    const n = normBus(q), xs = (n ? clientes.filter(c => normBus(c.cliente).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0) : clientes.slice().sort((a, b) => b.deuda - a.deuda)).slice(0, 8);
+    res.innerHTML = xs.length ? xs.map(c => `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${esc(c.rut || 'Sin RUT')} · ${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}</small></span><b>${clp(c.deuda)}</b></button>`).join('')
+      : '<div class="muted">Ningún cliente con deuda coincide.</div>';
+  };
+  lista('');
+  $('#cq', box).oninput = e => { pan.innerHTML = ''; lista(e.target.value); };
+  res.onclick = e => { const b = e.target.closest('.cli'); if (!b) return; abrirCliente(clientes.find(c => c.clave === b.dataset.k)); };
+  function abrirCliente(c) {
+    res.innerHTML = '';
+    pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')}${c.condicion ? ' · crédito a ' + c.condicion + ' días' : ''}</div></div>
+        <button type="button" class="btn ghost sm" id="cvolver">Otro cliente</button></div>
+      <div class="muted" style="margin:8px 0 4px">Marca las facturas que paga hoy:</div>
+      ${c.facturas.map((f, i) => `<div class="cfac"><label class="row" style="gap:10px"><input type="checkbox" class="cchk" data-i="${i}">
+          <span class="grow">${esc(f.tipo.replace(' Electrónica', ''))} N° ${esc(f.folio)} <span class="muted">· ${fcorta(f.fecha)}${f.vendedor ? ' · ' + esc(f.vendedor) : ''}</span>
+          <div>${f.cheque ? '<span class="chip warn">Cheque en cartera</span> ' : ''}<span class="chip ${edad(f.dias)}">${f.dias} días</span>${f.venc && f.venc < r.hoy ? ' <span class="chip bad">Vencida</span>' : ''}</div></span>
+          <span style="text-align:right"><b>${clp(f.saldo)}</b><div class="muted">de ${clp(f.total)}</div></span></label>
+        <div class="cmonto" hidden><label class="f">Monto que paga</label><input class="in n" inputmode="numeric" data-m="${i}" value="${f.saldo}"></div></div>`).join('')}
+      <div class="row" style="margin:8px 0"><button type="button" class="btn ghost sm" id="ctodas">Marcar todas</button><span class="grow"></span><span class="muted">Total a cobrar <b id="ctot" style="color:var(--ink);font-size:18px">$0</b></span></div>
+      <div class="grid g2"><div><label class="f" for="cforma">Forma de pago</label><select class="in" id="cforma"><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option></select></div>
+        <div id="cbancow" hidden><label class="f" for="cbanco">Banco al que transfirió</label><select class="in" id="cbanco">${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div></div>
+      <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="cok">Registrar cobro</button></div></div>`;
+    const sel = () => $$('.cchk', pan).filter(x => x.checked);
+    const total = () => { const t = sel().reduce((a, x) => a + soloDigitos($('[data-m="' + x.dataset.i + '"]', pan).value), 0); $('#ctot', pan).textContent = clp(t); return t; };
+    pan.onchange = e => { if (e.target.classList.contains('cchk')) { $('.cmonto', e.target.closest('.cfac')).hidden = !e.target.checked; total(); } };
+    pan.oninput = e => { if (e.target.dataset.m !== undefined) total(); };
+    $('#cvolver', pan).onclick = () => { pan.innerHTML = ''; lista($('#cq', box).value); };
+    $('#ctodas', pan).onclick = () => { const todas = $$('.cchk', pan); const on = todas.some(x => !x.checked); todas.forEach(x => { x.checked = on; $('.cmonto', x.closest('.cfac')).hidden = !on; }); total(); };
+    const forma = $('#cforma', pan);
+    forma.onchange = () => { $('#cbancow', pan).hidden = forma.value !== 'TRANSFERENCIA'; $('#cch', pan).hidden = forma.value !== 'CHEQUE'; if (forma.value === 'CHEQUE') avisoTipoCheque($('.cheque', pan)); };
+    $('#cok', pan).onclick = async () => {
+      const xs = sel(); if (!xs.length) return toast('Marca al menos una factura.', true);
+      const items = xs.map(x => { const f = c.facturas[x.dataset.i], m = soloDigitos($('[data-m="' + x.dataset.i + '"]', pan).value); return { folio_key: f.folio_key, folio: f.folio, monto: m, saldo: f.saldo }; });
+      if (items.some(i => !i.monto)) return toast('Hay una factura sin monto.', true);
+      const mas = items.find(i => i.monto > i.saldo);
+      if (mas && !confirm('Una de las facturas paga más de lo que debe (' + clp(mas.monto) + ' de ' + clp(mas.saldo) + '). ¿Registrar igual?')) return;
+      const pago = { forma: forma.value };
+      if (forma.value === 'TRANSFERENCIA') pago.banco = $('#cbanco', pan).value;
+      if (forma.value === 'CHEQUE') { const ch = leerCheque($('.cheque', pan)); if (ch.error) return toast(ch.error, true); Object.assign(pago, ch.datos); }
+      const b = $('#cok', pan); b.disabled = true;
+      try {
+        await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pago, items.map(i => ({ folio_key: i.folio_key, folio: i.folio, monto: i.monto })));
+        toast('Cobro registrado: ' + clp(items.reduce((a, i) => a + i.monto, 0)));
+        await alTerminar();
+      } finally { b.disabled = false; }
+    };
+  }
+}
+
 /* ============ COBRANZA, PROVEEDORES, CONSUMO, GASTOS ============ */
 const MOV = {
   COBRANZA: { t: 'Cobranza', d: 'Pagos recibidos de facturas a crédito de días anteriores.',
@@ -1480,6 +1598,7 @@ async function vMov(m, tabla) {
   const rows = await api('listarMov', S.sess.token, tabla, S.fecha);
   const conAdj = !!ADJ[tabla];
   render(m, `<h2>${cfg.t}</h2><p class="lead">${cfg.d}</p>
+    ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div><h3 style="margin:0 0 8px">O registra un pago a mano</h3>' : ''}
     <div class="card"><div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}${conAdj ? campoArchivos('mf') : ''}</div>
       ${tabla === 'COBRANZA' ? `<div id="mch" hidden style="margin-top:12px"><div class="pregunta" style="margin-top:0">Datos del cheque</div>${camposCheque(null, 'mov')}</div>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
@@ -1495,6 +1614,14 @@ async function vMov(m, tabla) {
   }
   lista(rows);
   const recargar = async () => lista(await api('listarMov', S.sess.token, tabla, S.fecha));
+  if (tabla === 'COBRANZA') {
+    const panel = () => cobrarDesdeLista($('#cbx'), async () => {
+      const ka = [S.sess.token], kb = [S.sess.token, tabla, S.fecha];
+      await Promise.all([pedir('porCobrar', ka, claveApi('porCobrar', ka)), pedir('listarMov', kb, claveApi('listarMov', kb))]);
+      lista(await api('listarMov', S.sess.token, tabla, S.fecha)); panel();
+    });
+    panel();
+  }
   if (conAdj) { enlazarCampoArchivos('mf'); activarAdjuntarDespues($('#ml'), recargar); }
   $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
     await api('borrarMov', S.sess.token, tabla, id); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); };
