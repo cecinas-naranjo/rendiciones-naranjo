@@ -174,3 +174,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Son obligatorios los DOS informes: Ventas Diarias (tipo 'dte') e Informe de ventas (tipo 'detalle', kilos), de las mismas fechas. Sin ambos no aparece el botón Importar. Control de crédito se puede subir solo.
 - Se puede subir varias veces el mismo día: solo se agregan folios nuevos (clave `folio_key`); lo existente y lo ya detallado no se toca. Se informa por vendedor cuántos documentos nuevos entraron.
 - Las llamadas van en tandas (1200 documentos / 2000 líneas) para evitar timeouts.
+
+## Política de crédito (montos NETOS, sin IVA) y folio en Cobranza
+- 7 días: $15.000–$60.000 · 14 días: $60.001–$120.000 · 21 días: $120.001–$300.000 · 28 días: más de $300.000. Constante `POLITICA` en app.js; neto = total/1,19. Se muestra en Saldos y en Cobranza (y el plazo por factura en "Cobrar a un cliente").
+- El folio es OBLIGATORIO en todo pago de Cobranza (app y `guardarMov`). Ya no se ofrece descontar de la factura más antigua; solo los registros viejos sin folio conservan ese cálculo.

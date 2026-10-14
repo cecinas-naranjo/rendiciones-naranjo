@@ -968,6 +968,15 @@ function abrirSinRut(lista) {
     b.disabled = true; try { await api('vincularRut', S.sess.token, fila.dataset.a, rut, fila.dataset.n); lista = lista.filter(x => x.alias !== fila.dataset.a); pintar(lista); toast('Vinculado'); } finally { b.disabled = false; } };
 }
 
+/** Política de crédito de la empresa. Los montos son NETOS (sin IVA). */
+const POLITICA = [{ dias: 7, desde: 15000, hasta: 60000 }, { dias: 14, desde: 60001, hasta: 120000 }, { dias: 21, desde: 120001, hasta: 300000 }, { dias: 28, desde: 300001, hasta: Infinity }];
+const netoDe = total => Math.round(Number(total || 0) / 1.19);
+const plazoPolitica = neto => (POLITICA.find(t => neto >= t.desde && neto <= t.hasta) || {}).dias || 0;
+function tarjetaPolitica() {
+  return `<div class="card pol"><b>Política de crédito</b><span class="muted"> · montos netos (sin IVA)</span>
+    <div class="pol-g">${POLITICA.map(t => `<div class="pol-t"><span class="pol-d">${t.dias}<small>días</small></span><span class="pol-m">${t.hasta === Infinity ? 'Más de ' + clp(t.desde - 1) : clp(t.desde) + ' a ' + clp(t.hasta)}</span></div>`).join('')}</div></div>`;
+}
+
 async function vSaldos(m) {
   const r = await api('getSaldosClientes', S.sess.token);
   const fc = iso => { const [a, mm, d] = String(iso).split('-'); return d + '-' + mm + '-' + a.slice(2); };
@@ -978,6 +987,7 @@ async function vSaldos(m) {
     <p class="lead" style="margin:0 0 12px">Facturas a crédito (las de la lista de créditos y las nuevas) menos los pagos anotados en Cobranza. Todo se une por RUT y el nombre es el del DTE.</p>
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn cu sm" id="pl">Generar planilla por cobrar (crédito + cheques)</button>
       ${r.sinRut ? `<button class="btn ghost sm" id="sr">${r.sinRut} cliente${r.sinRut > 1 ? 's' : ''} sin RUT: completar</button>` : ''}<span class="grow"></span><span class="muted" id="plr"></span></div>
+    ${tarjetaPolitica()}
     <div class="kpis"><div><span>Total adeudado</span><b>${clp(r.total)}</b></div>
       <div><span>Clientes con deuda</span><b>${conDeuda.length}</b></div>
       <div><span>Con facturas de más de 30 días</span><b>${conDeuda.filter(c => c.diasMax > 30).length}</b></div></div>
@@ -986,7 +996,7 @@ async function vSaldos(m) {
       <select class="in" id="bv" style="width:auto"><option value="">Todos los vendedores</option>${vends.map(v => `<option>${esc(v)}</option>`).join('')}</select>
       <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="bp"> Ver también los al día</label></div>
     <div id="sl"></div>
-    <p class="muted" style="margin-top:14px">Al registrar un pago en Cobranza, anota el folio de la factura para que se descuente de esa. Sin folio, se descuenta de la factura más antigua del cliente.</p>`);
+    <p class="muted" style="margin-top:14px">Todo pago en Cobranza lleva el folio de la factura que paga: se descuenta de esa factura.</p>`);
   const abiertos = {};
   $('#pl').onclick = async () => { const b = $('#pl'); b.disabled = true; try { const p = await api('generarPlanillaPorCobrar', S.sess.token);
       $('#plr').innerHTML = `<a class="chip cu" href="${esc(p.url)}" target="_blank" rel="noopener">Abrir planilla · ${p.clientes} clientes · ${clp(p.total)}</a>`; window.open(p.url, '_blank'); } finally { b.disabled = false; } };
@@ -1575,6 +1585,7 @@ async function cobrarDesdeLista(box, alTerminar) {
   if (!clientes.length) { box.innerHTML = '<div class="card"><b>Por cobrar</b><p class="muted" style="margin:4px 0 0">No hay créditos por cobrar cargados. La encargada puede subir la lista en <b>Importar Mi DTE</b>.</p></div>'; return; }
   const edad = d => d > 60 ? 'bad' : d > 30 ? 'warn' : 'ok';
   box.innerHTML = `<div class="card"><div class="row"><b class="grow" style="font-size:17px">Cobrar a un cliente</b><span class="muted">${clientes.length} con deuda · ${clp(clientes.reduce((a, c) => a + c.deuda, 0))}</span></div>
+    <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Ver política de crédito</summary>${tarjetaPolitica()}</details>
     <input class="in" id="cq" placeholder="Buscar por nombre o RUT" autocomplete="off" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
   const res = $('#cres', box), pan = $('#cpan', box);
   const lista = q => {
@@ -1592,7 +1603,7 @@ async function cobrarDesdeLista(box, alTerminar) {
       <div class="muted" style="margin:8px 0 4px">Marca las facturas que paga hoy:</div>
       ${c.facturas.map((f, i) => `<div class="cfac"><label class="row" style="gap:10px"><input type="checkbox" class="cchk" data-i="${i}">
           <span class="grow">${esc(f.tipo.replace(' Electrónica', ''))} N° ${esc(f.folio)} <span class="muted">· ${fcorta(f.fecha)}${f.vendedor ? ' · ' + esc(f.vendedor) : ''}</span>
-          <div>${f.cheque ? '<span class="chip warn">Cheque en cartera</span> ' : ''}<span class="chip ${edad(f.dias)}">${f.dias} días</span>${f.venc && f.venc < r.hoy ? ' <span class="chip bad">Vencida</span>' : ''}</div></span>
+          <div>${f.cheque ? '<span class="chip warn">Cheque en cartera</span> ' : ''}<span class="chip ${edad(f.dias)}">${f.dias} días</span>${f.venc && f.venc < r.hoy ? ' <span class="chip bad">Vencida</span>' : ''}</div>${plazoPolitica(netoDe(f.total)) ? `<div class="muted">Neto ${clp(netoDe(f.total))} · política: ${plazoPolitica(netoDe(f.total))} días</div>` : ''}</span>
           <span style="text-align:right"><b>${clp(f.saldo)}</b><div class="muted">de ${clp(f.total)}</div></span></label>
         <div class="cmonto" hidden><label class="f">Monto que paga</label><input class="in n" inputmode="numeric" data-m="${i}" value="${f.saldo}"></div></div>`).join('')}
       <div class="row" style="margin:8px 0"><button type="button" class="btn ghost sm" id="ctodas">Marcar todas</button><span class="grow"></span><span class="muted">Total a cobrar <b id="ctot" style="color:var(--ink);font-size:18px">$0</b></span></div>
@@ -1630,7 +1641,7 @@ async function cobrarDesdeLista(box, alTerminar) {
 /* ============ COBRANZA, PROVEEDORES, CONSUMO, GASTOS ============ */
 const MOV = {
   COBRANZA: { t: 'Cobranza', d: 'Pagos recibidos de facturas a crédito de días anteriores.',
-    f: [['cliente', 'Cliente'], ['folio', 'Folio que paga'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['banco', 'Banco', 'banco'], ['vendedor', 'Vendedor', 'vend']] },
+    f: [['cliente', 'Cliente'], ['folio', 'Folio que paga (obligatorio)'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['banco', 'Banco', 'banco'], ['vendedor', 'Vendedor', 'vend']] },
   PROVEEDORES: { t: 'Proveedores', d: 'Pagos y documentos de proveedores del día.',
     f: [['proveedor', 'Proveedor'], ['documento', 'Documento'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
   CONSUMO: { t: 'Consumo', d: 'Ventas hechas directamente en la bodega.',
@@ -1684,6 +1695,7 @@ async function vMov(m, tabla) {
     o.monto = String(soloDigitos(o.monto));
     if (mch && o.forma === 'CHEQUE') { const r = leerCheque($('.cheque', mch)); if (r.error) return toast(r.error, true); Object.assign(o, r.datos); }
     if (o.monto === '0') return toast('Ingresa el monto.', true);
+    if (tabla === 'COBRANZA') { o.folio = String(o.folio || '').replace(/\D/g, ''); if (!o.folio) return toast('Falta el folio de la factura que paga. Es obligatorio.', true); }
     if ((o.forma === 'TRANSFERENCIA' || o.forma === 'DEP_EFECTIVO') && 'banco' in o && !o.banco) return toast('Indica el banco.', true);
     const b = $('#ad'); b.disabled = true;
     try {

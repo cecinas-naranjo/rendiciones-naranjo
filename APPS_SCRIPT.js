@@ -791,6 +791,7 @@ function guardarMov(token, tabla, fecha, obj) {
   if (num_(obj.monto) <= 0) throw new Error('Ingresa un monto mayor a cero.');
   return withLock_(() => {
     const o = Object.assign({}, obj, { id: uid_(), fecha, monto: num_(obj.monto), registrado_por: u.usuario, registrado: now_() });
+    if (tabla === 'COBRANZA') { o.folio = String(o.folio || '').replace(/[^0-9]/g, ''); if (!o.folio) throw new Error('Falta el folio de la factura que paga. Es obligatorio.'); }
     if (tabla === 'COBRANZA' && o.forma === 'CHEQUE') Object.assign(o, datosCheque_(o));
     if (tabla === 'COBRANZA' && u.rol === 'VENDEDOR') o.vendedor = u.usuario;
     if (tabla === 'GASTOS' && u.rol === 'VENDEDOR') o.responsable = u.usuario;
@@ -1238,7 +1239,7 @@ function cargarSaldoDesdePlanilla(idPlanilla, nombreHoja, fechaInicio) {
 
 /* ============================ SALDOS DE CLIENTES (CRÉDITO) ============================ */
 // Deuda por cliente = facturas marcadas CREDITO en la rendición − pagos registrados en COBRANZA.
-// Un pago con folio se descuenta de esa factura; sin folio (o si sobra) se aplica a las facturas más antiguas del cliente.
+// Todo pago nuevo lleva folio y se descuenta de esa factura (el folio es obligatorio). Solo los registros antiguos sin folio, o el sobrante, se aplican a las facturas más antiguas del cliente.
 // Lo que no se puede asociar a ninguna factura queda como "abono sin factura" del cliente.
 function getSaldosClientes(token) {
   auth_(token, ['RENDICION','SUPERVISOR']);
