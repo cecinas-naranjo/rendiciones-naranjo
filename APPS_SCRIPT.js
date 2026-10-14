@@ -449,7 +449,11 @@ function verificarCredenciales_(ident, clave) {
   let ok;
   if (antiguo) ok = String(u.pin || '') !== '' && String(u.pin) === String(clave);
   else if (!u.clave_hash) throw new Error('Tu usuario aún no tiene clave. Pide a la administración que te la asigne.');
-  else ok = hashClave_(clave, u.sal) === String(u.clave_hash);
+  else {
+    // las claves temporales son en MAYÚSCULAS sin espacios: se perdona si se escribe en minúsculas o se pega con un espacio
+    const temporal = String(u.cambiar_clave).toUpperCase() === 'TRUE';
+    ok = hashClave_(clave, u.sal) === String(u.clave_hash) || (temporal && hashClave_(String(clave).trim().toUpperCase(), u.sal) === String(u.clave_hash));
+  }
   if (!ok) {
     withLock_(() => { const f = read_('USUARIOS').find(x => x.usuario === u.usuario); if (!f) return;
       f.intentos = num_(f.intentos) + 1;
@@ -496,6 +500,16 @@ function migrarUsuarios() {
     updateRow_('USUARIOS', u._row, u); salida.push(u.usuario + ' (' + u.nombre + ', ' + u.rol + '): clave temporal ' + t); });
   if (salida.length) Logger.log('CLAVES TEMPORALES (entregar en privado; cada persona la cambia al entrar):\n' + salida.join('\n'));
   return salida;
+}
+
+/** Para el editor de Apps Script: si alguien (por ejemplo el ADMIN) no puede entrar, pone una clave temporal nueva y la muestra en el registro.
+ *  Uso: cambia el nombre entre comillas y ejecuta `recuperarAcceso`. */
+function recuperarAcceso() {
+  const usuario = 'ADMIN';
+  const u = read_('USUARIOS').find(x => x.usuario === usuario); if (!u) throw new Error('No existe el usuario ' + usuario);
+  const t = claveTemporal_(); fijarClave_(usuario, t, true);
+  Logger.log('Clave temporal de ' + usuario + ': ' + t + '  (entra con "' + usuario + '" o su RUT/correo y esta clave; la app te pedirá crear una nueva)');
+  return t;
 }
 
 function login(ident, clave, fecha) {

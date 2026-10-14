@@ -204,3 +204,4 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Barra `#redbar` bajo la cabecera: "Sin conexión · N cambios por enviar" / "Enviando…" / errores. Al salir con pendientes se pide confirmación.
 - Arranque sin internet: la sesión y la caché permiten abrir; si falla la carga inicial se muestra "Sin conexión / Reintentar" (ya no cierra la sesión).
 - Pruebas: Playwright con `context.set_offline` y rutas a script.google.com (ver /tmp/claude-0/t/t10.py durante el desarrollo).
+- Recuperar acceso: `recuperarAcceso()` (editor de Apps Script) pone una clave temporal nueva al usuario indicado dentro de la función (ADMIN por defecto) y la escribe en el registro. Las claves temporales se aceptan también en minúsculas o con espacios.
