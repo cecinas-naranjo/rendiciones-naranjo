@@ -214,3 +214,12 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## Importar: avance y transiciones (v31)
 - Al elegir archivos se muestra "Leyendo…"; al importar, panel `.impp` con barra de avance por tandas y estado por archivo (espera/guardando/listo/error). `lotesDe(l)` define las tandas.
 - Transiciones: entrada escalonada en `.enter>*`, hover de botones/tarjetas, blur en `.ov`, conteo animado de montos `.kpis b` (`animarMontos`). Respeta `prefers-reduced-motion`.
+
+## Ordenar informes de Mi DTE (v32)
+- Los informes crudos de Mi DTE ya no hay que arreglarlos a mano: `ordenarInformes(leidos)` (app.js, bloque "ORDENAR LOS INFORMES") corre al leer los archivos y es idempotente (un archivo ya ordenado queda igual).
+- Regla (explicada por la encargada): Factura/Boleta emitida en equipo de oficina (`DESKTOP*`, `PC-*`, `OFICINA`) se separa por cliente. Supermercados (siempre): Amar Hermanos, Kuncar, Único, Super Oferta, Distribuidora Moreno, Operadora de Comercio → `SUPERMERCADO`. Distribuidores (Patricio Montes, Juan Carlos Silva, Oscar Lagos, César Campos, Anba, AAMF, Pichihuillinco, Amir) y todo el resto → `BODEGA` en la app. Guías y NC conservan su equipo.
+- En el archivo "Ventas Diarias" que se guarda en el Drive los distribuidores se rotulan `DISTRIBUIDORA` (como la planilla manual); lo que se importa a la app va como BODEGA en ambos informes para que folios y kilos cuadren por vendedor. Boleta de oficina sin nombre de cliente → distribuidor (supuesto, se avisa).
+- Informe de ventas: se completan TOTAL (=Cantidad×Precio), NETO (=TOTAL/1,19) y PRODUCTOS (GUIA para guías y NC; si no, PROPIOS/CARNICOS/CONGELADO/LACTEO/OTROS según el catálogo de PRODUCTOS y reglas de respaldo).
+- Al importar se generan los Excel ordenados (`libroOrdenado`) y se suben con `guardarInformeOrdenado` a Drive: "Informes Mi DTE"/año/mes junto a la carpeta de rendiciones (o `CFG.INFORMES_FOLDER_ID`). Nombres: `Ventas Diarias d-m-aaaa.xlsx` e `Informe de ventas dd-mm-aaaa.xlsx`; si ya existe el del día se reemplaza. Siempre hay botón Descargar.
+- Verificado contra los archivos manuales del 30-09: 102 documentos y 347 líneas coinciden exactamente (equipo, TOTAL, NETO, PRODUCTOS).
+- Pendiente de confirmar con la encargada: las 5 NC emitidas en DESKTOP-UETNFBG (folios 1306-1310) no estaban en sus archivos manuales; la app las conserva.

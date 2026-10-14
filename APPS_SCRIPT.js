@@ -19,6 +19,8 @@ const CFG = {
   APP_NAME: 'Rendiciones Naranjo',
   // Diferencia de kilos (vendido según bodega vs facturado) desde la cual se alerta, por vendedor
   TOLERANCIA_KG: 1,
+  // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
+  INFORMES_FOLDER_ID: '',
   // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
   INVENTARIO_FOLDER_ID: '',
   // Vendedores cuyo despacho no va en columna propia sino como destino (igual que en la planilla de inventario)
@@ -171,7 +173,7 @@ function setup() {
 const API = {
   batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -716,6 +718,36 @@ function asignarVendedor(token, folio_key, vendedor) {
     if (!d) throw new Error('Documento no encontrado');
     d.vendedor = vendedor; updateRow_('DOCUMENTOS', d._row, d); return true;
   });
+}
+
+/* ============================ INFORMES ORDENADOS EN EL DRIVE ============================ */
+
+function carpetaInformes_(fecha) {
+  let base;
+  if (CFG.INFORMES_FOLDER_ID) base = DriveApp.getFolderById(CFG.INFORMES_FOLDER_ID);
+  else {
+    let padre;
+    try { const rf = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), ps = rf.getParents(); padre = ps.hasNext() ? ps.next() : rf; }
+    catch (e) { padre = DriveApp.getRootFolder(); }
+    base = sub_(padre, 'Informes Mi DTE');
+  }
+  const f = String(fecha).split('-');
+  return sub_(sub_(base, f[0]), f[1]);
+}
+/** a: {nombre, fecha 'YYYY-MM-DD', data(base64 de un .xlsx)}. Si ya hay un archivo con ese nombre se reemplaza (la versión de la tarde incluye la de la mañana). */
+function guardarInformeOrdenado(token, a) {
+  const u = auth_(token, ['RENDICION','SUPERVISOR']);
+  if (!a || !a.data) throw new Error('El archivo llegó vacío.');
+  if (!/^(Ventas Diarias|Informe de ventas) \d{1,2}-\d{1,2}-\d{4}\.xlsx$/.test(String(a.nombre))) throw new Error('Nombre de archivo no válido.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.fecha))) throw new Error('Fecha no válida.');
+  const bytes = Utilities.base64Decode(a.data);
+  if (bytes.length > 10 * 1024 * 1024) throw new Error('El archivo pesa más de 10 MB.');
+  const carpeta = carpetaInformes_(a.fecha);
+  let reemplazado = false; const prev = carpeta.getFilesByName(a.nombre);
+  while (prev.hasNext()) { prev.next().setTrashed(true); reemplazado = true; }
+  const file = carpeta.createFile(Utilities.newBlob(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', a.nombre));
+  file.setDescription('Ordenado automáticamente por ' + u.usuario + ' el ' + now_() + ' desde Rendiciones Naranjo');
+  return { url: file.getUrl(), nombre: a.nombre, reemplazado };
 }
 
 /* ============================ IMPORTAR DETALLE POR PRODUCTO ============================ */

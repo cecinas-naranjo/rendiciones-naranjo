@@ -514,3 +514,11 @@ html{scroll-behavior:smooth}
 .ov{backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 nav button.on svg,nav .on svg,.side .on svg{animation:pop .35s cubic-bezier(.3,1.6,.5,1)}
 @media(prefers-reduced-motion:reduce){.enter>*,.impp .pbar i,.okdot{animation:none!important}html{scroll-behavior:auto}}
+
+/* ===== Orden automático de informes ===== */
+.ordc{background:#FBF7F3;border:1px solid #EADFD5}
+.ordl{list-style:none;margin:8px 0;padding:0}
+.ordl li{display:flex;align-items:center;gap:10px;padding:6px 0;flex-wrap:wrap}
+.ordl li+li{border-top:1px solid #F0E8E0}
+.ordl li.warn{color:#8a5a00;font-size:.9em}
+.impp.fin>p{display:none}

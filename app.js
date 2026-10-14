@@ -1580,6 +1580,95 @@ function leerCreditos(rows, hi, head) {
 }
 
 /** Busca en todas las hojas del Excel la tabla con encabezado "Folio" y reconoce si es Ventas Diarias o Informe de ventas. */
+/* ===== ORDENAR LOS INFORMES DE MI DTE (lo que antes se hacía a mano) ===== */
+const sinTilde = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+// Mi DTE entrega las ventas del mostrador con el nombre del computador de oficina. Se separan según el cliente.
+const EQUIPO_OFICINA = /^(DESKTOP|PC-|OFICINA)/;
+const SUPERMERCADOS = [/AMAR HERMANOS/, /KUNCAR/, /\bUNICO\b/, /SUPER ?OFERTA/, /OPERADORA DE COMERCIO/, /DISTRIBUIDORA.*MORENO/];
+const DISTRIBUIDORES = [/PATRICIO MONTES/, /JUAN CARLOS SILVA/, /OSCAR LAGOS/, /CESAR (RICARDO )?CAMPOS/, /\bANBA\b/, /\bAAMF\b/, /PICHIHUILLINCO/, /\bAMIR\b/];
+/** Devuelve null si el documento sale con su propio equipo. equipo = lo que se importa; grupo = como lo rotula la planilla de Ventas Diarias. */
+function clasificarVenta(tipo, cliente, equipo) {
+  const eq = String(equipo || '').trim().toUpperCase(), t = String(tipo || '');
+  if (eq === 'DISTRIBUIDORA') return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA' };    // archivo ya ordenado a mano
+  if (!EQUIPO_OFICINA.test(eq) || /gu[ií]a|nota de cr/i.test(t)) return null;
+  const n = sinTilde(cliente);
+  if (SUPERMERCADOS.some(r => r.test(n))) return { equipo: 'SUPERMERCADO', grupo: 'SUPERMERCADO' };
+  if (DISTRIBUIDORES.some(r => r.test(n))) return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA' };
+  if (/boleta/i.test(t)) return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA', supuesto: true };   // el único distribuidor que pide boleta
+  return { equipo: 'BODEGA', grupo: 'BODEGA' };
+}
+const CAT_ALIAS = { PROPIOS: 'PROPIOS', CARNICOS: 'CARNICOS', CONGELADOS: 'CONGELADO', CONGELADO: 'CONGELADO', LACTEOS: 'LACTEO', LACTEO: 'LACTEO' };
+function categoriaProducto(codigo, desc) {
+  const cod = String(codigo == null ? '' : codigo).trim(), n = sinTilde(desc), lista = (S.cat && S.cat.productos) || [];
+  const p = lista.find(x => String(x.codigo) === cod && cod.charAt(0) !== '?') || lista.find(x => sinTilde(x.nombre) === n);
+  const c = p && CAT_ALIAS[sinTilde(p.categoria)]; if (c) return c;
+  if (/^(MV|PC|SC)\d/i.test(cod) || /M\. VERDE|EMP |PAPAS PRE|SOPAIPILLA|PASTA CHOCLO/.test(n)) return 'CONGELADO';
+  if (/^H\d/i.test(cod) || /^Q\. |MANTEQUILLA|YOGUR|LECHE|CREMA/.test(n)) return 'LACTEO';
+  if (/TRUTRO|CHULETA|CARNE|COSTILLAR|POLLO|CERDO BBQ/.test(n)) return 'CARNICOS';
+  return 'OTROS';
+}
+/** Ordena en el lugar los informes leídos: reclasifica equipos y completa TOTAL, NETO y PRODUCTOS. Idempotente: un archivo ya ordenado queda igual. */
+function ordenarInformes(leidos) {
+  for (const l of leidos) {
+    if (l.error || (l.tipo !== 'dte' && l.tipo !== 'detalle')) continue;
+    const dte = l.tipo === 'dte', campo = dte ? 'Emitido en' : 'Equipo', vistos = new Set();
+    l.orden = { SUPERMERCADO: 0, DISTRIBUIDORA: 0, BODEGA: 0, supuestos: 0, completadas: 0 };
+    for (const f of l.filas) {
+      const tipo = dte ? f.Documento : f.Nombre, cli = dte ? f['Nombre Cliente'] : f['Razon social'];
+      const c = clasificarVenta(tipo, cli, f[campo]);
+      if (c) {
+        f._equipoOrig = f[campo]; f[campo] = c.equipo; f._grupo = c.grupo;
+        const k = tipo + '|' + f.Folio;
+        if (!vistos.has(k)) { vistos.add(k); l.orden[c.grupo]++; if (c.supuesto) l.orden.supuestos++; }
+      }
+      if (!dte) {
+        const vacio = v => v === '' || v == null, num = v => Number(String(v).replace(',', '.')) || 0;
+        let hecho = false;
+        if (vacio(f.TOTAL)) { f.TOTAL = Math.round(num(f.Cantidad) * num(f.Precio) * 100) / 100; hecho = true; }
+        if (vacio(f.NETO)) { f.NETO = Math.round(num(f.TOTAL) / 1.19 * 100) / 100; hecho = true; }
+        if (vacio(f.PRODUCTOS)) { f.PRODUCTOS = /gu[ií]a|nota de cr/i.test(f.Nombre) ? 'GUIA' : categoriaProducto(f.Codigo, f.Descripcion); hecho = true; }
+        if (hecho) l.orden.completadas++;
+      }
+    }
+  }
+}
+const f2 = n => ('0' + n).slice(-2);
+/** Nombre con que se guardan hoy en el Drive: Ventas Diarias con día y mes sin ceros; Informe de ventas con ceros. */
+function nombreInforme(tipo, iso) { const [a, m, d] = iso.split('-'); return tipo === 'dte' ? `Ventas Diarias ${+d}-${+m}-${a}.xlsx` : `Informe de ventas ${d}-${m}-${a}.xlsx`; }
+/** Un archivo ordenado por cada fecha que traiga el informe. Devuelve [{nombre, tipo, iso, libro}] */
+function libroOrdenado(l) {
+  const porFecha = {}; l.filas.forEach(f => { (porFecha[isoFecha(f.Fecha)] = porFecha[isoFecha(f.Fecha)] || []).push(f); });
+  return Object.keys(porFecha).sort().map(iso => {
+    const filas = porFecha[iso], wb = XLSX.utils.book_new();
+    if (l.tipo === 'dte') {
+      const ws = XLSX.utils.aoa_to_sheet([['RUT', 'Documento', 'Folio', 'Fecha', 'Total', 'Condicion', 'Nombre Cliente', 'Caja', 'Emitido en']]
+        .concat(filas.map(f => [f.RUT, f.Documento, f.Folio, f.Fecha, f.Total, f.Condicion, f['Nombre Cliente'], f.caja === undefined ? 0 : f.caja, f._grupo || f['Emitido en']])));
+      ws['!cols'] = [10, 26, 8, 12, 11, 10, 46, 6, 18].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+    } else {
+      const guia = f => /gu[ií]a|nota de cr/i.test(f.Nombre), res = {};
+      filas.filter(f => !guia(f)).forEach(f => { const r = res[f.Descripcion] = res[f.Descripcion] || [0, 0]; r[0] += Number(f.Cantidad) || 0; r[1] += Number(f.NETO) || 0; });
+      const nombres = Object.keys(res).sort(), tk = nombres.reduce((a, k) => a + res[k][0], 0), tn = nombres.reduce((a, k) => a + res[k][1], 0);
+      const h1 = XLSX.utils.aoa_to_sheet([['Nombre', '(Varios elementos)'], ['Equipo', '(Todas)'], ['PRODUCTOS', '(Todas)'], [], ['Etiquetas de fila', 'Suma de Cantidad', 'Suma de NETO']]
+        .concat(nombres.map(k => [k, Math.round(res[k][0] * 1000) / 1000, Math.round(res[k][1] * 100) / 100]), [['Total general', Math.round(tk * 1000) / 1000, Math.round(tn * 100) / 100]]));
+      h1['!cols'] = [{ wch: 42 }, { wch: 18 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, h1, 'Hoja1');
+      const rows = filas.map(f => [f.Codigo, f.Descripcion, f.Cantidad, f.Precio, f.Nombre, f.Folio, f['Razon social'], f.Pago, f.Equipo, f._fo !== undefined ? f._fo : f.Fecha, f.TOTAL, f.NETO, f.PRODUCTOS]);
+      const ws = XLSX.utils.aoa_to_sheet([['Codigo', 'Descripcion', 'Cantidad', 'Precio', 'Nombre', 'Folio', 'Razon social', 'Pago', 'Equipo', 'Fecha', 'TOTAL', 'NETO', 'PRODUCTOS']].concat(rows));
+      rows.forEach((r, i) => {
+        const n = i + 2;
+        ws['K' + n] = { t: 'n', v: Number(r[10]) || 0, f: `C${n}*D${n}` };
+        ws['L' + n] = { t: 'n', v: Number(r[11]) || 0, f: `K${n}/1.19` };
+        if (typeof r[9] === 'number') ws['J' + n].z = 'dd-mm-yyyy hh:mm:ss';
+      });
+      ws['!cols'] = [8, 40, 10, 9, 26, 8, 44, 10, 16, 20, 11, 11, 12].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Informe');
+    }
+    return { nombre: nombreInforme(l.tipo, iso), tipo: l.tipo, iso, libro: wb };
+  });
+}
+/* ===== FIN ORDENAR ===== */
+
 function leerLibro(buf) {
   const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
   for (const nombre of wb.SheetNames) {
@@ -1592,7 +1681,7 @@ function leerLibro(buf) {
     const tipo = head.includes('descripcion') && head.includes('cantidad') ? 'detalle' : head.includes('documento') && head.includes('total') ? 'dte' : null;
     if (!tipo) continue;
     const keys = head.map(h => h === 'total' ? (tipo === 'dte' ? 'Total' : 'TOTAL') : CANON[h] || h);
-    const filas = rows.slice(hi + 1).map(r => { const o = {}; keys.forEach((k, j) => { let v = r[j]; if (k === 'Fecha' && typeof v === 'number') v = serialAFecha(v); o[k] = v; }); return o; })
+    const filas = rows.slice(hi + 1).map(r => { const o = {}; keys.forEach((k, j) => { let v = r[j]; if (k === 'Fecha' && typeof v === 'number') { o._fo = v; v = serialAFecha(v); } o[k] = v; }); return o; })
       .filter(o => o.Folio !== '' && (tipo === 'dte' ? o.Documento : o.Descripcion));
     return { tipo, filas };
   }
@@ -1641,6 +1730,17 @@ async function vImportar(m) {
       catch (e) { leidos.push({ nombre: f.name, error: e.message }); }
     }
     leidos.sort((a, b) => (a.tipo === 'dte' ? 0 : 1) - (b.tipo === 'dte' ? 0 : 1)); // primero los folios
+    try { ordenarInformes(leidos); } catch (e) { console.error(e); }
+    const resumenOrden = () => {
+      const d = leidos.find(l => l.orden && l.tipo === 'dte'), k = leidos.find(l => l.orden && l.tipo === 'detalle'), o = d && d.orden, tot = o ? o.SUPERMERCADO + o.DISTRIBUIDORA + o.BODEGA : 0;
+      const calc = k ? k.orden.completadas : 0;
+      if (!tot && !calc) return '';
+      return `<div class="card ordc"><b>Orden automático</b><ul class="ordl">` +
+        (tot ? `<li><span>Ventas de oficina separadas por cliente: <b>${o.SUPERMERCADO}</b> a Supermercado, <b>${o.DISTRIBUIDORA}</b> a Distribuidores, <b>${o.BODEGA}</b> a Bodega.</span></li>` : '') +
+        (calc ? `<li><span>Agregué <b>TOTAL</b>, <b>NETO</b> y <b>PRODUCTOS</b> en ${calc} líneas del informe de kilos.</span></li>` : '') +
+        (o && o.supuestos ? `<li class="warn"><span>${o.supuestos} boleta${o.supuestos > 1 ? 's' : ''} de oficina sin nombre de cliente: la${o.supuestos > 1 ? 's' : ''} dejé como distribuidor.</li>` : '') +
+        `</ul><p class="muted" style="margin:0">Al importar, los archivos ordenados se guardan solos en el Drive.</p></div>`;
+    };
     $('#pv').innerHTML = leidos.map((l, i) => {
       if (l.error) return `<div class="card fcard"><b>${esc(l.nombre)}</b><div class="alert" style="margin-bottom:0">${esc(l.error)}</div></div>`;
       if (l.tipo === 'creditos') { const ch = l.filas.filter(x => x.estado === 'CHEQUE'), tot = l.filas.reduce((a, x) => a + x.monto, 0);
@@ -1653,7 +1753,7 @@ async function vImportar(m) {
         <div class="muted">${esc(l.nombre)} · ${esc(fechas)}</div></div>
         <span class="chip">${l.tipo === 'dte' ? v + ' documentos' : v + ' líneas de producto'}</span>${g ? `<span class="chip">${g} ${l.tipo === 'dte' ? 'guías (se omiten)' : 'líneas de guía'}</span>` : ''}</div>
         <div id="res${i}"></div></div>`;
-    }).join('') + avisoRequisitos(leidos) + (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
+    }).join('') + resumenOrden() + avisoRequisitos(leidos) + (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
     const b = $('#imp'); if (!b) return;
     const lotesDe = l => l.tipo === 'creditos' ? [l.filas] : l.tipo === 'dte' ? tandas(l.filas, 1200) : tandas(l.filas, 2000, x => String(x.Nombre) + '|' + String(x.Folio));
     b.onclick = async () => {
@@ -1704,6 +1804,7 @@ async function vImportar(m) {
         } catch (e) { $('#res' + i).innerHTML = `<div class="alert" style="margin-bottom:0">${esc(e.message)}</div>`; paso(i, 'err', 'Con error'); }
       }
       b.remove();
+      guardarOrdenados(leidos, pp);
       D = T; barra(0); pp.classList.remove('run'); pp.classList.add('fin'); $('#impsp', pp).outerHTML = '<span class="okdot">✓</span>';
       $('#impt', pp).textContent = pp.querySelector('li.err') ? 'Terminó con errores' : 'Importación terminada';
       const f = [...new Set(fechas)];
@@ -1711,6 +1812,33 @@ async function vImportar(m) {
       if (sinT.size) toast('Hay terminales sin vendedor: ' + [...sinT].join(', ') + '. Asígnalos abajo.', true);
       cargarTerminales([...sinT]);
     };
+  }
+  /** Genera los Excel ordenados y los sube al Drive; si no se puede, quedan para descargar. */
+  async function guardarOrdenados(leidos, pp) {
+    const box = document.createElement('div'); box.className = 'card ordc'; pp.insertAdjacentElement('afterend', box);
+    let libros = [];
+    try { await cargarXLSX(); leidos.filter(l => !l.error && (l.tipo === 'dte' || l.tipo === 'detalle')).forEach(l => libros = libros.concat(libroOrdenado(l))); }
+    catch (e) { box.innerHTML = `<div class="alert" style="margin:0">No pude armar los archivos ordenados: ${esc(e.message)}</div>`; return; }
+    if (!libros.length) { box.remove(); return; }
+    libros.forEach(x => x.b64 = XLSX.write(x.libro, { bookType: 'xlsx', type: 'base64' }));
+    const bajar = x => { const bin = atob(x.b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([u], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = x.nombre; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+    const pinta = () => { box.innerHTML = `<b>Archivos ordenados</b><ul class="ordl">${libros.map((x, i) => `<li><span class="grow">${esc(x.nombre)}</span>
+      ${x.url ? `<a class="chip ok" href="${esc(x.url)}" target="_blank" rel="noopener">Guardado en Drive${x.reemplazado ? ' (reemplazó el anterior)' : ''}</a>` : x.error ? `<span class="chip bad">No se guardó</span>` : '<span class="spin"></span>'}
+      <button class="btn ghost sm" data-b="${i}">Descargar</button></li>${x.error ? `<li class="warn">${esc(x.error)}</li>` : ''}`).join('')}</ul>
+      ${libros.some(x => x.error) ? '<button class="btn sm" id="reint">Reintentar guardado en Drive</button>' : ''}`;
+      $$('[data-b]', box).forEach(bt => bt.onclick = () => bajar(libros[bt.dataset.b]));
+      const r = $('#reint', box); if (r) r.onclick = subir; };
+    async function subir() {
+      libros.forEach(x => { if (!x.url) x.error = ''; }); pinta();
+      for (const x of libros) {
+        if (x.url) continue;
+        try { const r = await api('guardarInformeOrdenado', S.sess.token, { nombre: x.nombre, fecha: x.iso, data: x.b64 }); x.url = r.url; x.reemplazado = r.reemplazado; x.error = ''; }
+        catch (e) { x.error = e.red ? 'Sin conexión: no se pudo guardar en el Drive. Descárgalo o reintenta.' : e.message; }
+        pinta();
+      }
+    }
+    pinta(); subir();
   }
   async function cargarTerminales(resaltar = []) {
     const t = await api('listarTerminales', S.sess.token);
