@@ -301,7 +301,23 @@ function docLocal(d, lineas) {
   const ls = lineas.map(l => Object.assign({}, l, { monto: soloDigitos(l.monto) })), pagado = ls.reduce((a, l) => a + l.monto, 0);
   return Object.assign({}, d, { estado: 'DETALLADO', pagos: ls, pagado, diferencia: d.total - pagado - aprob, sinEnviar: true });
 }
+/* Folios detallados en esta sesión con el guardado rápido: se recuerdan hasta que el servidor confirme que ya los tiene, así los contadores
+   ("faltan N") nunca retroceden mientras la cola va guardando por detrás. */
+const LOCAL = new Map();
+const kLocal = (f, k) => f + '\u0001' + k;
+const mismasLineas = (a, b) => JSON.stringify((a || []).map(l => [l.forma, l.banco || '', soloDigitos(l.monto)])) === JSON.stringify((b || []).map(l => [l.forma, l.banco || '', soloDigitos(l.monto)]));
+function superponerLocal(args, data) {
+  if (!LOCAL.size || !data || !data.docs) return;
+  LOCAL.forEach((lineas, k) => {
+    const [f, key] = k.split('\u0001'); if (f !== args[1]) return;
+    const i = data.docs.findIndex(d => d.folio_key === key); if (i < 0) return;
+    const enCola = COLA.some(x => x.fecha === f && x.d.folio_key === key);
+    if (!enCola && data.docs[i].estado === 'DETALLADO' && mismasLineas(data.docs[i].pagos, lineas)) LOCAL.delete(k);        // el servidor ya lo tiene
+    else data.docs[i] = docLocal(data.docs[i], lineas);
+  });
+}
 function superponer(fn, args, data) {
+  if (fn === 'misDocumentos') superponerLocal(args, data);
   const ps = pendActivos(); if (!ps.length || !data) return data;
   try {
     if (fn === 'misDocumentos') {
@@ -486,6 +502,7 @@ function salir(expirada) {
   if (!expirada && pendActivos().length && !confirm('Tienes ' + pendActivos().length + ' cambio(s) guardados en el teléfono que aún no se envían. Si sales, se enviarán cuando vuelvas a ingresar con tu usuario. ¿Salir igual?')) return;
   if (!expirada && S.sess) api('logout', S.sess.token).catch(() => {});
   if (S_ADMIN) { if (!expirada) api('logout', S_ADMIN.token).catch(() => {}); S_ADMIN = null; }
+  LOCAL.clear();
   const pb = $('#probar'); if (pb) pb.remove();
   S.sess = null; S.cat = null; S.tab = null;
   olvidarCache(false);
@@ -977,6 +994,7 @@ const COLA = [];
 let colaCorriendo = false;
 function encolarGuardado(d, lineas, alGuardar) {
   COLA.push({ d, lineas, alGuardar, fecha: S.fecha });
+  LOCAL.set(kLocal(S.fecha, d.folio_key), lineas);
   procesarCola();
 }
 async function procesarCola() {
@@ -985,7 +1003,7 @@ async function procesarCola() {
   while (COLA.length) {
     const x = COLA[0];
     try { await api('guardarDetalle', S.sess.token, x.fecha, x.d.folio_key, x.lineas, null, true); }      // `true`: el servidor responde corto (ya se ve el resultado en pantalla)
-    catch (e) { x.alGuardar(x.d); toast(`No se pudo guardar el folio ${x.d.folio}. Quedó como "Por detallar".`, true); }
+    catch (e) { LOCAL.delete(kLocal(x.fecha, x.d.folio_key)); x.alGuardar(x.d); toast(`No se pudo guardar el folio ${x.d.folio}. Quedó como "Por detallar".`, true); }
     COLA.shift();
   }
   colaCorriendo = false;

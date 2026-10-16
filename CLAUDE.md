@@ -261,3 +261,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Listas (`.folio`, `.vcard`, `.hpaso`) entran escalonadas; hojas/ventanas suben con leve rebote (`subir`/`aparecer`); `details` abren con fundido; barras `.meter` crecen; íconos activos de la barra suben un poco; presionar un botón/tarjeta la achica suavemente; toasts y login con entrada suave.
 - v42: con `prefers-reduced-motion` (en PC con Windows con "Efectos de animación" apagados se activa solo y por eso en el computador no se veían las transiciones) ya NO se apaga todo: se quitan desplazamientos/rebotes/escalas y quedan fundidos suaves (`solofade`).
 - Bloque de CSS al final de style.css: "Transiciones v41". Tiempos cortos (≤380 ms) para que no se sienta lento.
+
+## Contadores de folios que no retroceden (v43)
+- Bug: al detallar muchos folios seguidos (guardado rápido en cola), una actualización de fondo traía del servidor datos que aún no incluían los folios en cola y el contador "faltan N" mostraba un número mayor (6) y luego bajaba (3).
+- Ahora `LOCAL` (Map `fecha␁folio_key` → líneas) recuerda cada folio detallado en esta sesión; `superponerLocal` (dentro de `superponer`, para `misDocumentos`) lo aplica sobre lo que llegue, y solo lo olvida cuando el servidor ya lo trae DETALLADO con las mismas líneas y no está en `COLA`. Si el guardado falla, se olvida y el folio vuelve a "Por detallar". `salir()` lo limpia.
+- Prueba: 3 de 5 marcados localmente se ven 3 aunque el servidor traiga 0; tras confirmar 2, quedan 1 pendiente de confirmación y se siguen viendo 3.
