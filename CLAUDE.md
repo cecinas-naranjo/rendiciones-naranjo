@@ -255,3 +255,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Bug: al retroceder muchos días seguidos, una respuesta lenta de un día anterior podía dibujarse después y quedaba la fecha de un día con los datos de otro. Ahora `ir()` crea un contenedor `.vm` por carga con `_vid = S.vistaId`; `render()` lanza error si la carga ya no es la vigente (la respuesta tardía se descarta antes de dibujar o activar botones).
 - `cambiarFecha`: sube `S.vistaId` al tiro, muestra "cargando" y espera 200 ms antes de pedir (varios toques seguidos = una sola carga). El selector de calendario (input date) ya existía; en el celular se agregó el ícono de calendario junto a la fecha y `showPicker()` al tocarla.
 - Prueba: con respuesta artificialmente lenta del 14-oct y 3 toques seguidos en ‹, la pantalla final muestra el 13-oct con datos del 13-oct.
+
+## Transiciones en toda la app (v41)
+- Cambio de pestaña (`ir`): la pantalla actual se desvanece 130 ms (`.vm.sale`) y la nueva entra deslizándose según la dirección (derecha si la pestaña está más a la derecha: `data-dir` r/l, keyframes `enterR/enterL`); sube al inicio sin salto. Un cambio de fecha o una recarga de la misma pestaña no hace la salida (solo entrada). Si llega un refresco silencioso mientras sale la pantalla anterior, `ir` lo ignora (para no perder el cambio de pestaña).
+- Listas (`.folio`, `.vcard`, `.hpaso`) entran escalonadas; hojas/ventanas suben con leve rebote (`subir`/`aparecer`); `details` abren con fundido; barras `.meter` crecen; íconos activos de la barra suben un poco; presionar un botón/tarjeta la achica suavemente; toasts y login con entrada suave.
+- Todo se apaga con `prefers-reduced-motion` (en JS también: sin espera de salida).
+- Bloque de CSS al final de style.css: "Transiciones v41". Tiempos cortos (≤380 ms) para que no se sienta lento.

@@ -580,3 +580,48 @@ body.has-bottom #probar{bottom:84px}
 ul.info{margin:6px 0 0;padding-left:20px;color:var(--ink-2);line-height:1.5}ul.info li+li{margin-top:4px}
 
 .hday .dl svg{width:16px;height:16px;margin-right:6px;opacity:.85;flex:none}
+
+/* ===== Transiciones v41: entre pestañas, listas, hojas y detalles ===== */
+:root{--spring:cubic-bezier(.22,1.12,.36,1);--suave:cubic-bezier(.22,.8,.3,1)}
+.vm{transition:opacity .13s ease,transform .13s ease}
+.vm.sale{opacity:0;transform:translateY(-4px);pointer-events:none}
+@keyframes enterR{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+@keyframes enterL{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
+.enter[data-dir=r]>*{animation-name:enterR}.enter[data-dir=l]>*{animation-name:enterL}
+/* listas: cada tarjeta aparece una tras otra (las primeras) */
+.enter .folio,.enter .vcard,.enter .urow,.enter .hpaso{animation:enter .34s var(--suave) both}
+.enter .folio:nth-child(1),.enter .vcard:nth-child(1),.enter .hpaso:nth-child(1){animation-delay:70ms}
+.enter .folio:nth-child(2),.enter .vcard:nth-child(2),.enter .hpaso:nth-child(2){animation-delay:105ms}
+.enter .folio:nth-child(3),.enter .vcard:nth-child(3),.enter .hpaso:nth-child(3){animation-delay:140ms}
+.enter .folio:nth-child(4),.enter .vcard:nth-child(4),.enter .hpaso:nth-child(4){animation-delay:175ms}
+.enter .folio:nth-child(5),.enter .vcard:nth-child(5){animation-delay:210ms}
+.enter .folio:nth-child(6),.enter .vcard:nth-child(6){animation-delay:240ms}
+.enter .folio:nth-child(n+7),.enter .vcard:nth-child(n+7){animation-delay:270ms}
+/* hojas y ventanas: suben con un leve rebote */
+.ov{animation:fade .22s ease both}
+.ov .sheet{animation:subir .38s var(--spring) both}
+@keyframes subir{from{transform:translateY(46px) scale(.985);opacity:0}to{transform:none;opacity:1}}
+@media(min-width:700px){.ov .sheet{animation-name:aparecer}}
+@keyframes aparecer{from{transform:translateY(14px) scale(.97);opacity:0}to{transform:none;opacity:1}}
+/* detalles plegables */
+details[open]>*:not(summary){animation:enter .28s var(--suave) both}
+/* barras de avance que "crecen" */
+.meter .bar i,.pbar i{transform-origin:left}
+.meter .bar i{animation:crece .8s var(--suave) both .1s}
+@keyframes crece{from{transform:scaleX(0)}}
+/* toques: respuesta suave al presionar */
+.btn:active,.hday button:active,nav.bottom button:active,.folio:active,.vcard.clic:active,.hpaso:active{transform:scale(.97)}
+.folio,.vcard,.hpaso,nav.bottom button,.hday button{transition:transform .16s var(--suave),box-shadow .2s ease,background-color .2s ease,border-color .2s ease,color .2s ease}
+/* barra inferior / lateral: el ícono activo sube un poquito */
+nav.bottom button svg,.side button svg{transition:transform .28s var(--spring)}
+nav.bottom button.on svg{transform:translateY(-2px) scale(1.1)}
+nav.sub button{transition:background .25s ease,color .25s ease,transform .16s ease}
+nav.sub button:active{transform:scale(.95)}
+/* avisos */
+.toast{animation:toast .32s var(--spring) both}
+.chip{transition:background-color .25s ease,color .25s ease,transform .2s var(--spring)}
+/* primera pantalla y login */
+#app,.login{animation:fade .45s ease both}
+.login .card,.login>*{animation:enter .5s var(--suave) both}
+.skeleton,.sk{animation-timing-function:ease-in-out}
+@media(prefers-reduced-motion:reduce){.vm,.vm.sale{transition:none;transform:none}.ov,.ov .sheet,.meter .bar i,details[open]>*:not(summary),#app,.login,.login>*,.toast{animation:none!important}.enter .folio,.enter .vcard,.enter .urow,.enter .hpaso{animation:none!important}}

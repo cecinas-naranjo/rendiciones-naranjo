@@ -655,14 +655,28 @@ function ir(t, silencioso) {
   } else $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   const od = $('#otrodia'), hoy = hoyCL();
   if (od) { od.hidden = S.fecha === hoy; if (S.fecha !== hoy) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(S.fecha)}</b>`; }
-  const main = $('#main'); main.onclick = null;
-  S.vistaId++; S.tocado = false;
+  const main = $('#main');
+  if (silencioso && main.firstElementChild && main.firstElementChild.classList.contains('sale')) return;      // está saliendo la pantalla anterior: la nueva ya viene
+  main.onclick = null;
+  const id = ++S.vistaId; S.tocado = false;
   const y = window.scrollY;
+  const reducido = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // dirección de la transición: al ir a una pestaña de la derecha el contenido entra desde la derecha, y al revés
+  const ni = tabs.findIndex(x => x[0] === t), pi = S.idxAnt === undefined ? ni : S.idxAnt;
+  const dir = silencioso || ni === pi || ni < 0 || pi < 0 ? '' : ni > pi ? 'r' : 'l';
+  if (!silencioso && ni >= 0) S.idxAnt = ni;
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
-  if (!silencioso || !m || !m.classList.contains('vm')) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); }
-  m._vid = S.vistaId;
-  S.silencio = !!silencioso;
+  const nuevo = !silencioso || !m || !m.classList.contains('vm');
+  const salir = nuevo && !reducido && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
   const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const arrancar = () => {
+    if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
+    if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
+    m._vid = id; m._tab = t; if (dir) m.dataset.dir = dir; else delete m.dataset.dir;
+    S.silencio = !!silencioso;
+    corre();
+  };
+  const corre = () => {
   Promise.resolve(v(m, t)).catch(() => {
     if (!silencioso && m.querySelector('.sk')) m.innerHTML = `<div class="empty"><b>No se pudo cargar</b>Revisa tu conexión.<br><button class="btn ghost sm" style="margin-top:10px" onclick="ir(S.tab)">Reintentar</button></div>`;
   }).finally(() => {
@@ -674,7 +688,8 @@ function ir(t, silencioso) {
       const otras = S.grupos ? S.grupos.filter(g => g[2].indexOf(t) < 0).map(g => g[2][0]) : [];
       precargar(delGrupo.filter(x => x !== t).concat(otras).filter(x => x !== 'saldos').slice(0, 7));
     }, 600);
-  });
+  });  };
+  if (salir) { m.classList.add('sale'); setTimeout(arrancar, 130); } else arrancar();
 }
 const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(p * 100) + '%'; };
 const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores</option>' : '') +
