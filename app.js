@@ -65,7 +65,6 @@ function render(el, html) {
 }
 /** Los totales de las tarjetas resumen "suben" desde cero al abrir la pantalla (solo se ve, el valor final es el real). */
 function animarMontos(raiz) {
-  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   $$('.kpis b', raiz).forEach(el => {
     const txt = el.textContent.trim(), m = txt.match(/^\$([\d.]+)$/); if (!m) return;
     const fin = Number(m[1].replace(/\./g, '')); if (!(fin > 0)) return;
@@ -660,14 +659,13 @@ function ir(t, silencioso) {
   main.onclick = null;
   const id = ++S.vistaId; S.tocado = false;
   const y = window.scrollY;
-  const reducido = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   // dirección de la transición: al ir a una pestaña de la derecha el contenido entra desde la derecha, y al revés
   const ni = tabs.findIndex(x => x[0] === t), pi = S.idxAnt === undefined ? ni : S.idxAnt;
   const dir = silencioso || ni === pi || ni < 0 || pi < 0 ? '' : ni > pi ? 'r' : 'l';
   if (!silencioso && ni >= 0) S.idxAnt = ni;
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
-  const salir = nuevo && !reducido && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
+  const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
   const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
