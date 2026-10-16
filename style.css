@@ -578,3 +578,5 @@ body.has-bottom #probar{bottom:84px}
 .urow.on{border-color:var(--cu);background:#FBF1EA}
 .urow .go{color:var(--ink-2);font-size:22px}
 ul.info{margin:6px 0 0;padding-left:20px;color:var(--ink-2);line-height:1.5}ul.info li+li{margin-top:4px}
+
+.hday .dl svg{width:16px;height:16px;margin-right:6px;opacity:.85;flex:none}

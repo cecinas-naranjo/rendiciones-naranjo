@@ -19,6 +19,7 @@ const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 
 const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor' };
 
 const IC = {
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
   receipt: '<path d="M5 3v18l2-1.5L9 21l2-1.5L13 21l2-1.5L17 21l2-1.5V3l-2 1.5L15 3l-2 1.5L11 3 9 4.5 7 3z"/><path d="M9 9h6M9 13h6"/>',
@@ -56,6 +57,7 @@ function toast(msg, err) {
 }
 const skeleton = n => '<div class="sk t"></div><div class="sk s"></div>' + Array.from({ length: n }, () => '<div class="sk"></div>').join('');
 function render(el, html) {
+  if (el._vid !== undefined && el._vid !== S.vistaId) throw new Error('vista vieja');      // la persona ya cambió de día o pantalla: lo que llega tarde no se dibuja ni activa nada
   el.innerHTML = html;
   if (S.silencio) return;                       // actualización por detrás: sin animación ni salto
   el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
@@ -582,7 +584,7 @@ async function iniciar() {
   document.body.classList.toggle('oficina', !!grupos);
   const dia = `<div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha"><button id="next" aria-label="Día siguiente">›</button></div>`;
   const txtDia = f => f === hoyCL() ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
-  const diaC = `<div class="hday"><button id="prev" aria-label="Día anterior">‹</button><label class="dl"><span id="dtxt">${txtDia(S.fecha)}</span><input type="date" id="fecha" value="${S.fecha}" aria-label="Elegir fecha"></label><button id="next" aria-label="Día siguiente">›</button></div>`;
+  const diaC = `<div class="hday"><button id="prev" aria-label="Día anterior">‹</button><label class="dl">${icon('cal')}<span id="dtxt">${txtDia(S.fecha)}</span><input type="date" id="fecha" value="${S.fecha}" aria-label="Elegir fecha"></label><button id="next" aria-label="Día siguiente">›</button></div>`;
   const cuenta = `<button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
   const ref = t => tabs.find(x => x[0] === t) || [];
   if (grupos) {
@@ -609,12 +611,19 @@ async function iniciar() {
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
   }
   $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
-  const cambiarFecha = f => { S.fecha = f; $('#fecha').value = f; const dt = $('#dtxt'); if (dt) dt.textContent = txtDia(f); ir(S.tab); };
+  let tFecha = 0;
+  const cambiarFecha = f => {       // la fecha y la pantalla cambian juntas: al instante se ve "cargando" y las respuestas del día anterior se descartan
+    S.fecha = f; $('#fecha').value = f; const dt = $('#dtxt'); if (dt) dt.textContent = txtDia(f);
+    S.vistaId++; const mm = $('#main'); mm.onclick = null; mm.replaceChildren(); const sk = document.createElement('div'); sk.className = 'vm'; sk.innerHTML = skeleton(4); mm.appendChild(sk);
+    const od = $('#otrodia'); if (od) { od.hidden = f === hoyCL(); if (f !== hoyCL()) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(f)}</b>`; }
+    clearTimeout(tFecha); tFecha = setTimeout(() => ir(S.tab), 200);
+  };
   const mb = $('#menub');
   if (mb) {
     mb.onclick = e => { e.stopPropagation(); const mn = $('#menu'); mn.hidden = !mn.hidden; mb.setAttribute('aria-expanded', String(!mn.hidden)); };
     if (!window._menuCierra) { window._menuCierra = true; document.addEventListener('click', () => { const mn = $('#menu'); if (mn) { mn.hidden = true; const b = $('#menub'); if (b) b.setAttribute('aria-expanded', 'false'); } }); }
   }
+  $('#fecha').onclick = e => { try { if (e.target.showPicker) e.target.showPicker(); } catch (x) {} };
   $('#fecha').onchange = e => e.target.value && cambiarFecha(e.target.value);
   $('#prev').onclick = () => cambiarFecha(sumarDias(S.fecha, -1));
   $('#next').onclick = () => cambiarFecha(sumarDias(S.fecha, 1));
@@ -646,10 +655,12 @@ function ir(t, silencioso) {
   } else $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   const od = $('#otrodia'), hoy = hoyCL();
   if (od) { od.hidden = S.fecha === hoy; if (S.fecha !== hoy) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(S.fecha)}</b>`; }
-  const m = $('#main'); m.onclick = null;
+  const main = $('#main'); main.onclick = null;
   S.vistaId++; S.tocado = false;
   const y = window.scrollY;
-  if (!silencioso) m.innerHTML = skeleton(4);
+  let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
+  if (!silencioso || !m || !m.classList.contains('vm')) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); }
+  m._vid = S.vistaId;
   S.silencio = !!silencioso;
   const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   Promise.resolve(v(m, t)).catch(() => {
