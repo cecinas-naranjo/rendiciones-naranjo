@@ -1787,7 +1787,11 @@ function leerLibro(buf) {
 async function vImportar(m) {
   cargarXLSX().catch(() => {});                 // se empieza a descargar mientras la encargada elige los archivos
   render(m, `<h2>Importar desde Mi DTE</h2>
-    <p class="lead">Sube los dos informes del día: <b>Ventas Diarias</b> (los folios y sus totales) y el <b>Informe de ventas</b> (kilos por producto). Puedes subirlos juntos. Los dos son obligatorios y deben ser de las mismas fechas. Puedes subir los informes varias veces en el día (por ejemplo, cuando llega otro vendedor): solo se agregan los folios nuevos y lo ya importado o detallado no se toca. También puedes subir la planilla <b>Control de crédito</b> para cargar lo que hay por cobrar: los RUT salen de los folios del DTE, así que conviene importar antes las Ventas Diarias de esas fechas.</p>
+    <p class="lead">Sube <b>Ventas Diarias</b> e <b>Informe de ventas</b> del mismo día. Los ordeno yo.</p>
+    <details class="mas" style="margin:-6px 0 12px"><summary>Más información</summary><ul class="info">
+      <li>Los dos informes son obligatorios y deben ser de las mismas fechas.</li>
+      <li>Puedes subirlos varias veces en el día: solo se agregan los folios nuevos, lo ya importado o detallado no se toca.</li>
+      <li>La planilla <b>Control de crédito</b> también se sube aquí. Conviene importar antes las Ventas Diarias de esas fechas: de ahí salen los RUT.</li></ul></details>
     <label class="drop" id="drop"><input type="file" id="fi" accept=".xlsx,.xls,.csv" multiple class="sr">
       <b>Elegir archivos de Excel</b><span class="muted">o arrástralos aquí</span></label>
     <div id="pv" class="stack" style="margin-top:14px"></div>
