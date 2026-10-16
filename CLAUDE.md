@@ -239,3 +239,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Para probar roles rápido: el ADMIN ve un botón morado "Probar como…" (abajo a la derecha) que lista los usuarios activos por rol; al tocar uno entra como esa persona sin clave. Mientras se prueba, el botón dice "Probando como <nombre> · <rol>" y permite volver al ADMIN.
 - Servidor: `entrarComo(token, usuario, fecha)` (solo ADMIN, solo si `CFG.MODO_PRUEBA` es true; deja registro en Logger). Cliente: `MODO_PRUEBA` en app.js; sesión del admin guardada en localStorage `rn_admin`; `montarProbar/abrirProbar/cambiarA`. Salir cierra también la sesión del admin.
 - **QUITAR antes de usar en serio**: `CFG.MODO_PRUEBA: false` en APPS_SCRIPT.js (desactiva de verdad la función en el servidor) y `const MODO_PRUEBA = false` en app.js.
+
+## Dejar la app en blanco para entregarla (limpiarPruebas)
+- Solo desde el editor de Apps Script (no está en `API`). `vistaPreviaLimpieza()` muestra en el registro cuántas filas se borrarían; `limpiarPruebas()` exige cambiar `CONFIRMO = false` a `true` dentro de la función (y volver a dejarlo en false).
+- Conserva `LIMPIEZA_CONSERVAR` = USUARIOS y PRODUCTOS; vacía todas las demás hojas del SCHEMA (folios, pagos, cobranza, gastos, depósitos, inventario, conteos, créditos cargados, clientes, cheques, operaciones, rendiciones, sesiones). Limpia también las sesiones de la caché (todos deben volver a entrar) e invalida las cachés.
+- No toca Drive (rendiciones, informes, respaldos, planillas): se borran a mano.
+- Antes de entregar: limpiarPruebas → poner `MODO_PRUEBA` en false (servidor y app) → nueva versión de la implementación.

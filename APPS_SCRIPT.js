@@ -114,6 +114,44 @@ const PRODUCTOS_BASE = [
   ['?MANTEC','Q. LAM MANTECOSO 3X500G HUILCO','LACTEOS','UN',13164]
 ];
 
+/* ============================ LIMPIAR DATOS DE PRUEBA ============================ */
+// Para dejar la app en blanco antes de entregarla. Se ejecuta SOLO desde el editor de Apps Script (no está en la API de la app).
+// 1) Ejecuta `vistaPreviaLimpieza` y mira en el registro cuántas filas se borrarían.
+// 2) En `limpiarPruebas` cambia `CONFIRMO = false` por `true`, guarda y ejecútala. Después vuelve a dejarlo en false.
+// Se conservan los usuarios, sus claves y los productos. Todo lo demás queda vacío (folios, pagos, cobranza, gastos, inventario, saldos de clientes, etc.).
+const LIMPIEZA_CONSERVAR = ['USUARIOS', 'PRODUCTOS'];
+function tablasALimpiar_() { return Object.keys(SCHEMA).filter(n => LIMPIEZA_CONSERVAR.indexOf(n) < 0); }
+function vistaPreviaLimpieza() {
+  const ss = SpreadsheetApp.getActive();
+  const l = tablasALimpiar_().map(n => { const sh = ss.getSheetByName(n); return n + ': ' + (sh ? Math.max(sh.getLastRow() - 1, 0) : 0) + ' filas'; });
+  Logger.log('SE BORRARÍAN (conserva ' + LIMPIEZA_CONSERVAR.join(', ') + '):\n' + l.join('\n') +
+    '\n\nLos archivos que ya están en Drive (rendiciones, informes, respaldos, planillas) NO se borran: revísalos y bórralos a mano si quieres.');
+}
+function limpiarPruebas() {
+  const CONFIRMO = false;           // <- cambiar a true para borrar de verdad
+  if (!CONFIRMO) throw new Error('Seguridad: para borrar los datos cambia CONFIRMO a true dentro de limpiarPruebas y vuelve a ejecutarla.');
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  const resumen = [];
+  try {
+    const ss = SpreadsheetApp.getActive(), cc = CacheService.getScriptCache();
+    const ses = ss.getSheetByName('SESIONES');
+    if (ses && ses.getLastRow() > 1) {            // las sesiones también viven 6 horas en la caché: se sacan de ahí
+      const toks = ses.getRange(2, 1, ses.getLastRow() - 1, 1).getValues().map(r => 's_' + r[0]).filter(k => k.length > 2);
+      if (toks.length) try { cc.removeAll(toks); } catch (e) {}
+    }
+    tablasALimpiar_().forEach(n => {
+      const sh = ss.getSheetByName(n); if (!sh) return;
+      const filas = sh.getLastRow() - 1;
+      if (filas > 0) { sh.getRange(2, 1, filas, Math.max(sh.getLastColumn(), 1)).clearContent(); }
+      resumen.push(n + ': ' + Math.max(filas, 0) + ' filas borradas');
+    });
+    Object.keys(CACHEADAS_).forEach(limpiarCache_);
+    invalidarTodo_();
+  } finally { lock.releaseLock(); }
+  Logger.log('LIMPIEZA LISTA\n' + resumen.join('\n') + '\n\nEntra a la app de nuevo (se cerraron todas las sesiones). Vuelve a dejar CONFIRMO en false.');
+  return resumen;
+}
+
 /** Crea o actualiza las hojas. Se puede ejecutar de nuevo sin perder datos. */
 function setup() {
   Object.keys(CACHEADAS_).forEach(limpiarCache_);
