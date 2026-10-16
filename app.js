@@ -418,7 +418,7 @@ const hoyCL = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/
 try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e) {}
 
 const TABS = {
-  VENDEDOR: [['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
+  VENDEDOR: [['hoy', 'Hoy', 'home'], ['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
   BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
   RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
     ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
@@ -525,12 +525,14 @@ async function iniciar() {
   const tabs = TABS[S.sess.rol] || [];
   S.tab = S.tab && tabs.some(t => t[0] === S.tab) ? S.tab : tabs[0][0];
   const unica = tabs.length === 1;          // una sola pantalla, sin menú
-  const abajo = !unica && tabs.length <= 4;
+  const abajo = !unica && (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA' || tabs.length <= 4);
   const grupos = !unica && !abajo ? GRUPOS.map(g => [g[0], g[1], g[2].filter(t => tabs.some(x => x[0] === t)), g[3]]).filter(g => g[2].length) : null;
   S.grupos = grupos; S.ultimoDeGrupo = S.ultimoDeGrupo || {};
   document.body.classList.toggle('has-bottom', abajo || !!grupos);
   document.body.classList.toggle('oficina', !!grupos);
   const dia = `<div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha"><button id="next" aria-label="Día siguiente">›</button></div>`;
+  const txtDia = f => f === hoyCL() ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
+  const diaC = `<div class="hday"><button id="prev" aria-label="Día anterior">‹</button><label class="dl"><span id="dtxt">${txtDia(S.fecha)}</span><input type="date" id="fecha" value="${S.fecha}" aria-label="Elegir fecha"></label><button id="next" aria-label="Día siguiente">›</button></div>`;
   const cuenta = `<button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
   const ref = t => tabs.find(x => x[0] === t) || [];
   if (grupos) {
@@ -546,8 +548,9 @@ async function iniciar() {
       <nav class="bottom" id="nav">${grupos.map(g => `<button data-g="${g[0]}">${icon(g[3])}${g[1]}</button>`).join('')}</nav>`;
   } else {
     app.innerHTML = `<header>
-      <div class="hbar"><div class="brand"><img src="logo-96.png" alt="" width="42" height="42"><div><b>Naranjo</b><small>${esc(S.sess.nombre)}</small></div></div>
-        <div class="sp"></div>${dia}${cuenta}</div>
+      <div class="hbar"><div class="brand"><img src="logo-96.png" alt="" width="42" height="42"><div><small>Naranjo</small><b>${esc((S.sess.nombre || '').split(' ')[0])}</b></div></div>
+        ${diaC}<button class="icon-btn only" id="menub" aria-label="Menú" aria-haspopup="true" aria-expanded="false">${icon('dots')}</button></div>
+      <div class="menu" id="menu" hidden><button id="mclv">${icon('key')}Cambiar mi clave</button><button id="out">${icon('out')}Salir</button></div>
       <div id="redbar" class="redbar" role="status" hidden></div>
       <div class="progress" aria-hidden="true"><i id="prog"></i></div>
       <div class="otrodia" id="otrodia" hidden><span></span><button type="button" id="hoyBtn">Volver a hoy</button></div>
@@ -556,7 +559,12 @@ async function iniciar() {
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
   }
   $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
-  const cambiarFecha = f => { S.fecha = f; $('#fecha').value = f; ir(S.tab); };
+  const cambiarFecha = f => { S.fecha = f; $('#fecha').value = f; const dt = $('#dtxt'); if (dt) dt.textContent = txtDia(f); ir(S.tab); };
+  const mb = $('#menub');
+  if (mb) {
+    mb.onclick = e => { e.stopPropagation(); const mn = $('#menu'); mn.hidden = !mn.hidden; mb.setAttribute('aria-expanded', String(!mn.hidden)); };
+    if (!window._menuCierra) { window._menuCierra = true; document.addEventListener('click', () => { const mn = $('#menu'); if (mn) { mn.hidden = true; const b = $('#menub'); if (b) b.setAttribute('aria-expanded', 'false'); } }); }
+  }
   $('#fecha').onchange = e => e.target.value && cambiarFecha(e.target.value);
   $('#prev').onclick = () => cambiarFecha(sumarDias(S.fecha, -1));
   $('#next').onclick = () => cambiarFecha(sumarDias(S.fecha, 1));
@@ -592,7 +600,7 @@ function ir(t, silencioso) {
   const y = window.scrollY;
   if (!silencioso) m.innerHTML = skeleton(4);
   S.silencio = !!silencioso;
-  const v = { folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   Promise.resolve(v(m, t)).catch(() => {
     if (!silencioso && m.querySelector('.sk')) m.innerHTML = `<div class="empty"><b>No se pudo cargar</b>Revisa tu conexión.<br><button class="btn ghost sm" style="margin-top:10px" onclick="ir(S.tab)">Reintentar</button></div>`;
   }).finally(() => {
@@ -610,23 +618,55 @@ const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(
 const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores</option>' : '') +
   S.cat.vendedores.map(v => `<option value="${esc(v.usuario)}" ${v.usuario === sel ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('');
 
+/* ============ HOY (inicio del vendedor): qué hacer y cómo va el día ============ */
+async function vHoy(m) {
+  const tok = S.sess.token, F = S.fecha, pri = (S.sess.nombre || '').split(' ')[0];
+  const [r, cob, gas] = await Promise.all([api('misDocumentos', tok, F, S.vend), api('listarMov', tok, 'COBRANZA', F), api('listarMov', tok, 'GASTOS', F)]);
+  const docs = r.docs, cerrada = r.estadoDia === 'CERRADA', hechos = docs.filter(d => d.estado === 'DETALLADO'), pend = docs.length - hechos.length;
+  const por = fs => hechos.reduce((a, d) => a + d.pagos.filter(p => fs.indexOf(p.forma) >= 0).reduce((b, p) => b + p.monto, 0), 0);
+  const tot = docs.reduce((a, d) => a + d.total, 0), ef = por(['EFECTIVO']), tr = por(['TRANSFERENCIA', 'DEP_EFECTIVO']), ch = por(['CHEQUE']), cr = por(['CREDITO']);
+  const sumaM = xs => xs.reduce((a, x) => a + (Number(x.monto) || 0), 0), pl = (n, a, b) => n + ' ' + (n === 1 ? a : b);
+  const p = docs.length ? hechos.length / docs.length : 0;
+  const hero = !docs.length ? `<div class="hero vacio"><b>Aún no tienes folios</b><span>Aparecen cuando la encargada importa el informe de Mi DTE. Vuelve a mirar en un rato.</span></div>`
+    : !pend ? `<div class="hero ok"><span class="tick">✓</span><b>Listo: detallaste todos tus folios</b><span>${pl(docs.length, 'folio', 'folios')}. Mira abajo si te falta registrar algo más.</span></div>`
+    : `<div class="hero"><span class="kick">Primero</span><b>Cuéntanos cómo te pagó cada cliente</b>
+        <div class="meter" style="margin:12px 0 4px"><div class="bar"><i style="width:${Math.round(p * 100)}%"></i></div><b>${hechos.length} de ${docs.length}</b></div>
+        <button class="btn cu block" id="hgo" ${cerrada ? 'disabled' : ''}>${hechos.length ? 'Seguir detallando' : 'Empezar a detallar'} · ${pend} por hacer</button></div>`;
+  const pasos = [
+    ['folios', docs.length > 0 && !pend, 'Mis folios', !docs.length ? 'Todavía no hay folios' : pend ? `Te faltan ${pend}` : 'Todos detallados', ''],
+    ['COBRANZA', cob.length > 0, 'Cobranza', cob.length ? `${pl(cob.length, 'pago', 'pagos')} · ${clp(sumaM(cob))}` : 'Si un cliente te pagó una factura de otro día', 'Si corresponde'],
+    ['GASTOS', gas.length > 0, 'Gastos', gas.length ? `${pl(gas.length, 'gasto', 'gastos')} · ${clp(sumaM(gas))}` : 'Combustible, peajes, almuerzo', 'Si corresponde'],
+    ['depositos', false, 'Depósito de efectivo', 'Si depositaste lo que te pagaron en efectivo', 'Si corresponde']];
+  render(m, `<h2>Hola, ${esc(pri)}</h2><p class="lead">Esto es lo que falta para cerrar ${F === hoyCL() ? 'tu día' : 'ese día'}.</p>
+    ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : ''}
+    ${hero}
+    <div class="hpasos">${pasos.map((x, i) => `<button class="hpaso ${x[1] ? 'd' : ''}" data-t="${x[0]}"><span class="n">${x[1] ? '✓' : i + 1}</span>
+      <span class="t"><b>${x[2]}</b><small>${x[3]}</small></span><span class="go" aria-hidden="true">›</span></button>`).join('')}</div>
+    ${hechos.length ? `<h3>Cómo va tu día</h3><div class="kpis"><div><span>Vendido</span><b>${clp(tot)}</b></div><div><span>Efectivo</span><b>${clp(ef)}</b></div>
+      <div><span>Transferencias</span><b>${clp(tr)}</b></div>${ch ? `<div><span>Cheques</span><b>${clp(ch)}</b></div>` : ''}<div><span>A crédito</span><b>${clp(cr)}</b></div></div>
+      <p class="muted" style="margin:6px 2px 0">Solo cuenta los folios que ya detallaste.</p>` : ''}`);
+  m.onclick = e => {
+    if (e.target.closest('#hgo')) { S.autoempezar = true; return ir('folios'); }
+    const b = e.target.closest('.hpaso'); if (b) ir(b.dataset.t);
+  };
+}
+
 /* ============ FOLIOS ============ */
 async function vFolios(m) {
   const esV = S.sess.rol === 'VENDEDOR';
   let docs = [], estadoDia = '', q = '';
   const r = await api('misDocumentos', S.sess.token, S.fecha, S.vend);
   docs = r.docs; estadoDia = r.estadoDia;
-  render(m, `<h2>${esV ? 'Mis folios' : 'Detallar ventas'}</h2><p class="lead">${fechaLarga(S.fecha)}${esV ? '' : ' · Puedes detallar los folios de cualquier vendedor; quedará registrado que lo hiciste tú.'}</p>
-    <div class="row">
-      ${esV ? '' : `<select class="in" style="width:auto" id="fv">${opcVend(S.vend, true)}</select>`}
-      <div class="seg" id="seg"><button data-f="pend">Por detallar</button><button data-f="det">Detallados</button><button data-f="todos">Todos</button></div>
-      <div class="search grow" style="min-width:180px">${icon('search')}<input class="in" id="q" placeholder="Cliente o folio" type="search"></div>
-    </div>
+  render(m, `<h2>${esV ? 'Mis folios' : 'Detallar ventas'}</h2><p class="lead">${esV ? 'Toca un folio y marca cómo te pagó el cliente.' : fechaLarga(S.fecha) + ' · Puedes detallar los folios de cualquier vendedor; quedará registrado que lo hiciste tú.'}</p>
+    ${esV ? '' : `<div class="row" style="margin-bottom:6px"><select class="in" style="width:auto" id="fv">${opcVend(S.vend, true)}</select></div>`}
     <div class="meter" id="meter"><div class="bar"><i></i></div><b></b></div>
-    <div id="acc"></div><div id="fl"></div>`);
+    <div id="acc"></div>
+    <div class="row filtros"><div class="seg" id="seg"><button data-f="pend">Por detallar</button><button data-f="det">Detallados</button><button data-f="todos">Todos</button></div>
+      ${docs.length > 8 || !esV ? `<div class="search grow" style="min-width:180px">${icon('search')}<input class="in" id="q" placeholder="Cliente o folio" type="search"></div>` : ''}</div>
+    <div id="fl"></div>`);
   if (!esV) $('#fv').onchange = e => { S.vend = e.target.value; ir('folios'); };
   $('#seg').onclick = e => { const b = e.target.closest('button'); if (b) { S.filtro = b.dataset.f; pintar(); } };
-  $('#q').oninput = e => { q = norm(e.target.value); pintar(); };
+  if ($('#q')) $('#q').oninput = e => { q = norm(e.target.value); pintar(); };
 
   function pintar(recienGuardado) {
     $$('#seg button').forEach(b => b.classList.toggle('on', b.dataset.f === S.filtro));
@@ -635,10 +675,12 @@ async function vFolios(m) {
     progreso(p);
     const mt = $('#meter'); mt.classList.toggle('done', docs.length > 0 && hechos === docs.length);
     const pendientes = docs.length - hechos;
-    $('#acc').innerHTML = pendientes && estadoDia !== 'CERRADA' ? `<div class="acciones">
+    const sb = f => $('#seg [data-f="' + f + '"]'), nom = { pend: 'Por detallar', det: 'Detallados', todos: 'Todos' }, cn = { pend: pendientes, det: hechos, todos: docs.length };
+    ['pend', 'det', 'todos'].forEach(f => { sb(f).innerHTML = nom[f] + (docs.length ? ` <span class="cn">${cn[f]}</span>` : ''); });
+    $('#acc').innerHTML = pendientes && estadoDia !== 'CERRADA' ? `<div class="acciones col">
       <button class="btn cu" id="emp">${hechos ? 'Seguir detallando' : 'Empezar a detallar'} <span class="cnt">${pendientes}</span></button>
-      ${pendientes > 1 ? (esV || S.vend ? '<button class="btn ghost" id="var">Detallar varios de una vez</button>'
-        : '<button class="btn ghost" disabled title="Elige un vendedor arriba">Elige un vendedor para detallar varios</button>') : ''}</div>` : '';
+      ${pendientes > 1 ? (esV || S.vend ? '<button class="btn ghost sm" id="var">Marcar varios de una vez</button>'
+        : '<button class="btn ghost sm" disabled title="Elige un vendedor arriba">Elige un vendedor para marcar varios</button>') : ''}</div>` : '';
     $('.bar i', mt).style.width = (p * 100) + '%';
     $('b', mt).textContent = docs.length ? `${hechos} de ${docs.length} detallados · ${clp(docs.reduce((a, d) => a + d.total, 0))}` : '';
     const el = $('#fl');
@@ -674,6 +716,7 @@ async function vFolios(m) {
       docs = docs.map(d => vis[d.folio_key] || d); S.tocado = true; pintar(); });
   };
   pintar();
+  if (S.autoempezar) { S.autoempezar = false; const e = $('#emp'); if (e) e.click(); }      // viene del botón de "Hoy"
 }
 function chipsEstado(d) {
   let h = d.estado === 'DETALLADO' ? `<span class="chip ok">Detallado${d.detalladoPor ? ' por ' + esc(d.detalladoPor.split(' ')[0]) : ''}</span>` : '<span class="chip cu">Por detallar</span>';
@@ -2180,7 +2223,12 @@ async function vMov(m, tabla) {
   const conAdj = !!ADJ[tabla];
   render(m, `<h2>${cfg.t}</h2><p class="lead">${cfg.d}</p>
     ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div><details class="manual"><summary>Registrar un pago a mano (sin usar la lista)</summary>' : ''}
-    <div class="card"><div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}${conAdj ? campoArchivos('mf') : ''}</div>
+    <div class="card">${tabla === 'GASTOS' ? (() => {
+        const celda = c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`, extra = c => c[0] === 'respaldo' || c[0] === 'obs';
+        return `<div id="fm"><div class="grid g2">${campos.filter(c => !extra(c)).map(celda).join('')}</div>
+          <div style="margin-top:12px">${campoArchivos('mf').replace('Foto o archivo de respaldo', 'Foto de la boleta')}</div>
+          <details class="mas"><summary>Agregar N° de boleta u observación</summary><div class="grid g2" style="margin-top:8px">${campos.filter(extra).map(celda).join('')}</div></details></div>`; })()
+      : `<div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}${conAdj ? campoArchivos('mf') : ''}</div>`}
       ${tabla === 'COBRANZA' ? `<div id="mch" hidden style="margin-top:12px"><div class="pregunta" style="margin-top:0">Datos del cheque</div>${camposCheque(null, 'mov')}</div>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     ${tabla === 'COBRANZA' ? '</details>' : ''}

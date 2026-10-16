@@ -224,3 +224,13 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Verificado contra los archivos manuales del 30-09: 102 documentos y 347 líneas coinciden exactamente (equipo, TOTAL, NETO, PRODUCTOS).
 - Guías de despacho: solo traslado, no son venta; se conservan igual porque sirven para el inventario de carnes, degustaciones y muestras.
 - Notas de crédito: suelen emitirse otro día y la encargada les cambia la fecha a la de la factura que corrigen. En la vista previa hay una tarjeta "Notas de crédito" con un selector de fecha por NC; al cambiarlo se mueve en Ventas Diarias y en el informe de kilos (`moverNC`). Un día que solo traiga NC movidas NO genera archivo en el Drive (reemplazaría el informe completo de ese día); para actualizar ese Excel hay que subir ese día de nuevo.
+
+## Rediseño del vendedor (v34)
+- Pregunta del dueño: la gente no sabe por dónde empezar y las pantallas se ven cargadas. Cambios para VENDEDOR (celular):
+  - Nueva pestaña inicial **Hoy** (`vHoy`): saludo, tarjeta principal "Cuéntanos cómo te pagó cada cliente" con progreso y botón que abre directo el primer folio pendiente (`S.autoempezar`), lista de 4 pasos (Mis folios, Cobranza, Gastos, Depósito) con estado, y "Cómo va tu día" (vendido, efectivo, transferencias, cheques, crédito; solo folios ya detallados).
+  - Cabecera de terreno (VENDEDOR y BODEGA) en una sola fila: "Naranjo / nombre", fecha corta ("Hoy" o "vie 16 oct") con flechas y el selector nativo invisible encima, y un menú ⋯ con "Cambiar mi clave" y "Salir". Antes la fecha tapaba el nombre.
+  - Mis folios: primero progreso y botón principal "Empezar a detallar", "Marcar varios de una vez" como botón secundario; filtros con contadores; el buscador solo aparece con más de 8 folios (o en oficina).
+  - Gastos: a la vista solo Concepto, Monto y "Foto de la boleta"; N° de boleta y observación plegados ("+ Agregar…").
+- Vendedor y bodeguero siempre usan barra inferior (`abajo` ya no depende de la cantidad de pestañas).
+- Clases nuevas: `.hero`, `.hpasos/.hpaso`, `.hday`, `.menu`, `.acciones.col`, `details.mas`. OJO: `.pasos` ya existe (stepper de Resumen), por eso las de Hoy son `.hpaso*`.
+- Pendiente: revisar con el mismo criterio las pantallas de oficina (Resumen, Cobranza, Saldos) y Bodega.

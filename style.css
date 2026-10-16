@@ -522,3 +522,48 @@ nav button.on svg,nav .on svg,.side .on svg{animation:pop .35s cubic-bezier(.3,1
 .ordl li+li{border-top:1px solid #F0E8E0}
 .ordl li.warn{color:#8a5a00;font-size:.9em}
 .impp.fin>p{display:none}
+
+/* ===== Rediseño del vendedor (celular) ===== */
+.hbar .brand{flex:1;min-width:0}
+.hbar .brand small{font-size:12.5px}
+.hbar .brand b{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hday{display:flex;align-items:center;background:#3A2D26;border-radius:10px;flex:none}
+.hday button{width:32px;height:40px;background:none;border:0;color:#fff;font-size:20px}
+.hday button:active{background:#4A3A31}
+.hday .dl{position:relative;display:flex;align-items:center;justify-content:center;min-width:88px;padding:0 2px;font-weight:700;font-size:15px;white-space:nowrap;text-transform:capitalize}
+.hday .dl input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.hbar .icon-btn.only{width:44px;padding:0;display:flex;align-items:center;justify-content:center}
+.menu{position:absolute;right:12px;top:calc(env(safe-area-inset-top,0px) + 58px);background:#fff;color:var(--ink);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.3);padding:6px;z-index:30;min-width:210px}
+.menu[hidden]{display:none}
+.menu button{display:flex;gap:10px;align-items:center;width:100%;background:none;border:0;padding:13px 12px;font-size:16px;font-weight:600;border-radius:8px;color:var(--ink);text-align:left}
+.menu button svg{width:20px;height:20px;color:var(--cu)}
+.menu button:active{background:var(--line-2)}
+.hero{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:18px;margin:6px 0 16px;display:flex;flex-direction:column;gap:2px}
+.hero>b{font-size:20px;line-height:1.25}
+.hero .kick{font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--cu)}
+.hero>span:not(.kick):not(.tick){color:var(--ink-2)}
+.hero.ok{background:#EAF3EC;border-color:#BFDCC7}
+.hero .tick{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--ok);color:#fff;font-weight:700;font-size:20px;margin-bottom:6px;animation:pop .35s cubic-bezier(.3,1.6,.5,1)}
+.hero.vacio{border-style:dashed}
+.hpasos{display:flex;flex-direction:column;gap:8px}
+.hpaso{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;min-height:64px}
+.hpaso:active{transform:scale(.995)}
+.hpaso .n{flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--line-2);font-weight:700;color:var(--ink-2)}
+.hpaso.d .n{background:var(--ok);color:#fff}
+.hpaso b{display:block;font-size:16.5px}
+.hpaso small{display:block;color:var(--ink-2);font-size:14px;line-height:1.3;margin-top:1px}
+.hpaso .go{color:var(--ink-2);font-size:24px;line-height:1}
+.hpaso .chip{flex:none}
+.filtros{margin:4px 0 12px}
+.seg button .cn{display:inline-block;min-width:20px;padding:0 6px;margin-left:3px;border-radius:99px;background:rgba(42,31,26,.08);font-size:12.5px;line-height:19px}
+.seg button.on .cn{background:var(--cu);color:#fff}
+.acciones.col{flex-direction:column;gap:6px}
+.acciones.col .btn{min-width:0;width:100%}
+.acciones.col .btn.sm{min-height:42px;font-size:15px}
+label.btn.ghost.block{display:flex;align-items:center;justify-content:center;gap:10px;min-height:58px;font-size:16.5px;border-style:dashed}
+label.btn.ghost.block svg{width:24px;height:24px;color:var(--cu)}
+details.mas{margin-top:12px}
+details.mas>summary{cursor:pointer;color:var(--cu-2);font-weight:700;list-style:none;padding:6px 0}
+details.mas>summary::before{content:'+ ';font-weight:700}
+details.mas[open]>summary::before{content:'– '}
+.hpaso .t{flex:1;min-width:0}
