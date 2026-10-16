@@ -234,3 +234,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Vendedor y bodeguero siempre usan barra inferior (`abajo` ya no depende de la cantidad de pestañas).
 - Clases nuevas: `.hero`, `.hpasos/.hpaso`, `.hday`, `.menu`, `.acciones.col`, `details.mas`. OJO: `.pasos` ya existe (stepper de Resumen), por eso las de Hoy son `.hpaso*`.
 - Pendiente: revisar con el mismo criterio las pantallas de oficina (Resumen, Cobranza, Saldos) y Bodega.
+
+## MODO PRUEBA (TEMPORAL, v35)
+- Para probar roles rápido: el ADMIN ve un botón morado "Probar como…" (abajo a la derecha) que lista los usuarios activos por rol; al tocar uno entra como esa persona sin clave. Mientras se prueba, el botón dice "Probando como <nombre> · <rol>" y permite volver al ADMIN.
+- Servidor: `entrarComo(token, usuario, fecha)` (solo ADMIN, solo si `CFG.MODO_PRUEBA` es true; deja registro en Logger). Cliente: `MODO_PRUEBA` en app.js; sesión del admin guardada en localStorage `rn_admin`; `montarProbar/abrirProbar/cambiarA`. Salir cierra también la sesión del admin.
+- **QUITAR antes de usar en serio**: `CFG.MODO_PRUEBA: false` en APPS_SCRIPT.js (desactiva de verdad la función en el servidor) y `const MODO_PRUEBA = false` en app.js.

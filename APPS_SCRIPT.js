@@ -17,6 +17,8 @@ const CFG = {
   // Carpeta donde se guardan fotos y archivos de respaldo. Vacío = se crea "Respaldos" junto a la carpeta de rendiciones.
   RESPALDOS_FOLDER_ID: '',
   APP_NAME: 'Rendiciones Naranjo',
+  // TEMPORAL (pruebas): deja que el ADMIN entre como cualquier usuario sin pedir su clave (función entrarComo). Poner en false antes de usar en serio.
+  MODO_PRUEBA: true,
   // Diferencia de kilos (vendido según bodega vs facturado) desde la cual se alerta, por vendedor
   TOLERANCIA_KG: 1,
   // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
@@ -173,7 +175,7 @@ function setup() {
 const API = {
   batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -517,6 +519,10 @@ function recuperarAcceso() {
 function login(ident, clave, fecha) {
   const c = verificarCredenciales_(ident, clave), u = c.u;
   if (!c.antiguo && String(u.cambiar_clave).toUpperCase() === 'TRUE') return { cambiarClave: true, nombre: u.nombre };
+  return sesionDe_(u, fecha);
+}
+/** Crea la sesión de un usuario ya verificado y devuelve lo que la app necesita para abrir (usado por login y por entrarComo). */
+function sesionDe_(u, fecha) {
   const token = Utilities.getUuid();
   withLock_(() => {
     const lim = new Date(Date.now() - SESION_DIAS * 864e5);
@@ -536,6 +542,17 @@ function login(ident, clave, fecha) {
     sesion.lote = lote;
   } catch (e) { /* si algo falla, la app pide cada cosa por separado como siempre */ }
   return sesion;
+}
+
+/** TEMPORAL: el ADMIN entra como otro usuario para probar su pantalla. Solo funciona mientras CFG.MODO_PRUEBA sea true. */
+function entrarComo(token, usuario, fecha) {
+  if (!CFG.MODO_PRUEBA) throw new Error('El modo de prueba está desactivado.');
+  const adm = auth_(token, ['ADMIN']);
+  if (adm.rol !== 'ADMIN') throw new Error('Solo la administración puede usar el modo de prueba.');
+  const u = read_('USUARIOS').find(x => x.usuario === String(usuario));
+  if (!u || !activo_(u)) throw new Error('Ese usuario no existe o está desactivado.');
+  Logger.log('MODO_PRUEBA: ' + adm.usuario + ' entró como ' + u.usuario);
+  return sesionDe_(u, fecha);
 }
 
 function logout(token) {

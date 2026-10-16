@@ -433,12 +433,62 @@ const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'],
   ['g-caja', 'Caja', ['depositos', 'GASTOS', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['historial', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
+/* ===== MODO PRUEBA (TEMPORAL): el ADMIN salta entre usuarios sin pedir claves. Para quitarlo: MODO_PRUEBA = false aquí y en APPS_SCRIPT.js (CFG). ===== */
+const MODO_PRUEBA = true;
+try { S_ADMIN = JSON.parse(localStorage.getItem('rn_admin') || 'null'); } catch (e) { S_ADMIN = null; }
+var S_ADMIN;
+const ROL_TXT = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Encargada de rendición', VENDEDOR: 'Vendedores', BODEGA: 'Bodega' };
+function montarProbar() {
+  const v = $('#probar'); if (v) v.remove();
+  if (!MODO_PRUEBA || !S.sess || !(S_ADMIN || S.sess.rol === 'ADMIN')) return;
+  const b = document.createElement('button'); b.id = 'probar'; b.type = 'button';
+  b.innerHTML = S_ADMIN ? `<small>Probando como</small><b>${esc(S.sess.nombre.split(' ')[0])} · ${esc(S.sess.rol)}</b>` : '<small>Modo prueba</small><b>Probar como…</b>';
+  b.onclick = abrirProbar; document.body.appendChild(b);
+}
+async function abrirProbar() {
+  const adm = S_ADMIN || S.sess, ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Probar como"><div class="grip"></div><div class="body">
+    <h3 style="margin-top:0">Probar como…</h3><p class="muted">Modo de prueba temporal: entras como esa persona sin pedir su clave. Lo que registres queda a su nombre.</p>
+    <div id="pul"><div class="sk" style="height:46px"></div></div></div><div class="foot"><button class="btn ghost grow" id="pcx">Cerrar</button></div></div>`;
+  document.body.appendChild(ov);
+  $('#pcx', ov).onclick = () => cerrarHoja(ov); ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
+  let us; try { us = await api('listarUsuariosAdmin', adm.token); } catch (e) { cerrarHoja(ov); return; }
+  const orden = ['ADMIN', 'SUPERVISOR', 'RENDICION', 'VENDEDOR', 'BODEGA'];
+  us = us.filter(u => u.activo).sort((x, y) => orden.indexOf(x.rol) - orden.indexOf(y.rol) || x.nombre.localeCompare(y.nombre));
+  $('#pul', ov).innerHTML = orden.map(r => { const g = us.filter(u => u.rol === r); return g.length ? `<div class="sg" style="margin:10px 0 4px;color:var(--ink-2)">${ROL_TXT[r]}</div>` +
+    g.map(u => `<button class="urow ${S.sess.usuario === u.usuario ? 'on' : ''}" data-u="${esc(u.usuario)}"><span class="grow"><b>${esc(u.nombre)}</b><small>${esc(u.usuario)}${u.terminales ? ' · ' + esc(u.terminales) : ''}</small></span>${S.sess.usuario === u.usuario ? '<span class="chip ok">Actual</span>' : '<span class="go">›</span>'}</button>`).join('') : ''; }).join('');
+  $('#pul', ov).onclick = async e => {
+    const bt = e.target.closest('.urow'); if (!bt || bt.classList.contains('on')) return;
+    bt.disabled = true; await cambiarA(bt.dataset.u, adm); cerrarHoja(ov);
+  };
+}
+async function cambiarA(usuario, adm) {
+  try {
+    if (S_ADMIN && usuario === S_ADMIN.usuario) {                          // volver a mi propio usuario
+      api('logout', S.sess.token).catch(() => {});
+      S.sess = S_ADMIN; S_ADMIN = null; try { localStorage.removeItem('rn_admin'); localStorage.setItem('rn_sess', JSON.stringify(S.sess)); } catch (e) {}
+    } else {
+      const s = await api('entrarComo', adm.token, usuario, hoyCL());
+      if (!S_ADMIN) { S_ADMIN = { token: adm.token, usuario: adm.usuario, nombre: adm.nombre, rol: adm.rol, puedeAutorizar: adm.puedeAutorizar }; try { localStorage.setItem('rn_admin', JSON.stringify(S_ADMIN)); } catch (e) {} }
+      else if (S.sess.token !== adm.token) api('logout', S.sess.token).catch(() => {});
+      const lote = s.lote || []; delete s.lote;
+      lote.forEach(x => CACHE.set(claveApi(x.fn, x.args), { t: Date.now(), d: x.data })); if (lote.length) guardarCache();
+      S.sess = s; try { localStorage.setItem('rn_sess', JSON.stringify(s)); } catch (e) {}
+    }
+    S.tab = null; S.vend = ''; S.filtro = 'pend'; S.grupos = null; S.ultimoDeGrupo = {};
+    await iniciar();
+    toast('Ahora estás como ' + S.sess.nombre + ' (' + S.sess.rol + ')');
+  } catch (e) { /* api ya mostró el motivo */ }
+}
+
 function salir(expirada) {
   if (!expirada && pendActivos().length && !confirm('Tienes ' + pendActivos().length + ' cambio(s) guardados en el teléfono que aún no se envían. Si sales, se enviarán cuando vuelvas a ingresar con tu usuario. ¿Salir igual?')) return;
   if (!expirada && S.sess) api('logout', S.sess.token).catch(() => {});
+  if (S_ADMIN) { if (!expirada) api('logout', S_ADMIN.token).catch(() => {}); S_ADMIN = null; }
+  const pb = $('#probar'); if (pb) pb.remove();
   S.sess = null; S.cat = null; S.tab = null;
   olvidarCache(false);
-  try { localStorage.removeItem('rn_sess'); } catch (e) {}
+  try { localStorage.removeItem('rn_sess'); localStorage.removeItem('rn_admin'); } catch (e) {}
   document.body.classList.remove('has-bottom');
   pantallaLogin();
 }
@@ -578,6 +628,7 @@ async function iniciar() {
   $('#main').addEventListener('input', () => { S.tocado = true; });
   ir(S.tab);
   sincronizar();
+  montarProbar();
   if (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA') setTimeout(() => precargar(tabs.map(t => t[0])), 2500);      // deja lista cada pantalla para poder trabajar sin conexión
 }
 function ir(t, silencioso) {
