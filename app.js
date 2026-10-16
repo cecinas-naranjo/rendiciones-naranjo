@@ -2122,18 +2122,31 @@ async function vDescuentos(m) {
 }
 
 /* ============ DEPÓSITOS DE EFECTIVO ============ */
+/** La lista de efectivo por depositar tiene que salir de lo último guardado: se espera a que terminen los guardados pendientes
+    (detalle de folios en cola o sin conexión) y se pide de nuevo al servidor, sin usar la copia guardada en el teléfono. */
+async function frescoDep(esV) {
+  if (COLA.length || (EN_LINEA && pendActivos().length)) toast('Guardando tus folios antes de mostrar los depósitos…');
+  for (let i = 0; i < 40 && (COLA.length || (EN_LINEA && pendActivos().length)); i++) { if (EN_LINEA && !colaCorriendo && !COLA.length) sincronizar(); await new Promise(r => setTimeout(r, 400)); }
+  if (EN_LINEA) CACHE.delete(claveApi('efectivoParaDepositar', [S.sess.token, S.fecha, esV ? '' : S.vend]));
+  return api('efectivoParaDepositar', S.sess.token, S.fecha, esV ? '' : S.vend);
+}
 async function vDepositos(m) {
   const esV = S.sess.rol === 'VENDEDOR';
   if (!esV && !S.vend) S.vend = S.cat.vendedores[0] && S.cat.vendedores[0].usuario;
-  const r = await api('efectivoParaDepositar', S.sess.token, S.fecha, esV ? '' : S.vend);
+  const r = await frescoDep(esV);
   const cerrada = r.estadoDia === 'CERRADA';
   const libres = r.folios.filter(x => !x.deposito).map(x => Object.assign({ tipo: 'f' }, x))
     .concat(r.cobranzas.filter(x => !x.deposito).map(x => Object.assign({ tipo: 'c' }, x)));
+  const sumE = xs => xs.reduce((a, x) => a + x.efectivo, 0), pl = n => n + (n === 1 ? ' pago' : ' pagos');
+  const todosI = r.folios.map(x => Object.assign({ tipo: 'f' }, x)).concat(r.cobranzas.map(x => Object.assign({ tipo: 'c' }, x))), yaDep = todosI.filter(x => x.deposito);
   render(m, `<h2>Depósitos de efectivo</h2>
-    <p class="lead">Si depositas o transfieres a la empresa el efectivo que te pagaron, regístralo aquí, marca qué folios incluye y saca una foto al comprobante. Ese monto ya no se entrega en la rendición.</p>
+    <p class="lead">Registra aquí el efectivo que depositaste. Marca qué folios incluye y sube el comprobante.</p>
+    ${libres.length || yaDep.length ? `<div class="kpis" style="margin-bottom:14px"><div><span>Por depositar</span><b>${clp(sumE(libres))}</b><span>${pl(libres.length)}</span></div>
+      <div><span>Ya depositado</span><b>${clp(sumE(yaDep))}</b><span>${pl(yaDep.length)}</span></div></div>` : ''}
     ${esV ? '' : `<div class="row" style="margin-bottom:12px"><select class="in" style="width:auto" id="dv">${opcVend(S.vend)}</select></div>`}
     ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : libres.length ? `<div class="card">
-      <div class="row"><b class="grow">Efectivo por depositar</b><button class="btn ghost sm" id="all">Marcar todos</button></div>
+      <div class="row"><b class="grow">Por depositar (${libres.length})</b><button class="btn ghost sm" id="all">Marcar todos</button></div>
+      <p class="muted" style="margin:4px 0 0">Si aparecen folios nuevos después de depositar, son pagos que se detallaron más tarde: aún no están depositados.</p>
       <div id="chk" style="margin:10px 0">${libres.map((x, i) => `<label class="switch" style="padding:8px 0;border-top:1px solid var(--line-2)">
         <input type="checkbox" data-i="${i}" checked><span class="grow">${esc(x.cliente)}<br><span class="muted">${x.tipo === 'c' ? 'Cobranza' : 'Folio'} ${esc(x.folio)}</span></span><b>${clp(x.efectivo)}</b></label>`).join('')}</div>
       <div class="grid g3">
@@ -2150,7 +2163,7 @@ async function vDepositos(m) {
       <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}<div class="muted">${d.folios.length} folio(s)${d.cobranzas.length ? ' y ' + d.cobranzas.length + ' cobranza(s)' : ''} · efectivo incluido ${clp(d.incluido)}</div>
         ${d.monto !== d.incluido ? `<span class="chip bad">Diferencia ${clp(d.monto - d.incluido)}</span>` : '<span class="chip ok">Cuadra</span>'}
         <div style="margin-top:6px">${chipsAdj(d.adjuntos, 'DEPOSITOS', d.id, !cerrada || !esV)}</div></div>
-      <div class="big" style="font-size:22px">${clp(d.monto)}</div>${cerrada ? '' : `<button class="x" style="width:42px" data-del="${d.id}" aria-label="Borrar depósito">×</button>`}</div></div>`).join('')
+      <div class="big" style="font-size:22px">${clp(d.monto)}</div>${cerrada ? '' : `<button class="x" style="width:42px" data-del="${d.id}" aria-label="Borrar depósito">×</button>`}</div><details class="mas" style="margin:6px 0"><summary>Ver qué incluye</summary><ul class="info">${todosI.filter(x => x.deposito === d.id).map(x => `<li>${x.tipo === 'c' ? 'Cobranza' : 'Folio'} ${esc(x.folio)} · ${esc(x.cliente)} · <b>${clp(x.efectivo)}</b></li>`).join('')}</ul></details></div>`).join('')
     : '<div class="empty">Sin depósitos este día.</div>'}`);
   if (!esV) $('#dv').onchange = e => { S.vend = e.target.value; ir('depositos'); };
   m.onclick = async e => { const id = e.target.dataset.del; if (!id || !confirm('¿Borrar este depósito?')) return;
@@ -2173,9 +2186,15 @@ async function vDepositos(m) {
     if (!s2.length) return toast('Marca al menos un folio.', true);
     const b = $('#dg'); b.disabled = true;
     try {
+      if (COLA.length || pendActivos().length) { toast('Aún se están guardando folios. Espera unos segundos y vuelve a intentar.', true); return; }
+      if (EN_LINEA) {      // última revisión: si la lista cambió desde que se abrió la pantalla, no se guarda a ciegas
+        const f = await frescoDep(esV), ids = r2 => r2.folios.filter(x => !x.deposito).map(x => 'f' + x.key).concat(r2.cobranzas.filter(x => !x.deposito).map(x => 'c' + x.key)).sort().join();
+        if (ids(f) !== ids(r)) { toast('La lista de efectivo cambió (se detallaron más folios). Revísala antes de depositar.', true); ir('depositos'); return; }
+      }
       const nuevo = await api('guardarDeposito', S.sess.token, S.fecha, { vendedor: esV ? '' : S.vend, banco: $('#db').value, monto: soloDigitos(dm.value), referencia: $('#dr').value,
         folios: s2.filter(x => x.tipo === 'f').map(x => x.key), cobranzas: s2.filter(x => x.tipo === 'c').map(x => x.key) });
-      toast(nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado');
+      const quedan = libres.filter(x => s2.indexOf(x) < 0);
+      toast((nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado') + (quedan.length ? `. Quedan ${pl(quedan.length)} por depositar (${clp(sumE(quedan))})` : '. No queda nada por depositar'));
       const fs = [...$('#dfile').files];
       if (fs.length && nuevo._pendiente) toast('Sin conexión: el comprobante no se puede subir ahora. Cuando se envíe el depósito, usa "Adjuntar".', true);
       else if (fs.length) { try { await subirArchivos('DEPOSITOS', nuevo.id, fs); } catch (e) { toast('El depósito quedó guardado, pero el comprobante no subió. Usa "Adjuntar".', true); } }

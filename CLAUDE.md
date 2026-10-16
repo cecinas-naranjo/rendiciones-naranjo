@@ -245,3 +245,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Conserva `LIMPIEZA_CONSERVAR` = USUARIOS y PRODUCTOS; vacía todas las demás hojas del SCHEMA (folios, pagos, cobranza, gastos, depósitos, inventario, conteos, créditos cargados, clientes, cheques, operaciones, rendiciones, sesiones). Limpia también las sesiones de la caché (todos deben volver a entrar) e invalida las cachés.
 - No toca Drive (rendiciones, informes, respaldos, planillas): se borran a mano.
 - Antes de entregar: limpiarPruebas → poner `MODO_PRUEBA` en false (servidor y app) → nueva versión de la implementación.
+
+## Depósitos: claridad de estado (v37)
+- Problema: tras depositar, aparecían folios "nuevos" en la lista y no se sabía si estaban depositados. Ahora la pantalla muestra KPIs "Por depositar" / "Ya depositado" (suma y cantidad), el título "Por depositar (N)" con aviso de que los folios nuevos aún no están depositados, cada depósito registrado trae "Ver qué incluye" (folio/cobranza, cliente, monto), y al guardar el aviso dice cuánto queda por depositar.
+- Solo frontend (sin cambios en el servidor).
+- v38 (causa real): la lista de Depósitos salía de la copia guardada en el teléfono (caché `rn_cache`, hasta 20 s y luego se actualizaba por detrás) y no esperaba los folios en cola de guardado (`COLA`/`PEND`), por eso "aparecían más facturas" después. Ahora `frescoDep` espera a que terminen los guardados pendientes y pide la lista fresca al servidor; al registrar el depósito vuelve a pedirla y, si cambió, no guarda y avisa. Con guardados aún pendientes, bloquea el depósito.
