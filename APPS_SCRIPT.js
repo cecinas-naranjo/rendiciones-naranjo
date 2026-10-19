@@ -26,7 +26,7 @@ const CFG = {
   // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
   INVENTARIO_FOLDER_ID: '',
   // Vendedores cuyo despacho no va en columna propia sino como destino (igual que en la planilla de inventario)
-  DESTINO_DE_VENDEDOR: { DISTRIBUIDOR: 'SUPERMERCADO', SALA: 'CONSUMO EXTERNO' },
+  DESTINO_DE_VENDEDOR: { DISTRIBUIDOR: 'SUPERMERCADO', SUPERMERCADOS: 'SUPERMERCADO', SALA: 'CONSUMO EXTERNO' },
   // Destinos de "otras salidas". Los 4 primeros siempre tienen columna en la planilla; el resto aparece si se usa ese día.
   DESTINOS: ['REPROCESO','CONSUMO','CONSUMO EXTERNO','LAMINADO','MERMA','DEGUSTACION','MUESTRA','OTRAS SALIDAS CON GUIA','SUPERMERCADO'],
   // Distribuidores: en la planilla de inventario cada uno tiene su columna de salida (aparece si retiró ese día)
@@ -359,6 +359,24 @@ function codeKey_(c) { const s = String(c == null ? '' : c).trim(); const n = Nu
 function normTxt_(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim(); }
 function esGuia_(tipo) { return /gu[ií]a/i.test(String(tipo)); }
 function folioKey_(tipo, folio) { return String(tipo).normalize('NFD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() + '-' + String(folio).trim(); }
+/** Los supermercados van aparte de los distribuidores (estos salen por el terminal BODEGA). Si nadie tiene el terminal SUPERMERCADO se crea el usuario
+    "Supermercados"; si lo tiene el antiguo "Distribuidor" del arranque, solo se le cambia el nombre. */
+function asegurarSupermercados_() {
+  const us = read_('USUARIOS'), tiene = u => String(u.terminales || '').toUpperCase().split(',').map(x => x.trim()).indexOf('SUPERMERCADO') >= 0;
+  const hay = us.filter(u => u.rol === 'VENDEDOR' && tiene(u));
+  if (hay.length) {
+    const d = hay.find(u => u.usuario === 'DISTRIBUIDOR' && String(u.nombre).trim().toLowerCase() === 'distribuidor');
+    if (d) { d.nombre = 'Supermercados'; updateRow_('USUARIOS', d._row, d); }
+    return;
+  }
+  if (us.some(u => u.usuario === 'SUPERMERCADOS')) return;      // existe pero sin el terminal o sin activar: lo decide el administrador en Usuarios
+  append_('USUARIOS', [{ usuario: 'SUPERMERCADOS', nombre: 'Supermercados', rol: 'VENDEDOR', pin: '', terminales: 'SUPERMERCADO', activo: true, rut: '', correo: '', clave_hash: '', sal: '', cambiar_clave: 'TRUE', intentos: 0, bloqueado_hasta: '' }]);
+}
+/** Lo ya importado del terminal SUPERMERCADO que quedó "sin vendedor" pasa al usuario de supermercados (se hace una sola vez, al primer import). */
+function asignarSupermercadosAntiguos_() {
+  const dueno = mapaTerminales_()['SUPERMERCADO']; if (!dueno) return;
+  ['DOCUMENTOS', 'VENTAS_DETALLE'].forEach(t => read_(t).filter(r => String(r.terminal).toUpperCase() === 'SUPERMERCADO' && !r.vendedor).forEach(r => { r.vendedor = dueno; updateRow_(t, r._row, r); }));
+}
 function mapaTerminales_() {
   const term = {};
   vendedores_().forEach(v => String(v.terminales || '').split(',').map(x => x.trim().toUpperCase()).filter(String).forEach(t => term[t] = v.usuario));
@@ -739,6 +757,7 @@ function saveDespacho(token, fecha, vendedor, filas) {
 function importarDTE(token, filas) {
   auth_(token, ['RENDICION','SUPERVISOR']);
   return withLock_(() => {
+    asegurarSupermercados_(); asignarSupermercadosAntiguos_();
     const term = mapaTerminales_();
     const existentes = {}; read_('DOCUMENTOS').forEach(d => existentes[d.folio_key] = d);
     const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0; const fechas = {}, sinTerminal = {}, porVendedor = {};
@@ -815,6 +834,7 @@ function guardarInformeOrdenado(token, a) {
 function importarDetalle(token, filas) {
   auth_(token, ['RENDICION','SUPERVISOR']);
   return withLock_(() => {
+    asegurarSupermercados_();
     const term = mapaTerminales_();
     const yaHay = {}; read_('VENTAS_DETALLE').forEach(r => yaHay[r.folio_key] = true);
     const prods = read_('PRODUCTOS');

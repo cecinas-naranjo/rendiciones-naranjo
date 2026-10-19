@@ -266,3 +266,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Bug: al detallar muchos folios seguidos (guardado rápido en cola), una actualización de fondo traía del servidor datos que aún no incluían los folios en cola y el contador "faltan N" mostraba un número mayor (6) y luego bajaba (3).
 - Ahora `LOCAL` (Map `fecha␁folio_key` → líneas) recuerda cada folio detallado en esta sesión; `superponerLocal` (dentro de `superponer`, para `misDocumentos`) lo aplica sobre lo que llegue, y solo lo olvida cuando el servidor ya lo trae DETALLADO con las mismas líneas y no está en `COLA`. Si el guardado falla, se olvida y el folio vuelve a "Por detallar". `salir()` lo limpia.
 - Prueba: 3 de 5 marcados localmente se ven 3 aunque el servidor traiga 0; tras confirmar 2, quedan 1 pendiente de confirmación y se siguen viendo 3.
+
+## Supermercados aparte de los distribuidores (v44, requiere pegar APPS_SCRIPT.js)
+- Los supermercados (Amar Hermanos, Kuncar, Único, Super Oferta, Operadora de Comercio, Distribuidora Moreno) se importan con el terminal `SUPERMERCADO`; los distribuidores y la venta de bodega siguen en el terminal `BODEGA` (usuario SALA).
+- `asegurarSupermercados_()` (al importar Ventas Diarias o Informe de ventas): si nadie tiene el terminal SUPERMERCADO crea el usuario **SUPERMERCADOS** ("Supermercados", VENDEDOR, sin clave: no es una persona que ingrese); si lo tiene el antiguo "Distribuidor" del arranque, solo le cambia el nombre. `asignarSupermercadosAntiguos_()` pasa a ese usuario los documentos/líneas ya importados del terminal SUPERMERCADO que quedaron "sin vendedor".
+- `CFG.DESTINO_DE_VENDEDOR` incluye SUPERMERCADOS → destino SUPERMERCADO del inventario (igual que DISTRIBUIDOR).
