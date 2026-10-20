@@ -34,7 +34,7 @@ const CFG = {
 };
 
 const SCHEMA = {
-  USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo','rut','correo','clave_hash','sal','cambiar_clave','intentos','bloqueado_hasta'],
+  USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo','rut','correo','clave_hash','sal','cambiar_clave','intentos','bloqueado_hasta','emite_antes'],
   PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo','seccion','nombre_inv'],
   INVENTARIO_MOV: ['key','fecha','codigo','tipo','destino','cantidad','obs','registrado_por','registrado'],
   DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado'],
@@ -636,7 +636,7 @@ function auth_(token, roles) {
 /* ---------- administración de usuarios (solo ADMIN) ---------- */
 function listarUsuariosAdmin(token) {
   auth_(token, ['ADMIN']);
-  return read_('USUARIOS').map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol, rut: u.rut ? rutFmt_(u.rut) : '', correo: u.correo || '', terminales: u.terminales || '',
+  return read_('USUARIOS').map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol, rut: u.rut ? rutFmt_(u.rut) : '', correo: u.correo || '', terminales: u.terminales || '', emiteAntes: esSi_(u.emite_antes),
     activo: activo_(u), tieneClave: !!String(u.clave_hash || ''), debeCambiar: String(u.cambiar_clave).toUpperCase() === 'TRUE',
     bloqueado: !!(u.bloqueado_hasta && new Date(u.bloqueado_hasta) > new Date()) }));
 }
@@ -661,7 +661,8 @@ function guardarUsuario(token, o) {
     if (ex && ex.usuario === yo.usuario && (rol !== 'ADMIN' || !activo)) throw new Error('No puedes quitarte a ti mismo el rol de administrador ni desactivarte.');
     if (ex && ex.rol === 'ADMIN' && (rol !== 'ADMIN' || !activo) && !us.some(u => u.usuario !== ex.usuario && u.rol === 'ADMIN' && activo_(u))) throw new Error('Debe quedar al menos un administrador activo.');
     const fila = Object.assign({}, ex || { usuario: codigo, pin: '', clave_hash: '', sal: '', cambiar_clave: 'TRUE', intentos: 0, bloqueado_hasta: '' },
-      { nombre, rol, rut: rut ? rutFmt_(rut) : '', correo, terminales: rol === 'VENDEDOR' ? String(o.terminales || '').trim() : (ex ? ex.terminales : ''), activo });
+      { nombre, rol, rut: rut ? rutFmt_(rut) : '', correo, terminales: rol === 'VENDEDOR' ? String(o.terminales || '').trim() : (ex ? ex.terminales : ''), activo,
+        emite_antes: rol === 'VENDEDOR' && (o.emiteAntes === true || String(o.emiteAntes).toUpperCase() === 'TRUE') ? 'TRUE' : '' });
     let temporal = '';
     if (ex) { updateRow_('USUARIOS', ex._row, fila); if (!activo) cerrarSesionesDe_(ex.usuario); }
     else { append_('USUARIOS', [fila]); }
@@ -687,7 +688,7 @@ function catalogo(token) {
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA')
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
       .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio) })),
-    vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales })),
+    vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, emiteAntes: esSi_(v.emite_antes) })),
     formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
   };
 }
@@ -719,6 +720,7 @@ function getDespacho(token, fecha, vendedor) {
     guias: Object.keys(guias).map(f => ({ folio: f, lineas: guias[f] }))
   };
 }
+function esSi_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
 function esGuiaFlag_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
 
 function saveDespacho(token, fecha, vendedor, filas) {
@@ -760,14 +762,20 @@ function importarDTE(token, filas) {
     asegurarSupermercados_(); asignarSupermercadosAntiguos_();
     const term = mapaTerminales_();
     const existentes = {}; read_('DOCUMENTOS').forEach(d => existentes[d.folio_key] = d);
-    const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0; const fechas = {}, sinTerminal = {}, porVendedor = {};
+    const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0, corregidos = 0; const fechas = {}, sinTerminal = {}, porVendedor = {};
     filas.forEach(f => {
       const tipo = String(f.Documento || '').trim();
       const folio = String(f.Folio || '').trim();
       if (!tipo || !folio) return;
       if (esGuia_(tipo)) { guias++; return; }         // guías de despacho internas: no son venta
       const key = folioKey_(tipo, folio);
-      if (existentes[key]) { repetidos++; return; }
+      if (existentes[key]) {
+        // ya estaba: si todavía no lo detallan y ahora viene con otra fecha (p. ej. folios emitidos el día antes), se corrige la fecha
+        const ex = existentes[key], nf = normFecha_(f.Fecha);
+        if (ex !== true && !/nota de cr/i.test(tipo) && ex.estado !== 'DETALLADO' && nf && ex.fecha !== nf) { ex.fecha = nf; updateRow_('DOCUMENTOS', ex._row, ex); corregidos++; fechas[nf] = true; }
+        else repetidos++;
+        return;
+      }
       const terminal = String(f['Emitido en'] || '').trim().toUpperCase();
       const vendedor = term[terminal] || '';
       if (!vendedor) { sinVendedor++; sinTerminal[terminal] = true; }
@@ -781,7 +789,7 @@ function importarDTE(token, filas) {
     });
     append_('DOCUMENTOS', nuevos);
     actualizarClientes_(nuevos);
-    return { importados: nuevos.length, guias, repetidos, sinVendedor, porVendedor, terminalesSinAsignar: Object.keys(sinTerminal), fechas: Object.keys(fechas).sort() };
+    return { importados: nuevos.length, corregidos, guias, repetidos, sinVendedor, porVendedor, terminalesSinAsignar: Object.keys(sinTerminal), fechas: Object.keys(fechas).sort() };
   });
 }
 
@@ -836,7 +844,9 @@ function importarDetalle(token, filas) {
   return withLock_(() => {
     asegurarSupermercados_();
     const term = mapaTerminales_();
-    const yaHay = {}; read_('VENTAS_DETALLE').forEach(r => yaHay[r.folio_key] = true);
+    const yaHay = {}; read_('VENTAS_DETALLE').forEach(r => { (yaHay[r.folio_key] = yaHay[r.folio_key] || []).push(r); });
+    const docsEx = {}; read_('DOCUMENTOS').forEach(d => docsEx[d.folio_key] = d);
+    let corregidas = 0; const movidos = {};
     const prods = read_('PRODUCTOS');
     const porCodigo = {}, porNombre = {};
     prods.forEach(p => { porCodigo[codeKey_(p.codigo)] = p; porNombre[normTxt_(p.nombre)] = p; });
@@ -848,7 +858,13 @@ function importarDetalle(token, filas) {
       const desc = String(f.Descripcion || '').trim();
       if (!tipo || !folio || !desc) return;
       const fk = folioKey_(tipo, folio);
-      if (yaHay[fk]) { omitidas++; return; }             // ese documento ya se importó antes
+      if (yaHay[fk]) {                                    // ese documento ya se importó antes
+        const nf = normFecha_(f.Fecha), de = docsEx[fk];
+        if (!movidos[fk] && nf && !/nota de cr/i.test(tipo) && (de ? de.estado !== 'DETALLADO' : true) && yaHay[fk].some(r => String(r.fecha) !== nf)) {   // misma corrección de fecha del día antes
+          movidos[fk] = true; yaHay[fk].forEach(r => { r.fecha = nf; updateRow_('VENTAS_DETALLE', r._row, r); }); corregidas++; fechas[nf] = true;
+        }
+        omitidas++; return;
+      }
       let codigo = codeKey_(f.Codigo);
       let p = porCodigo[codigo];
       if (!p) {
@@ -875,20 +891,23 @@ function importarDetalle(token, filas) {
     append_('VENTAS_DETALLE', nuevos);
     const np = Object.keys(nuevosProd).map(k => nuevosProd[k]);
     append_('PRODUCTOS', np);
-    return { lineas, guias, omitidas, productosNuevos: np.map(p => p.nombre), terminalesSinAsignar: Object.keys(sinTerminal),
+    return { lineas, guias, omitidas, corregidas, productosNuevos: np.map(p => p.nombre), terminalesSinAsignar: Object.keys(sinTerminal),
       fechas: Object.keys(fechas).sort() };
   });
 }
 
 /* ============================ TERMINALES DE MI DTE ============================ */
 
-function listarTerminales(token) {
+/** Terminales de Mi DTE con la cantidad de documentos de los días indicados (fechas ISO; por cada día, aparte). Sin fechas cuenta todo el historial. */
+function listarTerminales(token, fechas) {
   auth_(token, ['RENDICION','SUPERVISOR']);
-  const term = mapaTerminales_(), vistos = {};
-  read_('DOCUMENTOS').forEach(d => { if (d.terminal) vistos[d.terminal] = (vistos[d.terminal] || 0) + 1; });
-  read_('VENTAS_DETALLE').forEach(d => { if (d.terminal && !vistos[d.terminal]) vistos[d.terminal] = 0; });
+  const fs = (Array.isArray(fechas) ? fechas : []).map(String).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f)).slice(0, 7);
+  const term = mapaTerminales_(), vistos = {}, porFecha = {};
+  const sumar = (t, f, n) => { vistos[t] = (vistos[t] || 0) + n; if (f) { porFecha[t] = porFecha[t] || {}; porFecha[t][f] = (porFecha[t][f] || 0) + n; } };
+  read_('DOCUMENTOS').forEach(d => { if (!d.terminal) return; if (!fs.length) sumar(d.terminal, '', 1); else if (fs.indexOf(d.fecha) >= 0) sumar(d.terminal, d.fecha, 1); else if (vistos[d.terminal] === undefined) vistos[d.terminal] = 0; });
+  read_('VENTAS_DETALLE').forEach(d => { if (d.terminal && vistos[d.terminal] === undefined) vistos[d.terminal] = 0; });
   Object.keys(term).forEach(t => { if (vistos[t] === undefined) vistos[t] = 0; });
-  return Object.keys(vistos).sort().map(t => ({ terminal: t, vendedor: term[t] || '', documentos: vistos[t] }));
+  return Object.keys(vistos).sort().map(t => ({ terminal: t, vendedor: term[t] || '', documentos: vistos[t], porFecha: porFecha[t] || {} }));
 }
 
 /** Asigna (o quita, con vendedor vacío) un terminal a un vendedor, y reasigna los documentos abiertos de ese terminal. */
@@ -1834,7 +1853,7 @@ const lista_ = v => String(v || '').split(',').map(x => x.trim()).filter(String)
 function efectivoParaDepositar(token, fecha, vendedor) {
   const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
   const v = u.rol === 'VENDEDOR' ? u.usuario : vendedor;
-  cargarDia_(fecha, ['DEPOSITOS', 'PAGOS', 'DESCUENTOS', 'DOCUMENTOS', 'COBRANZA']);
+  cargarDia_(fecha, ['DEPOSITOS', 'PAGOS', 'DESCUENTOS', 'DOCUMENTOS', 'COBRANZA', 'GASTOS']);
   const deps = byFecha_('DEPOSITOS', fecha).filter(d => d.vendedor === v);
   const enDep = {}; deps.forEach(d => { lista_(d.folios).forEach(k => enDep[k] = d.id); lista_(d.cobranzas).forEach(k => enDep['C:' + k] = d.id); });
   const folios = docsDelDia_(fecha, v).map(d => ({ key: d.folio_key, folio: d.folio, cliente: d.cliente,
@@ -1842,7 +1861,11 @@ function efectivoParaDepositar(token, fecha, vendedor) {
     .filter(x => x.efectivo > 0);
   const cobranzas = byFecha_('COBRANZA', fecha).filter(c => c.vendedor === v && c.forma === 'EFECTIVO')
     .map(c => ({ key: c.id, folio: c.folio, cliente: c.cliente, efectivo: num_(c.monto), deposito: enDep['C:' + c.id] || '' }));
+  // el depósito ya no se asocia a folios: se compara en plata (efectivo del día − gastos) contra lo depositado
+  const gastos = byFecha_('GASTOS', fecha).filter(g => g.responsable === v).reduce((a, g) => a + num_(g.monto), 0);
+  const efV = folios.reduce((a, x) => a + x.efectivo, 0), efC = cobranzas.reduce((a, x) => a + x.efectivo, 0), depositado = deps.reduce((a, d) => a + num_(d.monto), 0);
   return { vendedor: v, estadoDia: estadoDia_(fecha), folios, cobranzas,
+    resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, disponible: efV + efC - gastos, depositado, saldo: efV + efC - gastos - depositado },
     depositos: deps.map(d => ({ id: d.id, banco: d.banco, monto: num_(d.monto), referencia: d.referencia,
       folios: lista_(d.folios), cobranzas: lista_(d.cobranzas), incluido: incluidoDep_(d, folios, cobranzas), adjuntos: adjuntosDe_(d) })) };
 }
@@ -1859,7 +1882,6 @@ function guardarDeposito(token, fecha, dep) {
   if (!v) throw new Error('Elige el vendedor.');
   if (BANCOS.indexOf(dep.banco) < 0) throw new Error('Elige el banco del depósito.');
   if (num_(dep.monto) <= 0) throw new Error('Ingresa el monto depositado.');
-  if (!(dep.folios || []).length && !(dep.cobranzas || []).length) throw new Error('Marca los folios cuyo efectivo incluye el depósito.');
   return withLock_(() => {
     const ocupados = {};
     byFecha_('DEPOSITOS', fecha).filter(d => d.vendedor === v).forEach(d => { lista_(d.folios).forEach(k => ocupados[k] = 1); lista_(d.cobranzas).forEach(k => ocupados['C:' + k] = 1); });
@@ -2019,11 +2041,13 @@ function resumen_(fecha) {
     tot.gastos = gas.filter(x => x.responsable === v).reduce((a, x) => a + num_(x.monto), 0);
     const dv = deps.filter(x => x.vendedor === v);
     tot.depositos = dv.reduce((a, x) => a + num_(x.monto), 0);
-    if (dv.length) {
+    const dvF = dv.filter(x => lista_(x.folios).length || lista_(x.cobranzas).length);       // depósitos antiguos asociados a folios
+    tot.depositoExceso = Math.max(0, tot.depositos - (tot.EFECTIVO + tot.cobranzaEfectivo - tot.gastos));
+    if (dvF.length) {
       const ef = {}; ds.forEach(d => ef[d.folio_key] = d.pagos.filter(p => p.forma === 'EFECTIVO').reduce((a, p) => a + p.monto, 0));
       const efc = {}; c.filter(x => x.forma === 'EFECTIVO').forEach(x => efc[x.id] = num_(x.monto));
-      const incl = dv.reduce((a, d) => a + lista_(d.folios).reduce((s, k) => s + (ef[k] || 0), 0) + lista_(d.cobranzas).reduce((s, k) => s + (efc[k] || 0), 0), 0);
-      tot.depositoDif = tot.depositos - incl;
+      const incl = dvF.reduce((a, d) => a + lista_(d.folios).reduce((s, k) => s + (ef[k] || 0), 0) + lista_(d.cobranzas).reduce((s, k) => s + (efc[k] || 0), 0), 0);
+      tot.depositoDif = dvF.reduce((a, x) => a + num_(x.monto), 0) - incl;
     } else tot.depositoDif = 0;
     tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.gastos - tot.depositos;
     const k = desp.filter(x => x.vendedor === v);
@@ -2052,6 +2076,7 @@ function resumen_(fecha) {
       .concat(porVendedor.filter(t => t.descPendientes).map(t => t.vendedor + ': descuentos por autorizar'))
       .concat(porVendedor.filter(t => t.depositoDif).map(t => t.vendedor + ': el depósito ' + (t.depositoDif > 0 ? 'supera' : 'no alcanza') +
         ' el efectivo de los folios que incluye (diferencia $' + Math.abs(t.depositoDif).toLocaleString('es-CL') + ')'))
+      .concat(porVendedor.filter(t => t.depositoExceso).map(t => t.vendedor + ': depositó $' + t.depositoExceso.toLocaleString('es-CL') + ' más que el efectivo del día'))
       .concat(porVendedor.filter(t => t.sinRetorno).map(t => t.vendedor + ': falta registrar retorno de ' + t.sinRetorno + ' producto(s)'))
       .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(2).replace('.', ',') + ' kg ($' + Math.abs(t.kilos.diferenciaPesos).toLocaleString('es-CL') + ') ' +
         (t.kilos.diferencia > 0 ? 'salieron y no volvieron ni se facturaron' : 'facturados de más respecto a lo que salió')))
@@ -2262,7 +2287,8 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
   const dep = datos.deps.filter(x => x.vendedor === t.vendedor);
   const D = H.tabla('DEPÓSITOS DE EFECTIVO A LA EMPRESA', [{ h: 'BANCO' }, { h: 'N° OPERACIÓN' }, { h: 'MONTO DEPOSITADO', t: '$', sum: 1 },
     { h: 'EFECTIVO QUE INCLUYE', t: '$', sum: 1 }, { h: 'DIFERENCIA', t: '$', sum: 1 }, { h: 'FOLIOS INCLUIDOS' }, { h: 'COMPROBANTE' }],
-    dep.map(x => [x.banco, x.referencia, num_(x.monto), x.incluido, '=C{r}-D{r}', x.foliosTxt, x.link]));
+    dep.map(x => x.tieneFolios ? [x.banco, x.referencia, num_(x.monto), x.incluido, '=C{r}-D{r}', x.foliosTxt, x.link]
+      : [x.banco, x.referencia, num_(x.monto), '', '', 'Depósito general (no se asocia a folios)', x.link]));
   // CHEQUES recibidos (ventas y cobranza), con los datos para depositarlos o cobrarlos
   const fch = f => f ? String(f).split('-').reverse().join('-') : '';
   const cheques = [];
@@ -2337,6 +2363,7 @@ function generarArchivo_(fecha, r, borrador) {
     const et = d.banco + (d.referencia ? ' #' + d.referencia : '');
     lista_(d.folios).forEach(k => depDe[k] = et); lista_(d.cobranzas).forEach(k => depDe['C:' + k] = et);
     return { vendedor: d.vendedor, banco: d.banco, referencia: d.referencia, monto: num_(d.monto),
+      tieneFolios: lista_(d.folios).length + lista_(d.cobranzas).length > 0,
       incluido: lista_(d.folios).reduce((a, k) => a + (efFolio[k] || 0), 0) + lista_(d.cobranzas).reduce((a, k) => a + (efCob[k] || 0), 0),
       foliosTxt: lista_(d.folios).map(k => folioTxt[k] || k).concat(lista_(d.cobranzas).map(() => 'cobranza')).join(', '), bancoDe: d.banco, link: linkAdj_(d) };
   });

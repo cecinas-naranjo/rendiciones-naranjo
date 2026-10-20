@@ -35,6 +35,7 @@ const IC = {
   upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/>',
   percent: '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.5c2.2.7 3.5 2.6 3.5 5.5"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
   dots: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',
   doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',
@@ -601,7 +602,7 @@ async function iniciar() {
   const dia = `<div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha"><button id="next" aria-label="Día siguiente">›</button></div>`;
   const txtDia = f => f === hoyCL() ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
   const diaC = `<div class="hday"><button id="prev" aria-label="Día anterior">‹</button><label class="dl">${icon('cal')}<span id="dtxt">${txtDia(S.fecha)}</span><input type="date" id="fecha" value="${S.fecha}" aria-label="Elegir fecha"></label><button id="next" aria-label="Día siguiente">›</button></div>`;
-  const cuenta = `<button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
+  const cuenta = `<button class="icon-btn" id="refr" aria-label="Actualizar la información">${icon('refresh')}<span>Actualizar</span></button><button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
   const ref = t => tabs.find(x => x[0] === t) || [];
   if (grupos) {
     app.innerHTML = `<div class="shell">
@@ -617,7 +618,7 @@ async function iniciar() {
   } else {
     app.innerHTML = `<header>
       <div class="hbar"><div class="brand"><img src="logo-96.png" alt="" width="42" height="42"><div><small>Naranjo</small><b>${esc((S.sess.nombre || '').split(' ')[0])}</b></div></div>
-        ${diaC}<button class="icon-btn only" id="menub" aria-label="Menú" aria-haspopup="true" aria-expanded="false">${icon('dots')}</button></div>
+        ${diaC}<button class="icon-btn only" id="refr" aria-label="Actualizar la información">${icon('refresh')}</button><button class="icon-btn only" id="menub" aria-label="Menú" aria-haspopup="true" aria-expanded="false">${icon('dots')}</button></div>
       <div class="menu" id="menu" hidden><button id="mclv">${icon('key')}Cambiar mi clave</button><button id="out">${icon('out')}Salir</button></div>
       <div id="redbar" class="redbar" role="status" hidden></div>
       <div class="progress" aria-hidden="true"><i id="prog"></i></div>
@@ -626,6 +627,7 @@ async function iniciar() {
     <main id="main"></main>
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
   }
+  $('#refr').onclick = () => actualizarTodo();
   $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
   let tFecha = 0;
   const cambiarFecha = f => {       // la fecha y la pantalla cambian juntas: al instante se ve "cargando" y las respuestas del día anterior se descartan
@@ -656,7 +658,27 @@ async function iniciar() {
   montarProbar();
   if (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA') setTimeout(() => precargar(tabs.map(t => t[0])), 2500);      // deja lista cada pantalla para poder trabajar sin conexión
 }
+/** Botón "Actualizar": envía lo pendiente, olvida lo guardado en el teléfono y vuelve a pedir todo al servidor (por ejemplo, tras importar de Mi DTE). */
+async function actualizarTodo() {
+  const b = $('#refr');
+  if (!EN_LINEA) return toast('Sin conexión: no se puede actualizar ahora.', true);
+  if (b) { if (b.classList.contains('girando')) return; b.classList.add('girando'); }
+  try {
+    if (pendActivos().length) await sincronizar();
+    olvidarCache(true);
+    S.cat = await api('catalogo', S.sess.token);
+    ir(S.tab);
+    toast('Información actualizada');
+  } catch (e) { toast('No se pudo actualizar. Revisa tu conexión.', true); }
+  finally { if (b) b.classList.remove('girando'); }
+}
 function ir(t, silencioso) {
+  // Importación a medias (subió un informe y falta el otro): no se pierde sin avisar
+  if (S.impPendiente && S.tab === 'importar') {
+    if (silencioso) return;
+    if (!confirm('Tienes archivos subidos que todavía no se importan (falta el otro informe o falta presionar Importar). Si sales, se pierden. ¿Salir igual?')) return;
+    S.impPendiente = false;
+  }
   S.tab = t;
   const tabs = TABS[S.sess.rol] || [];
   if (S.grupos) {
@@ -1380,14 +1402,15 @@ async function vUsuarios(m) {
       <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
       <label class="f" for="u3" style="margin-top:10px">RUT</label><input class="in" id="u3" value="${esc(u.rut)}" placeholder="12.345.678-5" autocomplete="off">
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
-      <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off"></div>
+      <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
+        <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="u7" ${u.emiteAntes ? 'checked' : ''}> Emite sus folios el día antes de la ruta (se pasan al día siguiente al importar)</label></div>
       <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u6" ${u.activo ? 'checked' : ''}> Activo (si lo desactivas, no puede ingresar)</label></div>
       <div class="foot"><button class="btn ghost" id="ux">Cancelar</button><span class="grow"></span><button class="btn cu" id="ug">Guardar</button></div></div>`;
     document.body.appendChild(ov);
     const rolCh = () => { $('#u5w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
     $('#ux', ov).onclick = () => cerrarHoja(ov);
     $('#ug', ov).onclick = async () => {
-      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked };
+      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: $('#u7', ov).checked };
       if (!o.nombre) return toast('Escribe el nombre.', true);
       if (!o.rut && !o.correo) return toast('Indica el RUT o el correo.', true);
       const r = await api('guardarUsuario', S.sess.token, o); cerrarHoja(ov);
@@ -1843,7 +1866,8 @@ async function vImportar(m) {
   ['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
   ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
   drop.addEventListener('drop', e => procesar([...e.dataTransfer.files]));
-  $('#fi').onchange = e => procesar([...e.target.files]);
+  $('#fi').onchange = e => { const a = [...e.target.files]; e.target.value = ''; procesar(a); };
+  S.diasTerm = [];
   cargarTerminales();
 
   /** Mi DTE entrega dos informes que van juntos: sin los dos no se importa (los kilos y las ventas deben cruzarse). */
@@ -1857,22 +1881,62 @@ async function vImportar(m) {
     if (a.join() !== b.join()) return `Los dos informes deben ser de las mismas fechas. Ventas Diarias trae ${a.map(fcorta).join(', ')} y el Informe de ventas trae ${b.map(fcorta).join(', ')}.`;
     return '';
   }
-  const avisoRequisitos = leidos => { const r = requisitos(leidos); return r ? `<div class="alert" style="margin-top:12px"><b>No se puede importar todavía.</b> ${r} Súbelos juntos para continuar.</div>` : ''; };
+  const avisoRequisitos = leidos => { const r = requisitos(leidos); return r ? `<div class="alert" style="margin-top:12px"><b>No se puede importar todavía.</b> ${r} Con «Agregar informe» sube el que falta: lo que ya subiste se queda aquí.</div>` : ''; };
 
   const pausa = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 30)));       // deja pintar el aviso antes de un trabajo pesado
+  const leidos = [];          // todo lo subido en esta importación: se puede ir agregando de a un archivo (por ejemplo, si no están en la misma carpeta)
+  S.impPendiente = false;
   async function procesar(files) {
     if (!files.length) return;
     $('#pv').innerHTML = `<div class="card impl"><span class="spin"></span><div class="grow"><b>Leyendo ${files.length > 1 ? files.length + ' archivos' : 'el archivo'}…</b>
       <div class="muted" id="leyn">Preparando el lector de Excel</div></div></div>`;
-    try { await cargarXLSX(); } catch (e) { $('#pv').innerHTML = `<div class="alert">${esc(e.message)}</div>`; return; }
-    const leidos = [];
+    try { await cargarXLSX(); } catch (e) { $('#pv').innerHTML = `<div class="alert">${esc(e.message)}</div>`; if (leidos.length) pintarTodo(); return; }
+    const nuevos = [];
     for (const [k, f] of files.entries()) {
       $('#leyn').textContent = `${f.name} (${k + 1} de ${files.length})`; await pausa();
-      try { leidos.push(Object.assign({ nombre: f.name }, leerLibro(await f.arrayBuffer()))); }
-      catch (e) { leidos.push({ nombre: f.name, error: e.message }); }
+      try { nuevos.push(Object.assign({ nombre: f.name }, leerLibro(await f.arrayBuffer()))); }
+      catch (e) { nuevos.push({ nombre: f.name, error: e.message }); }
     }
+    try { ordenarInformes(nuevos); } catch (e) { console.error(e); }        // solo los nuevos: los que ya estaban conservan su orden y sus cambios (notas de crédito)
+    nuevos.forEach(n => { const i = leidos.findIndex(l => l.nombre === n.nombre); if (i >= 0) leidos.splice(i, 1); });      // el mismo archivo subido otra vez lo reemplaza
+    leidos.push(...nuevos);
     leidos.sort((a, b) => (a.tipo === 'dte' ? 0 : 1) - (b.tipo === 'dte' ? 0 : 1)); // primero los folios
-    try { ordenarInformes(leidos); } catch (e) { console.error(e); }
+    pintarTodo();
+  }
+  // Vendedores que emiten sus folios el día antes de la ruta (José, Javier): sus documentos de días anteriores al último del archivo pasan al día siguiente.
+  const antes = {};                                   // usuario → true/false (la encargada puede apagarlo)
+  const sumaDia = (iso, n) => { const [a, m, d] = iso.split('-'); return new Date(Date.UTC(+a, m - 1, +d + n)).toISOString().slice(0, 10); };
+  const vendDeTerminal = () => { const mp = {}; (S.cat.vendedores || []).forEach(v => String(v.terminales || '').split(',').map(x => x.trim().toUpperCase()).filter(String).forEach(t => mp[t] = v)); return mp; };
+  function aplicarAntes() {
+    const mp = vendDeTerminal(), docs = leidos.filter(l => !l.error && (l.tipo === 'dte' || l.tipo === 'detalle'));
+    const todas = docs.flatMap(l => l.filas.map(f => (f._fOrig = f._fOrig || (f._ncMovida ? isoFecha(f.Fecha) : isoFecha(f.Fecha)))));
+    const max = todas.sort().slice(-1)[0] || '', resumen = {};
+    for (const l of docs) {
+      const campo = l.tipo === 'dte' ? 'Emitido en' : 'Equipo';
+      for (const f of l.filas) {
+        if (f._ncMovida || /nota de cr/i.test(l.tipo === 'dte' ? f.Documento : f.Nombre)) continue;
+        const v = mp[String(f._equipoOrig || f[campo] || '').trim().toUpperCase()];
+        const mover = !!(v && v.emiteAntes && antes[v.usuario] !== false && f._fOrig < max && f._fOrig);
+        const nuevo = mover ? sumaDia(f._fOrig, 1) : f._fOrig;
+        if (v && v.emiteAntes && l.tipo === 'dte') { const r = resumen[v.usuario] = resumen[v.usuario] || { nombre: v.nombre, n: 0, tot: 0 }; r.tot++; if (f._fOrig < max) r.n++; }
+        if (isoFecha(f.Fecha) === nuevo) continue;
+        const [a, m, d] = nuevo.split('-');
+        if (l.tipo === 'dte') { f.Fecha = d + '-' + m + '-' + a; delete f._fo; }
+        else { const ant = typeof f._fo === 'number' ? f._fo % 1 : 0; f.Fecha = nuevo; if (typeof f._fo === 'number') f._fo = Math.floor(Date.UTC(+a, m - 1, +d) / 864e5 + 25569) + ant; }
+      }
+    }
+    return { resumen, max };
+  }
+  function tarjetaAntes(r) {
+    const k = Object.keys(r.resumen); if (!k.length) return '';
+    return `<div class="card ordc"><b>Folios emitidos el día antes</b>
+      <p class="muted" style="margin:4px 0 8px">Estos vendedores facturan el día anterior a su ruta. Sus folios de días anteriores al ${esc(fcorta(r.max))} pasan al día siguiente para que salgan en su ruta.</p>
+      <ul class="ordl">${k.map(u => { const x = r.resumen[u], on = antes[u] !== false;
+        return `<li><span class="grow"><b>${esc(x.nombre)}</b> · ${x.n} de ${x.tot} folios ${on ? 'pasan' : 'pasarían'} al día siguiente</span>
+          <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-antes="${esc(u)}" ${on ? 'checked' : ''}> Pasar al día siguiente</label></li>`; }).join('')}</ul></div>`;
+  }
+  function pintarTodo() {
+    const infoAntes = aplicarAntes();
     const pintar = () => {
     /** Las notas de crédito suelen emitirse otro día; la encargada les pone la fecha de la factura que corrigen para que queden en ese día. */
     const ncs = () => (leidos.find(l => !l.error && l.tipo === 'dte') || { filas: [] }).filas.filter(f => /nota de cr/i.test(f.Documento));
@@ -1913,14 +1977,21 @@ async function vImportar(m) {
         <div class="muted">${esc(l.nombre)} · ${esc(fechas)}</div></div>
         <span class="chip">${l.tipo === 'dte' ? v + ' documentos' : v + ' líneas de producto'}</span>${g ? `<span class="chip">${g} ${l.tipo === 'dte' ? 'guías (se omiten)' : 'líneas de guía'}</span>` : ''}</div>
         <div id="res${i}"></div></div>`;
-    }).join('') + resumenOrden() + tarjetaNC() + avisoRequisitos(leidos) + (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
+    }).join('') + resumenOrden() + tarjetaNC() + tarjetaAntes(infoAntes) + avisoRequisitos(leidos) +
+      (leidos.length ? `<label class="btn ghost block" id="agr" style="cursor:pointer;text-align:center"><input type="file" id="fi2" accept=".xlsx,.xls,.csv" multiple class="sr">+ Agregar informe</label>` : '') +
+      (leidos.some(l => !l.error) && !requisitos(leidos) ? '<button class="btn cu block" id="imp">Importar</button>' : '');
+    $$('[data-antes]').forEach(c => c.onchange = () => { antes[c.dataset.antes] = c.checked; pintarTodo(); });
+    S.impPendiente = leidos.length > 0;
+    { const f2 = $('#fi2'); if (f2) f2.onchange = e => { const a = [...e.target.files]; e.target.value = ''; procesar(a); }; }
     $$('[data-nc]').forEach(inp => inp.onchange = () => { if (!inp.value) return; moverNC(inp.dataset.nc, inp.value); pintar(); });
     const b = $('#imp'); if (!b) return;
     const lotesDe = l => l.tipo === 'creditos' ? [l.filas] : l.tipo === 'dte' ? tandas(l.filas, 1200) : tandas(l.filas, 2000, x => String(x.Nombre) + '|' + String(x.Folio));
     b.onclick = async () => {
-      b.hidden = true; const sinT = new Set(); let fechas = [];
+      b.hidden = true; const sinT = new Set(); let fechas = []; const ag = $('#agr'); if (ag) ag.remove();
+      const resumen = [], errores = [];
       // panel de avance: se ve qué archivo se está guardando y cuánto falta
-      const items = leidos.map((l, i) => [l, i]).filter(([l]) => !l.error), NOM = { dte: 'Ventas Diarias', detalle: 'Informe de ventas (kilos)', creditos: 'Control de crédito' };
+      const NOM = { dte: 'Ventas Diarias', detalle: 'Informe de ventas (kilos)', creditos: 'Control de crédito' };
+      const items = leidos.map((l, i) => [l, i]).filter(([l]) => !l.error);
       let T = 0, D = 0; items.forEach(([l]) => T += lotesDe(l).length);
       const pp = document.createElement('div'); pp.className = 'card impp run';
       pp.innerHTML = `<div class="row"><span class="spin" id="impsp"></span><b class="grow" id="impt">Guardando en la base de datos…</b><span class="muted" id="impn">0%</span></div>
@@ -1943,13 +2014,13 @@ async function vImportar(m) {
             continue;
           }
           const lotes = lotesDe(l);
-          const r = { importados: 0, repetidos: 0, sinVendedor: 0, guias: 0, lineas: 0, omitidas: 0, terminalesSinAsignar: [], fechas: [], productosNuevos: [], porVendedor: {} };
+          const r = { corregidos: 0, corregidas: 0, importados: 0, repetidos: 0, sinVendedor: 0, guias: 0, lineas: 0, omitidas: 0, terminalesSinAsignar: [], fechas: [], productosNuevos: [], porVendedor: {} };
           for (const [k, lote] of lotes.entries()) {
             if (lotes.length > 1) paso(i, 'run', `Parte ${k + 1} de ${lotes.length}`);
             barra(0.35);
             const x = await api(l.tipo === 'dte' ? 'importarDTE' : 'importarDetalle', S.sess.token, lote);
             D++; barra(0);
-            ['importados', 'repetidos', 'sinVendedor', 'guias', 'lineas', 'omitidas'].forEach(c => r[c] += x[c] || 0);
+            ['importados', 'repetidos', 'sinVendedor', 'guias', 'lineas', 'omitidas', 'corregidos', 'corregidas'].forEach(c => r[c] += x[c] || 0);
             r.terminalesSinAsignar = r.terminalesSinAsignar.concat(x.terminalesSinAsignar || []); r.fechas = r.fechas.concat(x.fechas || []);
             r.productosNuevos = r.productosNuevos.concat(x.productosNuevos || []);
             Object.keys(x.porVendedor || {}).forEach(v => r.porVendedor[v] = (r.porVendedor[v] || 0) + x.porVendedor[v]);
@@ -1962,16 +2033,27 @@ async function vImportar(m) {
             : `Líneas nuevas: <b>${r.lineas}</b> de venta y ${r.guias} de guías. ${r.omitidas ? r.omitidas + ' líneas de documentos que ya estaban se dejaron como estaban. ' : ''}` +
               (r.productosNuevos.length ? `<br>Productos nuevos agregados como inactivos (revísalos en la hoja PRODUCTOS): ${esc(r.productosNuevos.join(', '))}.` : '')) + '</div>';
           paso(i, 'ok', 'Listo');
-        } catch (e) { $('#res' + i).innerHTML = `<div class="alert" style="margin-bottom:0">${esc(e.message)}</div>`; paso(i, 'err', 'Con error'); }
+          resumen.push(l.tipo === 'dte' ? { t: 'dte', n: r.importados, rep: r.repetidos, cor: r.corregidos } : { t: 'det', n: r.lineas, rep: r.omitidas, cor: r.corregidas });
+        } catch (e) { $('#res' + i).innerHTML = `<div class="alert" style="margin-bottom:0">${esc(e.message)}</div>`; paso(i, 'err', 'Con error'); errores.push(NOM[l.tipo] + ' (' + l.nombre + '): ' + e.message); }
       }
-      b.remove();
+      b.remove(); S.impPendiente = false;
+      olvidarCache(true); api('catalogo', S.sess.token).then(c => S.cat = c).catch(() => {});
       guardarOrdenados(leidos, pp);
       D = T; barra(0); pp.classList.remove('run'); pp.classList.add('fin'); $('#impsp', pp).outerHTML = '<span class="okdot">✓</span>';
       $('#impt', pp).textContent = pp.querySelector('li.err') ? 'Terminó con errores' : 'Importación terminada';
       const f = [...new Set(fechas)];
+      { const d = resumen.filter(x => x.t === 'dte'), k = resumen.filter(x => x.t === 'det'), sum = (a, c) => a.reduce((z, x) => z + x[c], 0);
+        const nuevo = sum(d, 'n') + sum(k, 'n'), rep = sum(d, 'rep'), cor = sum(d, 'cor');
+        const caja = document.createElement('div');
+        caja.className = 'alert ' + (errores.length ? '' : 'ok'); caja.style.marginTop = '12px';
+        caja.innerHTML = errores.length
+          ? `<b>La importación no terminó bien.</b> ${esc(errores.join(' · '))}<br>Lo que sí se guardó queda; puedes volver a subir los archivos y solo se agrega lo que falta.`
+          : nuevo || cor ? `<b>Listo, se cargó.</b> ${sum(d, 'n')} documentos nuevos y ${sum(k, 'n')} líneas de kilos${rep ? `. ${rep} documentos ya estaban y no se tocaron` : ''}${cor ? `. ${cor} documentos ya cargados cambiaron de día` : ''}. Ya puedes verlos en cada día.`
+          : `<b>No había nada nuevo.</b> Todo lo de estos archivos ya estaba cargado${rep ? ' (' + rep + ' documentos)' : ''}; no cambié nada.`;
+        pp.insertAdjacentElement('afterend', caja); }
       if (f.length === 1 && f[0] !== S.fecha) { S.fecha = f[0]; $('#fecha').value = S.fecha; toast('Mostrando el ' + fechaLarga(S.fecha)); }
       if (sinT.size) toast('Hay terminales sin vendedor: ' + [...sinT].join(', ') + '. Asígnalos abajo.', true);
-      cargarTerminales([...sinT]);
+      cargarTerminales([...sinT], f.slice().sort());
     };
     };
     pintar();
@@ -2003,12 +2085,15 @@ async function vImportar(m) {
     }
     pinta(); subir();
   }
-  async function cargarTerminales(resaltar = []) {
-    const t = await api('listarTerminales', S.sess.token);
+  // días que se muestran en la tabla de terminales (S.diasTerm): los recién importados, o el día elegido
+  async function cargarTerminales(resaltar = [], dias) {
+    if (dias && dias.length) S.diasTerm = dias;
+    const ds = (S.diasTerm && S.diasTerm.length ? S.diasTerm : [S.fecha]).slice().sort();
+    const t = await api('listarTerminales', S.sess.token, ds);
     const internos = /^(OFICINA|DESKTOP|PC-)/i;
-    $('#term').innerHTML = `<div class="tw"><table><thead><tr><th>Terminal</th><th class="r">Docs</th><th>Vendedor</th></tr></thead><tbody>${t.map(x => `
+    $('#term').innerHTML = `<div class="tw"><table><thead><tr><th>Terminal</th>${ds.map(d => `<th class="r">Docs ${ds.length > 1 || d !== S.fecha ? fcorta(d) : ''}</th>`).join('')}<th>Vendedor</th></tr></thead><tbody>${t.map(x => `
       <tr><td><b>${esc(x.terminal)}</b> ${resaltar.includes(x.terminal) || (!x.vendedor && x.documentos) ? '<span class="chip bad">sin asignar</span>' : ''}
-        ${internos.test(x.terminal) && !x.vendedor ? '<span class="chip">uso interno</span>' : ''}</td><td class="r">${x.documentos}</td>
+        ${internos.test(x.terminal) && !x.vendedor ? '<span class="chip">uso interno</span>' : ''}</td>${ds.map(d => `<td class="r">${(x.porFecha || {})[d] || 0}</td>`).join('')}
       <td><select class="in" style="min-height:38px" data-t="${esc(x.terminal)}"><option value="">— Ninguno —</option>${opcVend(x.vendedor)}</select></td></tr>`).join('')}
       </tbody></table></div>`;
     $$('#term select').forEach(s => s.onchange = async () => {
@@ -2098,7 +2183,7 @@ async function vResumen(m) {
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>${v.CHEQUE ? `<dt>Cheques</dt><dd>${clp(v.CHEQUE)}</dd>` : ''}
         ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
         ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}
-        ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}</dd>` : ''}
+        ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}${v.depositoExceso ? ` <span class="chip bad">${clp(v.depositoExceso)} más que el efectivo</span>` : ''}</dd>` : ''}
         <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
         ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
           <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
@@ -2177,66 +2262,65 @@ async function vDepositos(m) {
   if (!esV && !S.vend) S.vend = S.cat.vendedores[0] && S.cat.vendedores[0].usuario;
   const r = await frescoDep(esV);
   const cerrada = r.estadoDia === 'CERRADA';
-  const libres = r.folios.filter(x => !x.deposito).map(x => Object.assign({ tipo: 'f' }, x))
-    .concat(r.cobranzas.filter(x => !x.deposito).map(x => Object.assign({ tipo: 'c' }, x)));
-  const sumE = xs => xs.reduce((a, x) => a + x.efectivo, 0), pl = n => n + (n === 1 ? ' pago' : ' pagos');
-  const todosI = r.folios.map(x => Object.assign({ tipo: 'f' }, x)).concat(r.cobranzas.map(x => Object.assign({ tipo: 'c' }, x))), yaDep = todosI.filter(x => x.deposito);
+  // El depósito no se asocia a folios: se compara en plata. Efectivo del día (ventas + cobranza − gastos) contra lo depositado.
+  const q = r.resumen || (() => { const ev = r.folios.reduce((t, x) => t + x.efectivo, 0), ec = r.cobranzas.reduce((t, x) => t + x.efectivo, 0), dp = r.depositos.reduce((t, x) => t + x.monto, 0);
+    return { efectivoVentas: ev, efectivoCobranza: ec, gastos: 0, disponible: ev + ec, depositado: dp, saldo: ev + ec - dp }; })();
+  const sinMov = !q.efectivoVentas && !q.efectivoCobranza && !q.depositado && !r.depositos.length;
   render(m, `<h2>Depósitos de efectivo</h2>
-    <p class="lead">Registra aquí el efectivo que depositaste. Marca qué folios incluye y sube el comprobante.</p>
-    ${libres.length || yaDep.length ? `<div class="kpis" style="margin-bottom:14px"><div><span>Por depositar</span><b>${clp(sumE(libres))}</b><span>${pl(libres.length)}</span></div>
-      <div><span>Ya depositado</span><b>${clp(sumE(yaDep))}</b><span>${pl(yaDep.length)}</span></div></div>` : ''}
+    <p class="lead">Registra cuánto depositaste. No hace falta elegir folios: se compara con el efectivo que recibiste en el día.</p>
     ${esV ? '' : `<div class="row" style="margin-bottom:12px"><select class="in" style="width:auto" id="dv">${opcVend(S.vend)}</select></div>`}
-    ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : libres.length ? `<div class="card">
-      <div class="row"><b class="grow">Por depositar (${libres.length})</b><button class="btn ghost sm" id="all">Marcar todos</button></div>
-      <p class="muted" style="margin:4px 0 0">Si aparecen folios nuevos después de depositar, son pagos que se detallaron más tarde: aún no están depositados.</p>
-      <div id="chk" style="margin:10px 0">${libres.map((x, i) => `<label class="switch" style="padding:8px 0;border-top:1px solid var(--line-2)">
-        <input type="checkbox" data-i="${i}" checked><span class="grow">${esc(x.cliente)}<br><span class="muted">${x.tipo === 'c' ? 'Cobranza' : 'Folio'} ${esc(x.folio)}</span></span><b>${clp(x.efectivo)}</b></label>`).join('')}</div>
-      <div class="grid g3">
+    <div class="kpis" style="margin-bottom:10px"><div><span>Efectivo del día</span><b>${clp(q.disponible)}</b></div>
+      <div><span>Depositado</span><b>${clp(q.depositado)}</b></div>
+      <div><span>${q.saldo < 0 ? 'Depositaste de más' : 'Falta por depositar'}</span><b>${clp(Math.abs(q.saldo))}</b></div></div>
+    <details class="mas" style="margin:0 0 14px"><summary>Cómo se calcula</summary><ul class="info">
+      <li>Efectivo de las ventas: <b>${clp(q.efectivoVentas)}</b></li><li>Efectivo de cobranza: <b>${clp(q.efectivoCobranza)}</b></li>
+      ${q.gastos ? `<li>Gastos: <b>− ${clp(q.gastos)}</b></li>` : ''}<li>Ya depositado: <b>− ${clp(q.depositado)}</b></li></ul></details>
+    ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : `<div class="card">
+      <b>Registrar un depósito</b>
+      <div class="grid g3" style="margin-top:8px">
         <div><label class="f" for="db">Banco</label><select class="in" id="db"><option value="">Elegir…</option>${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div>
-        <div><label class="f" for="dm">Monto depositado</label><input class="in n" id="dm" inputmode="numeric"></div>
+        <div><label class="f" for="dm">Monto depositado</label><input class="in n" id="dm" inputmode="numeric" value="${q.saldo > 0 ? q.saldo : ''}"></div>
         <div><label class="f" for="dr">N° de operación</label><input class="in" id="dr" inputmode="numeric"></div>
         ${campoArchivos('dfile')}
       </div>
       <div id="dsal"></div>
-      <button class="btn cu block" id="dg" style="margin-top:6px">Registrar depósito</button></div>`
-    : '<div class="empty"><b>No hay efectivo pendiente</b>Aparece aquí el efectivo de los folios que marcaste como pagados en efectivo.</div>'}
+      <button class="btn cu block" id="dg" style="margin-top:6px">Registrar depósito</button></div>`}
     <h3>Depósitos registrados</h3>
     ${r.depositos.length ? r.depositos.map(d => `<div class="card" style="margin-bottom:8px"><div class="row">
-      <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}<div class="muted">${d.folios.length} folio(s)${d.cobranzas.length ? ' y ' + d.cobranzas.length + ' cobranza(s)' : ''} · efectivo incluido ${clp(d.incluido)}</div>
-        ${d.monto !== d.incluido ? `<span class="chip bad">Diferencia ${clp(d.monto - d.incluido)}</span>` : '<span class="chip ok">Cuadra</span>'}
+      <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}
+        ${d.folios.length || d.cobranzas.length ? `<div class="muted">Registrado con ${d.folios.length + d.cobranzas.length} folio(s) asociados</div>` : ''}
         <div style="margin-top:6px">${chipsAdj(d.adjuntos, 'DEPOSITOS', d.id, !cerrada || !esV)}</div></div>
-      <div class="big" style="font-size:22px">${clp(d.monto)}</div>${cerrada ? '' : `<button class="x" style="width:42px" data-del="${d.id}" aria-label="Borrar depósito">×</button>`}</div><details class="mas" style="margin:6px 0"><summary>Ver qué incluye</summary><ul class="info">${todosI.filter(x => x.deposito === d.id).map(x => `<li>${x.tipo === 'c' ? 'Cobranza' : 'Folio'} ${esc(x.folio)} · ${esc(x.cliente)} · <b>${clp(x.efectivo)}</b></li>`).join('')}</ul></details></div>`).join('')
-    : '<div class="empty">Sin depósitos este día.</div>'}`);
+      <div class="big" style="font-size:22px">${clp(d.monto)}</div>${cerrada ? '' : `<button class="x" style="width:42px" data-del="${d.id}" aria-label="Borrar depósito">×</button>`}</div></div>`).join('')
+    : `<div class="empty">${sinMov ? 'Hoy no hay efectivo ni depósitos.' : 'Sin depósitos este día.'}</div>`}`);
   if (!esV) $('#dv').onchange = e => { S.vend = e.target.value; ir('depositos'); };
   m.onclick = async e => { const id = e.target.dataset.del; if (!id || !confirm('¿Borrar este depósito?')) return;
     await api('borrarDeposito', S.sess.token, id); toast('Depósito borrado'); ir('depositos'); };
   activarAdjuntarDespues(m, () => ir('depositos'));
-  if (cerrada || !libres.length) return;
+  if (cerrada) return;
   enlazarCampoArchivos('dfile');
-  const sel = () => $$('#chk input').filter(c => c.checked).map(c => libres[c.dataset.i]);
   const dm = $('#dm');
-  const saldo = () => {
-    const inc = sel().reduce((a, x) => a + x.efectivo, 0), mon = soloDigitos(dm.value);
-    $('#dsal').innerHTML = `<div class="saldo ${mon === inc ? 'ok' : 'no'}"><span>Efectivo marcado ${clp(inc)}</span><span>${mon === inc ? 'Cuadra' : 'Diferencia ' + clp(mon - inc)}</span></div>`;
+  const aviso = () => {
+    const mon = soloDigitos(dm.value), resta = q.saldo - mon;
+    $('#dsal').innerHTML = mon ? `<div class="saldo ${resta >= 0 ? 'ok' : 'no'}"><span>Después de este depósito</span><span>${resta > 0 ? 'Faltarían ' + clp(resta) : resta < 0 ? 'Más que el efectivo: ' + clp(-resta) : 'Queda todo depositado'}</span></div>` : '';
   };
-  $('#chk').onchange = () => { dm.value = sel().reduce((a, x) => a + x.efectivo, 0); saldo(); };
-  $('#all').onclick = () => { $$('#chk input').forEach(c => c.checked = true); $('#chk').onchange(); };
-  dm.oninput = saldo; $('#chk').onchange();
+  dm.oninput = aviso; aviso();
   $('#dg').onclick = async () => {
-    const s2 = sel();
+    const mon = soloDigitos(dm.value);
     if (!$('#db').value) return toast('Elige el banco del depósito.', true);
-    if (!s2.length) return toast('Marca al menos un folio.', true);
+    if (!mon) return toast('Escribe el monto depositado.', true);
     const b = $('#dg'); b.disabled = true;
     try {
       if (COLA.length || pendActivos().length) { toast('Aún se están guardando folios. Espera unos segundos y vuelve a intentar.', true); return; }
-      if (EN_LINEA) {      // última revisión: si la lista cambió desde que se abrió la pantalla, no se guarda a ciegas
-        const f = await frescoDep(esV), ids = r2 => r2.folios.filter(x => !x.deposito).map(x => 'f' + x.key).concat(r2.cobranzas.filter(x => !x.deposito).map(x => 'c' + x.key)).sort().join();
-        if (ids(f) !== ids(r)) { toast('La lista de efectivo cambió (se detallaron más folios). Revísala antes de depositar.', true); ir('depositos'); return; }
+      let saldo = q.saldo;
+      if (EN_LINEA) {      // última revisión: si el efectivo cambió desde que se abrió la pantalla, no se guarda a ciegas
+        const f = await frescoDep(esV), q2 = f.resumen || q;
+        if (q2.disponible !== q.disponible) { toast('El efectivo del día cambió (se detallaron más pagos). Revisa el monto antes de depositar.', true); ir('depositos'); return; }
+        saldo = q2.saldo;
       }
-      const nuevo = await api('guardarDeposito', S.sess.token, S.fecha, { vendedor: esV ? '' : S.vend, banco: $('#db').value, monto: soloDigitos(dm.value), referencia: $('#dr').value,
-        folios: s2.filter(x => x.tipo === 'f').map(x => x.key), cobranzas: s2.filter(x => x.tipo === 'c').map(x => x.key) });
-      const quedan = libres.filter(x => s2.indexOf(x) < 0);
-      toast((nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado') + (quedan.length ? `. Quedan ${pl(quedan.length)} por depositar (${clp(sumE(quedan))})` : '. No queda nada por depositar'));
+      if (mon > saldo && !confirm(`Vas a registrar ${clp(mon)} y solo quedan ${clp(Math.max(saldo, 0))} por depositar. ¿Registrar igual?`)) return;
+      const nuevo = await api('guardarDeposito', S.sess.token, S.fecha, { vendedor: esV ? '' : S.vend, banco: $('#db').value, monto: mon, referencia: $('#dr').value, folios: [], cobranzas: [] });
+      const resta = saldo - mon;
+      toast((nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado') + (resta > 0 ? `. Faltan ${clp(resta)} por depositar` : resta < 0 ? `. Depositaste ${clp(-resta)} más que el efectivo` : '. Queda todo depositado'));
       const fs = [...$('#dfile').files];
       if (fs.length && nuevo._pendiente) toast('Sin conexión: el comprobante no se puede subir ahora. Cuando se envíe el depósito, usa "Adjuntar".', true);
       else if (fs.length) { try { await subirArchivos('DEPOSITOS', nuevo.id, fs); } catch (e) { toast('El depósito quedó guardado, pero el comprobante no subió. Usa "Adjuntar".', true); } }
@@ -2265,17 +2349,20 @@ async function cobrarDesdeLista(box, alTerminar) {
   const edad = d => d > 60 ? 'bad' : d > 30 ? 'warn' : 'ok';
   box.innerHTML = `<div class="card"><div class="row"><b class="grow" style="font-size:17px">Cobrar a un cliente</b><span class="muted">${clientes.length} con deuda · ${clp(clientes.reduce((a, c) => a + c.deuda, 0))}</span></div>
     <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Ver política de crédito</summary>${tarjetaPolitica()}</details>
-    <input class="in" id="cq" placeholder="Buscar por nombre o RUT" autocomplete="off" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
+    <input class="in" id="cq" placeholder="Buscar por nombre, RUT o N° de folio" autocomplete="off" inputmode="search" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
   const res = $('#cres', box), pan = $('#cpan', box);
   const lista = q => {
-    const n = normBus(q), xs = (n ? clientes.filter(c => normBus(c.cliente).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0) : clientes.slice().sort((a, b) => b.deuda - a.deuda)).slice(0, 8);
-    res.innerHTML = xs.length ? xs.map(c => `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${esc(c.rut || 'Sin RUT')} · ${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}</small></span><b>${clp(c.deuda)}</b></button>`).join('')
+    const n = normBus(q), fq = String(q || '').replace(/\D/g, '');         // si lo escrito son números, también se busca entre los folios de cada cliente
+    const porFolio = c => fq.length >= 2 ? c.facturas.filter(f => String(f.folio).indexOf(fq) >= 0) : [];
+    const xs = (n ? clientes.filter(c => normBus(c.cliente).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0 || porFolio(c).length) : clientes.slice().sort((a, b) => b.deuda - a.deuda)).slice(0, 8);
+    res.innerHTML = xs.length ? xs.map(c => { const pf = porFolio(c);
+      return `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${esc(c.rut || 'Sin RUT')} · ${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}${pf.length ? ' · <b style="color:var(--cu-2)">Folio ' + pf.map(f => esc(f.folio)).slice(0, 3).join(', ') + '</b>' : ''}</small></span><b>${clp(c.deuda)}</b></button>`; }).join('')
       : '<div class="muted">Ningún cliente con deuda coincide.</div>';
   };
   lista('');
   $('#cq', box).oninput = e => { pan.innerHTML = ''; lista(e.target.value); };
-  res.onclick = e => { const b = e.target.closest('.cli'); if (!b) return; abrirCliente(clientes.find(c => c.clave === b.dataset.k)); };
-  function abrirCliente(c) {
+  res.onclick = e => { const b = e.target.closest('.cli'); if (!b) return; abrirCliente(clientes.find(c => c.clave === b.dataset.k), String($('#cq', box).value || '').replace(/\D/g, '')); };
+  function abrirCliente(c, folioBuscado) {
     res.innerHTML = '';
     pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')}${c.condicion ? ' · crédito a ' + c.condicion + ' días' : ''}</div></div>
         <button type="button" class="btn ghost sm" id="cvolver">Otro cliente</button></div>
@@ -2290,10 +2377,12 @@ async function cobrarDesdeLista(box, alTerminar) {
         <div id="cbancow" hidden><label class="f" for="cbanco">Banco al que transfirió</label><select class="in" id="cbanco">${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div></div>
       <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="cok">Registrar cobro</button></div></div>`;
+    if (folioBuscado && folioBuscado.length >= 2) c.facturas.forEach((f, i) => { if (String(f.folio).indexOf(folioBuscado) >= 0) { const ck = $('.cchk[data-i="' + i + '"]', pan); if (ck) { ck.checked = true; $('.cmonto', ck.closest('.cfac')).hidden = false; ck.closest('.cfac').classList.add('buscada'); } } });
     const sel = () => $$('.cchk', pan).filter(x => x.checked);
     const total = () => { const t = sel().reduce((a, x) => a + soloDigitos($('[data-m="' + x.dataset.i + '"]', pan).value), 0); $('#ctot', pan).textContent = clp(t); return t; };
     pan.onchange = e => { if (e.target.classList.contains('cchk')) { $('.cmonto', e.target.closest('.cfac')).hidden = !e.target.checked; total(); } };
     pan.oninput = e => { if (e.target.dataset.m !== undefined) total(); };
+    total();
     $('#cvolver', pan).onclick = () => { pan.innerHTML = ''; lista($('#cq', box).value); };
     $('#ctodas', pan).onclick = () => { const todas = $$('.cchk', pan); const on = todas.some(x => !x.checked); todas.forEach(x => { x.checked = on; $('.cmonto', x.closest('.cfac')).hidden = !on; }); total(); };
     const forma = $('#cforma', pan);

@@ -634,3 +634,16 @@ nav.sub button:active{transform:scale(.95)}
  .btn:active,.folio:active,.vcard.clic:active,.hpaso:active,nav.bottom button:active{transform:none}
  html{scroll-behavior:auto}
 }
+
+.cfac.buscada{background:rgba(194,87,26,.08);border-radius:10px;box-shadow:0 0 0 2px rgba(194,87,26,.25)}
+
+#refr svg{transition:transform .5s var(--suave)}
+#refr.girando svg{animation:spin .8s linear infinite}
+@media(max-width:420px){
+ .hbar{gap:6px}
+ .hbar .brand img{width:34px;height:34px}
+ .hbar .brand b{font-size:16px}
+ .hday .dl{min-width:58px}
+ .hday .dl svg{display:none}
+ .hbar .icon-btn.only{width:38px}
+}
