@@ -396,7 +396,17 @@ function abrirPendientes(soloSiHayErrores) {
 }
 window.addEventListener('online', () => { EN_LINEA = true; pintarRed(); sincronizar(); });
 window.addEventListener('offline', () => { EN_LINEA = false; pintarRed(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (pendActivos().length) sincronizar(); else if (!EN_LINEA) llamar('ping', []).catch(() => {}); } });
+/* Precalentamiento: el servidor de Google se "duerme" si nadie lo usa y el primer pedido tarda varios segundos.
+   Se le avisa apenas se abre la app (mientras la persona escribe su clave), al volver a ella y cada 4 minutos mientras está abierta. */
+let ultimoCalor = 0;
+function calentar() {
+  if (!EN_LINEA || document.hidden || Date.now() - ultimoCalor < 90e3) return;
+  ultimoCalor = Date.now();
+  try { fetch(CONFIG.APPS_SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'ping', args: [] }) }).catch(() => {}); } catch (e) {}
+}
+calentar();
+setInterval(calentar, 240e3);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { calentar(); if (pendActivos().length) sincronizar(); else if (!EN_LINEA) llamar('ping', []).catch(() => {}); } });
 setInterval(() => { if (!S.sess) return; if (pendActivos().length) sincronizar(); else if (!EN_LINEA) llamar('ping', []).catch(() => {}); }, 20000);
 /** Pide por detrás la versión nueva de algo que se mostró desde la memoria del teléfono. */
 function revalidar(fn, args, key) {
@@ -657,6 +667,7 @@ async function iniciar() {
   sincronizar();
   montarProbar();
   if (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA') setTimeout(() => precargar(tabs.map(t => t[0])), 2500);      // deja lista cada pantalla para poder trabajar sin conexión
+  else setTimeout(() => cargarXLSX(true).catch(() => {}), 3000);       // oficina: el lector de Excel queda listo antes de importar (si no, la primera importación espera su descarga)
 }
 /** Botón "Actualizar": envía lo pendiente, olvida lo guardado en el teléfono y vuelve a pedir todo al servidor (por ejemplo, tras importar de Mi DTE). */
 async function actualizarTodo() {
@@ -1691,11 +1702,11 @@ async function imprimirInspeccion(usuario) {
 /* ============ IMPORTAR MI DTE ============ */
 /** El lector de Excel se baja solo cuando se necesita (pesa ~900 KB). */
 let _xlsx = null;
-function cargarXLSX() {
+function cargarXLSX(silencioso) {
   if (window.XLSX) return Promise.resolve();
   if (_xlsx) return _xlsx;
   _xlsx = new Promise((res, rej) => {
-    const fin = trabajando('xlsx'), sc = document.createElement('script');
+    const fin = silencioso ? () => {} : trabajando('xlsx'), sc = document.createElement('script');
     sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
     sc.onload = () => { fin(); res(); };
     sc.onerror = () => { fin(); _xlsx = null; sc.remove(); rej(new Error('No se pudo cargar el lector de Excel. Revisa tu internet e intenta de nuevo.')); };

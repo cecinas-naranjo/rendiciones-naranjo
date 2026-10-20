@@ -155,6 +155,7 @@ function limpiarPruebas() {
 /** Crea o actualiza las hojas. Se puede ejecutar de nuevo sin perder datos. */
 function setup() {
   Object.keys(CACHEADAS_).forEach(limpiarCache_);
+  activarPrecalentamiento();
   const ss = SpreadsheetApp.getActive();
   Object.keys(SCHEMA).forEach(name => {
     let sh = ss.getSheetByName(name);
@@ -278,7 +279,29 @@ let VER_ = {};           // versiones de tabla ya leídas en esta petición
 let TOCADAS_ = {};       // tablas escritas en esta petición
 // Tablas con una fila por movimiento y columna fecha: se guardan por día en CacheService (clave con la versión de la tabla).
 const POR_DIA_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, DEVOLUCIONES: 1, VENTAS_DETALLE: 1 };
-const TTL_DIA_ = 300;
+const TTL_DIA_ = 600;
+
+/* ---------- precalentamiento ----------
+   Cada 5 minutos (de 6:00 a 23:00) un disparador deja listas en la caché las tablas de hoy y de ayer, usuarios, productos,
+   saldos de clientes y el inventario del día. Así, aunque nadie haya usado la app en un rato, la primera pantalla no tiene que
+   leer la planilla. No escribe nada. Se instala solo al ejecutar setup() (o ejecutando activarPrecalentamiento() una vez). */
+function calentar() {
+  const h = Number(Utilities.formatDate(new Date(), CFG.TZ, 'H'));
+  if (h < 6 || h >= 23) return;
+  MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {}; FRESCO_ = false;
+  const hoy = hoy_(), ayer = Utilities.formatDate(new Date(Date.now() - 864e5), CFG.TZ, 'yyyy-MM-dd');
+  try { read_('USUARIOS'); read_('PRODUCTOS'); } catch (e) {}
+  const tablas = Object.keys(POR_DIA_);
+  [hoy, ayer].forEach(f => {
+    try { cargarDia_(f, tablas); tablas.forEach(n => { if (!SLICE_[n + '|' + f]) byFecha_(n, f); }); } catch (e) {}
+  });
+  try { conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_()); } catch (e) {}
+  try { conCache_('inv|' + hoy, ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(hoy)); } catch (e) {}
+  FRESCO_ = true;
+}
+function activarPrecalentamiento() {
+  try { if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'calentar')) ScriptApp.newTrigger('calentar').timeBased().everyMinutes(5).create(); } catch (e) { Logger.log('No se pudo crear el disparador: ' + e); }
+}
 
 function nuevaVersion_() { return String(Date.now()) + Math.random().toString(36).slice(2, 6); }
 /** Versiones actuales de las tablas (una sola consulta a la caché). Si no existe, se crea. */
