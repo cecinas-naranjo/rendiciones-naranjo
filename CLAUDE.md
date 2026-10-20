@@ -301,8 +301,16 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Servidor: `calentar()` (disparador cada 5 min, de 6:00 a 23:00) deja en CacheService USUARIOS/PRODUCTOS, las tablas por día de hoy y ayer, saldos e inventario de hoy. `activarPrecalentamiento()` crea el disparador (lo llama `setup()`). `TTL_DIA_` subió de 300 a 600 s (las caché están versionadas, así que solo afecta a borrados/ediciones hechos a mano en la planilla: hasta 10 min en verse).
 - Para una demo: abrir la app 1–2 minutos antes e ingresar con la cuenta de la demo (deja todo en caché), y tener datos del día ya importados.
 
-## Datos para decidir (v49, solo ADMIN; requiere pegar APPS_SCRIPT.js COMPLETO)
-- Pestaña "Datos para decidir" (grupo Más, solo ADMIN). Servidor: `getKpis(token, desde, hasta)` → `kpis_(desde, hasta)` (en `LECTURAS_`, caché por versiones de `TABLAS_KPI_`, 10 min). Cliente: `vDatos` (app.js, al final) y bloque "Datos para decidir" al final de style.css.
+## Indicadores de gestión (v49, solo ADMIN; requiere pegar APPS_SCRIPT.js COMPLETO)
+- Pestaña "Indicadores de gestión" (grupo Más, solo ADMIN). Servidor: `getKpis(token, desde, hasta)` → `kpis_(desde, hasta)` (en `LECTURAS_`, caché por versiones de `TABLAS_KPI_`, 10 min). Cliente: `vDatos` (app.js, al final) y bloque "Indicadores de gestión" al final de style.css.
 - Contenido: **alertas automáticas** ("Para tu atención") + Ventas (total con delta vs. período anterior del mismo largo, ticket, venta por día, por vendedor, forma de pago, % contado), Crédito y cobranza (deuda total, vencida, antigüedad en tramos 0-7/8-14/15-30/31-60/+60, días reales de cobro, cobrado, top deudores/atrasados, deuda por vendedor, cheques en cartera), Kilos y mermas (kilos facturados, precio/kg, faltante en plata con `kilosDe_` por día y vendedor cuando ya hay todo el retorno, devoluciones), Control (folios sin detallar de días anteriores, días sin cerrar, descuentos por estado, efectivo contado vs. esperado con `resumen_` en los últimos 31 días con conteo, gastos).
 - Reglas: notas de crédito restan de la venta; vencido = antigüedad mayor al plazo del cliente (`CLIENTES.condicion`) o, si no tiene, plazo por política (monto neto: 7/14/21/28 días); deuda y antigüedad son "a hoy", el resto del período. Períodos: 7/30/90 días, este mes, mes pasado y rango libre (máx. 13 meses). Sin exportación a Excel (no se pidió).
 - Pruebas: /tmp/claude-0/t/t25.js, t26.js (servidor con datos de ejemplo) y t27.py (pantalla PC y celular).
+
+## v50 — "Indicadores de gestión" (rediseño didáctico)
+- Mismo `getKpis` (servidor sin cambios). `vDatos` rehecha: resumen en 30 segundos (4 semáforos clicables), por sección: "En simple" (frase con las cifras), KPIs con explicación, gráficos con rótulos, "Qué podrías hacer" y "¿Cómo leer esta sección?". Paleta propia (azul/violeta/verde azulado/ámbar), CSS `.dk*`.
+- Semáforos (cliente): ventas Δ; vencida <15% ok, <30% atención; faltante kilos ≥0,5%/2% y mermas ≥2%/4%; control = días sin cerrar, folios sin detallar, efectivo faltante.
+
+## v51 — "Indicadores de gestión"
+- Título formal. El resumen inicial son 4 tarjetas neutras solo con cifras (sin semáforo ni opiniones); se quitaron las etiquetas Bien/Atención/Crítico de los encabezados de sección. Se corrigió el fondo oscuro heredado del `header` global en `.dksec>header`.
+- Sigue habiendo en cada sección "En simple", "Qué podrías hacer" y "¿Cómo leer…?" (texto orientativo).

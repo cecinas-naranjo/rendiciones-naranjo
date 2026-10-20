@@ -454,7 +454,7 @@ const TABS = {
     ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos por autorizar', 'percent']], TABS.RENDICION.slice(1));
-TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Datos para decidir', 'chart'], ['usuarios', 'Usuarios', 'users']]);
+TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques'], 'cash'],
@@ -2521,8 +2521,9 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => {
 });
 
 
-/* ============ DATOS PARA DECIDIR (solo ADMIN, v49) ============
-   Indicadores de un período (ventas, crédito y cobranza, kilos y mermas, control). Todo lo calcula el servidor (`getKpis`); acá solo se dibuja. */
+/* ============ CÓMO VA EL NEGOCIO (solo ADMIN, v50) ============
+   Indicadores de un período explicados en lenguaje simple: semáforo por tema, resumen en frases, gráficos y "qué podrías hacer".
+   Todo lo calcula el servidor (`getKpis`); acá solo se dibuja. Colores propios (no los de la app). */
 async function vDatos(m) {
   const hoy = hoyCL(), sumar = (f, n) => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
   const mes1 = hoy.slice(0, 8) + '01';
@@ -2530,72 +2531,129 @@ async function vDatos(m) {
     mes: ['Este mes', () => [mes1, hoy]], ant: ['Mes pasado', () => { const a = new Date(mes1 + 'T12:00:00'); a.setMonth(a.getMonth() - 1); return [a.toLocaleDateString('en-CA'), sumar(mes1, -1)]; }] };
   S.datos = S.datos || { p: '30', desde: '', hasta: '' };
   const rango = () => S.datos.p === 'x' && S.datos.desde && S.datos.hasta ? [S.datos.desde, S.datos.hasta] : PER[S.datos.p in PER ? S.datos.p : '30'][1]();
-  const FORMA = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CHEQUE: 'Cheque', CREDITO: 'Crédito', NOTA_CREDITO: 'Nota de crédito', OTRA: 'Otra' };
-  const kg = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-CL') + ' kg';
-  const pct = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-CL') + '%';
-  const kpi = (t, v, sub) => `<div><span>${t}</span><b>${v}</b>${sub ? `<small class="muted" style="display:block;margin-top:2px">${sub}</small>` : ''}</div>`;
-  const delta = x => x == null ? '' : `<span class="chip ${x >= 0 ? 'ok' : 'bad'}">${x >= 0 ? '▲' : '▼'} ${pct(Math.abs(x))} vs. antes</span>`;
-  const barras = (xs, fmt, cls) => { const mx = Math.max(1, ...xs.map(x => Math.abs(x.v)));
-    return xs.length ? xs.map(x => `<div class="dkb"><span class="l" title="${esc(x.l)}">${esc(x.l)}</span><div class="t"><i class="${x.c || cls || ''}" style="width:${Math.max(x.v ? 2 : 0, Math.abs(x.v) / mx * 100)}%"></i></div><b>${fmt(x.v)}</b></div>`).join('') : '<div class="muted">Sin datos en este período.</div>'; };
-  const tabla = (cab, filas) => filas.length ? `<div style="overflow-x:auto"><table class="dkt"><thead><tr>${cab.map((c, i) => `<th class="${i ? 'n' : ''}">${c}</th>`).join('')}</tr></thead><tbody>${filas.map(f => `<tr>${f.map((c, i) => `<td class="${i ? 'n' : ''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="muted">Sin datos en este período.</div>';
-  const grafico = serie => { const n = serie.length, W = 640, H = 150, mx = Math.max(1, ...serie.map(s => s[1])), bw = W / n;
-    return `<svg viewBox="0 0 ${W} ${H + 18}" class="dkg-svg" role="img" aria-label="Ventas por día">${serie.map((s, i) => { const h = Math.max(s[1] > 0 ? 2 : 0, s[1] / mx * H);
-      return `<rect x="${(i * bw + bw * 0.12).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${(bw * 0.76).toFixed(1)}" height="${h.toFixed(1)}" rx="${bw > 6 ? 2 : 0}"><title>${fcorta(s[0])}: ${clp(s[1])}</title></rect>`; }).join('')}
-      <text x="0" y="${H + 14}" class="dkx">${fcorta(serie[0][0])}</text><text x="${W}" y="${H + 14}" class="dkx" text-anchor="end">${fcorta(serie[n - 1][0])}</text></svg>`; };
+  const n1 = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-CL');
+  const kg = n => n1(n) + ' kg', pct = n => n1(n) + '%', plural = (n, a, b) => n === 1 ? a : b;
+  const ETQ = { ok: 'Bien', warn: 'Atención', bad: 'Crítico', na: 'Sin dato' };
+  const pill = (e, t) => `<span class="dkp ${e}">${t || ETQ[e]}</span>`;
+  const mejor = (...xs) => xs.includes('bad') ? 'bad' : xs.includes('warn') ? 'warn' : 'ok';
+  const kpi = (t, v, hint, extra) => `<div class="dkk"><span class="dkk-t">${t}</span><b>${v}</b>${extra ? `<div>${extra}</div>` : ''}<small>${hint}</small></div>`;
+  const delta = x => x == null ? '' : `<span class="dkp ${x >= 0 ? 'ok' : 'bad'}">${x >= 0 ? '▲ Subió' : '▼ Bajó'} ${pct(Math.abs(x))} vs. período anterior</span>`;
+  const aprende = (titulo, items) => `<details class="dkh"><summary>${titulo}</summary><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></details>`;
+  const haz = xs => xs.length ? `<div class="dkdo"><b>Qué podrías hacer</b><ul>${xs.map(x => `<li>${x}</li>`).join('')}</ul></div>` : '';
+  const ranking = (xs, fmt, opc = {}) => { const mx = Math.max(1, ...xs.map(x => Math.abs(x.v)));
+    return xs.length ? xs.map((x, i) => `<div class="dkr1"><div class="dkr1h"><span><em>${i + 1}</em>${esc(x.l)}</span><b>${fmt(x.v)}</b></div>
+      <div class="dkt"><i style="width:${Math.max(x.v ? 2 : 0, Math.abs(x.v) / mx * 100)}%;background:${x.c || opc.c || 'var(--c)'}"></i></div>${x.s ? `<small>${x.s}</small>` : ''}</div>`).join('') : '<div class="dkno">Sin datos en este período.</div>'; };
+  const grafico = serie => { const n = serie.length, W = 640, H = 150, mx = Math.max(1, ...serie.map(s => s[1])), bw = W / n, conVenta = serie.filter(s => s[1] > 0), prom = conVenta.length ? conVenta.reduce((a, s) => a + s[1], 0) / conVenta.length : 0;
+    const mj = serie.reduce((a, s) => s[1] > a[1] ? s : a, serie[0]), yp = H - prom / mx * H;
+    return `<svg viewBox="0 0 ${W} ${H + 20}" class="dksvg" role="img" aria-label="Ventas por día">${serie.map((s, i) => { const h = Math.max(s[1] > 0 ? 2 : 0, s[1] / mx * H);
+      return `<rect x="${(i * bw + bw * 0.12).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${(bw * 0.76).toFixed(1)}" height="${h.toFixed(1)}" rx="${bw > 6 ? 2 : 0}" class="${s === mj && s[1] > 0 ? 'best' : ''}"><title>${fechaLarga(s[0])}: ${clp(s[1])}</title></rect>`; }).join('')}
+      <line x1="0" x2="${W}" y1="${yp.toFixed(1)}" y2="${yp.toFixed(1)}" class="avg"/><text x="${W}" y="${Math.max(11, yp - 4).toFixed(1)}" text-anchor="end" class="dkx">promedio de los días con venta: ${clp(prom)}</text>
+      <text x="0" y="${H + 15}" class="dkx">${fcorta(serie[0][0])}</text><text x="${W}" y="${H + 15}" class="dkx" text-anchor="end">${fcorta(serie[n - 1][0])}</text></svg>`; };
+  const FCOL = { EFECTIVO: ['Efectivo', '#16A34A'], TRANSFERENCIA: ['Transferencia', '#2563EB'], CHEQUE: ['Cheque', '#0891B2'], CREDITO: ['Crédito (se cobra después)', '#F97316'] };
+  const AGING = ['#16A34A', '#84CC16', '#F59E0B', '#F97316', '#DC2626'];
 
   const html = d => {
     const v = d.ventas, c = d.credito, cb = d.cobranza, k = d.kilos, me = d.mermas, co = d.control;
-    const al = [];
-    if (c.deuda > 0 && c.vencidaPct >= 30) al.push(['bad', `La deuda vencida es <b>${clp(c.vencida)}</b> (${pct(c.vencidaPct)} de la cartera), repartida en ${c.clientesVencidos} cliente${c.clientesVencidos === 1 ? '' : 's'}.`]);
-    else if (c.vencida > 0) al.push(['warn', `Hay <b>${clp(c.vencida)}</b> vencidos (${pct(c.vencidaPct)} de la cartera) en ${c.clientesVencidos} cliente${c.clientesVencidos === 1 ? '' : 's'}.`]);
-    if (cb.creditoOtorgado > cb.total && cb.creditoOtorgado > 0) al.push(['warn', `Se dio más crédito (<b>${clp(cb.creditoOtorgado)}</b>) que lo cobrado (<b>${clp(cb.total)}</b>): la deuda está creciendo.`]);
-    if (v.delta != null && v.delta <= -10) al.push(['bad', `Las ventas bajaron <b>${pct(Math.abs(v.delta))}</b> frente al período anterior.`]);
-    if (k.faltante > 0) al.push(['warn', `Kilos que salieron y no volvieron ni se facturaron: <b>${clp(k.faltante)}</b>${k.diasConDiferencia ? ` (${k.diasConDiferencia} caso${k.diasConDiferencia === 1 ? '' : 's'} sobre la tolerancia)` : ''}.`]);
-    if (co.efectivo.falta > 0) al.push(['bad', `El efectivo contado quedó <b>${clp(co.efectivo.falta)}</b> bajo lo esperado en ${co.efectivo.contados - co.efectivo.cuadran} de ${co.efectivo.contados} conteos.`]);
-    if (co.nDiasSinCerrar > 0) al.push(['warn', `<b>${co.nDiasSinCerrar}</b> día${co.nDiasSinCerrar === 1 ? '' : 's'} con ventas sin cerrar la rendición.`]);
-    if (co.sinDetallar.n > 0) al.push(['warn', `<b>${co.sinDetallar.n}</b> folio${co.sinDetallar.n === 1 ? '' : 's'} de días anteriores sin detallar (${clp(co.sinDetallar.monto)}).`]);
-    if (me.pctVenta >= 2) al.push(['warn', `Mermas y reprocesos equivalen a <b>${pct(me.pctVenta)}</b> de la venta (${clp(me.monto)}).`]);
-    if (c.cheques.proximos7 > 0) al.push(['ok', `Esta semana se pueden cobrar <b>${clp(c.cheques.proximos7)}</b> en cheques a fecha.`]);
+    // ---- semáforos
+    const eV = v.delta == null ? 'na' : v.delta >= 0 ? 'ok' : v.delta > -10 ? 'warn' : 'bad';
+    const eC = c.deuda <= 0 ? 'ok' : c.vencidaPct < 15 ? 'ok' : c.vencidaPct < 30 ? 'warn' : 'bad';
+    const fPct = v.total > 0 ? k.faltante / v.total * 100 : 0, eK = mejor(fPct >= 2 ? 'bad' : fPct >= 0.5 ? 'warn' : 'ok', me.pctVenta >= 4 ? 'bad' : me.pctVenta >= 2 ? 'warn' : 'ok');
+    const problemas = (co.nDiasSinCerrar > 0 ? 1 : 0) + (co.sinDetallar.n > 0 ? 1 : 0) + (co.efectivo.falta > 0 ? 1 : 0), eO = problemas === 0 ? 'ok' : problemas <= 1 ? 'warn' : 'bad';
+    const mj = v.serie.reduce((a, s) => s[1] > a[1] ? s : a, v.serie[0]);
+    const pagoMalo = c.topAtrasados.slice(0, 3);
+    const fila = (t, x) => `<div><span>${t}</span><b>${x}</b></div>`;
+    const resumen = [
+      ['ventas', 'VENTAS', clp(v.total), [fila('Documentos', v.docs.toLocaleString('es-CL')), fila('Ticket promedio', clp(v.ticket)), fila('Variación vs. período anterior', v.delta == null ? '—' : (v.delta >= 0 ? '+' : '−') + pct(Math.abs(v.delta)))]],
+      ['credito', 'CRÉDITO Y COBRANZA', clp(c.deuda), [fila('Deuda vencida', clp(c.vencida) + ' (' + pct(c.vencidaPct) + ')'), fila('Facturas pendientes', c.facturas), fila('Cobrado en el período', clp(cb.total))]],
+      ['kilos', 'KILOS Y MERMAS', kg(k.total), [fila('Kilos faltantes', clp(k.faltante)), fila('Mermas y reprocesos', clp(me.monto)), fila('Mermas / venta', pct(me.pctVenta))]],
+      ['control', 'ORDEN Y CONTROL', co.nDiasSinCerrar + ' ' + plural(co.nDiasSinCerrar, 'día abierto', 'días abiertos'), [fila('Folios sin detallar', co.sinDetallar.n + ' (' + clp(co.sinDetallar.monto) + ')'), fila('Efectivo faltante', clp(co.efectivo.falta)), fila('Descuentos aprobados', clp((co.descuentos.find(x => x.estado === 'APROBADO') || { monto: 0 }).monto))]]];
+
+    // ---- 1. ventas
+    const totPag = v.formas.filter(x => FCOL[x.forma]).reduce((a, x) => a + Math.max(0, x.monto), 0);
+    const sVentas = `<section class="dksec" id="dk-ventas" style="--c:#2563EB;--cs:#EAF1FF"><header><i>1</i><div><h3>Ventas</h3><p>¿Cuánto se vendió y quién lo vendió?</p></div></header>
+      <div class="dksimple"><b>En simple:</b> en estos ${d.dias} ${plural(d.dias, 'día', 'días')} vendiste <b>${clp(v.total)}</b> en ${v.docs.toLocaleString('es-CL')} documentos.${v.total > 0 ? ` El mejor día fue el ${fechaLarga(mj[0])}, con ${clp(mj[1])}.` : ''}
+        De cada $100 vendidos, <b>$${Math.round(v.contadoPct)}</b> se cobraron al momento y <b>$${Math.round(100 - v.contadoPct)}</b> quedaron a crédito.</div>
+      <div class="dkks">${kpi('Venta del período', clp(v.total), 'Todo lo facturado menos las notas de crédito.', delta(v.delta))}${kpi('Documentos', v.docs.toLocaleString('es-CL'), 'Facturas y boletas emitidas.')}
+        ${kpi('Ticket promedio', clp(v.ticket), 'Lo que vale, en promedio, cada documento.')}${kpi('Venta por día', clp(v.promedioDia), 'Total dividido en los días del período.')}${kpi('Cobrado al momento', pct(v.contadoPct), 'Parte de la venta que no quedó a crédito.')}</div>
+      <div class="dkcard"><b>Venta día por día</b><small>Cada barra es un día. La barra más oscura es el mejor día; la línea punteada es el promedio.</small><div class="dkchart">${grafico(v.serie)}</div></div>
+      <div class="dkg"><div class="dkcard"><b>¿Cómo te pagaron?</b><small>Reparto de lo vendido según la forma de pago.</small>
+          <div class="dkstack">${v.formas.filter(x => FCOL[x.forma] && x.monto > 0).map(x => `<i style="width:${x.monto / Math.max(1, totPag) * 100}%;background:${FCOL[x.forma][1]}" title="${FCOL[x.forma][0]}"></i>`).join('')}</div>
+          <div class="dkleg">${v.formas.filter(x => FCOL[x.forma]).map(x => `<div><i style="background:${FCOL[x.forma][1]}"></i><span>${FCOL[x.forma][0]}</span><b>${clp(x.monto)}</b><em>${pct(totPag ? x.monto / totPag * 100 : 0)}</em></div>`).join('')}</div></div>
+        <div class="dkcard"><b>Ranking de vendedores</b><small>Quién vendió más. Abajo de cada barra: documentos, ticket promedio y qué parte quedó a crédito.</small>
+          ${ranking(v.porVendedor.map(x => ({ l: x.nombre, v: x.venta, s: `${x.docs} docs · ticket ${clp(x.ticket)} · ${pct(x.creditoPct)} a crédito` })), clp)}</div></div>
+      ${haz([v.delta != null && v.delta <= -10 ? `Las ventas bajaron ${pct(Math.abs(v.delta))}. Mira el ranking: ¿cayó un vendedor en particular o cayó todo el equipo?` : '', v.contadoPct < 60 && v.total > 0 ? `Solo ${pct(v.contadoPct)} se cobra al momento. Revisa si conviene pedir más pago contado o recortar plazos.` : ''].filter(Boolean))}
+      ${aprende('¿Cómo leer esta sección?', ['<b>Ticket promedio</b>: si baja, se está vendiendo en montos más chicos; si sube, vendes más por cliente.', '<b>Crédito</b>: lo que se vende hoy y se cobra después. Más crédito = más plata en la calle y más riesgo.', 'Las <b>notas de crédito</b> (devoluciones o correcciones) se restan de la venta.'])}</section>`;
+
+    // ---- 2. crédito y cobranza
+    const credMas = cb.creditoOtorgado > cb.total && cb.creditoOtorgado > 0;
+    const peorV = c.porVendedor.slice().sort((a, b) => b.vencida - a.vencida)[0];
+    const sCred = `<section class="dksec" id="dk-credito" style="--c:#7C3AED;--cs:#F1EAFE"><header><i>2</i><div><h3>Crédito y cobranza</h3><p>¿Cuánto te deben, desde cuándo y quién debe?</p></div></header>
+      <div class="dksimple"><b>En simple:</b> hoy los clientes te deben <b>${clp(c.deuda)}</b> en ${c.facturas} ${plural(c.facturas, 'factura', 'facturas')}. De eso, <b>${clp(c.vencida)}</b> (${pct(c.vencidaPct)}) <u>ya pasó su plazo de pago</u>.
+        Una factura impaga tiene en promedio ${c.diasPromedioDeuda} días.${c.diasCobro != null ? ` Cuando te pagan, tardan ${c.diasCobro} ${plural(c.diasCobro, 'día', 'días')} desde que se emitió la factura.` : ''}
+        En el período vendiste a crédito <b>${clp(cb.creditoOtorgado)}</b> y cobraste <b>${clp(cb.total)}</b>${credMas ? ': <u>le estás prestando más de lo que recuperas</u>' : ': recuperas más de lo que prestas, la deuda baja'}.</div>
+      <div class="dkks">${kpi('Deuda total', clp(c.deuda), `${c.clientes} ${plural(c.clientes, 'cliente', 'clientes')} con facturas pendientes.`)}
+        ${kpi('Deuda vencida', clp(c.vencida), 'Facturas que ya pasaron el plazo acordado.', pill(eC, pct(c.vencidaPct) + ' de la deuda'))}
+        ${kpi('Días reales de cobro', c.diasCobro == null ? '—' : c.diasCobro + ' días', 'Entre la factura y el pago, en lo cobrado del período.')}
+        ${kpi('Cobrado en el período', clp(cb.total), 'Pagos de clientes anotados en Cobranza.', delta(cb.delta))}
+        ${kpi('Cheques en cartera', clp(c.cheques.cartera), `${c.cheques.n} ${plural(c.cheques.n, 'cheque', 'cheques')} por cobrar${c.cheques.proximos7 ? ` · ${clp(c.cheques.proximos7)} cobrables esta semana` : ''}.`)}</div>
+      <div class="dkcard"><b>¿Cuánto tiempo llevan las facturas sin pagarse?</b><small>Mientras más a la derecha, más difícil es recuperar la plata.</small>
+        <div class="dkvenc"><div><span style="width:${100 - c.vencidaPct}%" class="ok"></span><span style="width:${c.vencidaPct}%" class="bad"></span></div><em>${pct(100 - c.vencidaPct)} dentro del plazo · ${pct(c.vencidaPct)} vencido</em></div>
+        ${ranking(c.aging.map((a, i) => ({ l: a.tramo, v: a.monto, c: AGING[i], s: `${a.facturas} ${plural(a.facturas, 'factura', 'facturas')}` })), clp)}</div>
+      <div class="dkg"><div class="dkcard"><b>A quién cobrar primero</b><small>Los clientes con más días de atraso (desde que pasó su plazo).</small>
+          ${ranking(c.topAtrasados.map(x => ({ l: x.cliente, v: x.vencida, c: '#DC2626', s: `${x.atraso} días de atraso · ${x.ultimoPago ? 'último pago el ' + fcorta(x.ultimoPago) : 'sin pagos registrados'}` })), clp)}</div>
+        <div class="dkcard"><b>Los que más te deben</b><small>Ordenados por monto adeudado. Lo rojo es la parte vencida.</small>
+          ${ranking(c.topDeudores.map(x => ({ l: x.cliente, v: x.deuda, s: x.vencida ? `${clp(x.vencida)} vencidos` : 'al día' })), clp)}</div></div>
+      <div class="dkcard"><b>Deuda por vendedor</b><small>Lo que cada vendedor tiene por cobrar. Rojo = vencido; verde = aún dentro del plazo.</small>
+        ${c.porVendedor.length ? c.porVendedor.map(x => { const mx = Math.max(1, ...c.porVendedor.map(y => y.deuda)); return `<div class="dkr1"><div class="dkr1h"><span>${esc(x.vendedor)}</span><b>${clp(x.deuda)}</b></div><div class="dkt dkt2"><i style="width:${x.vencida / mx * 100}%;background:#DC2626"></i><i style="width:${(x.deuda - x.vencida) / mx * 100}%;background:#16A34A"></i></div><small>${clp(x.vencida)} vencidos</small></div>`; }).join('') : '<div class="dkno">Sin deuda.</div>'}</div>
+      ${haz([pagoMalo.length ? `Empieza por llamar a <b>${pagoMalo.map(x => esc(x.cliente)).join(', ')}</b>: suman ${clp(pagoMalo.reduce((a, x) => a + x.vencida, 0))} vencidos.` : '', credMas ? 'Estás vendiendo a crédito más rápido de lo que cobras. Considera no dar nuevo crédito a clientes con facturas vencidas.' : '',
+        peorV && peorV.vencida > 0 ? `<b>${esc(peorV.vendedor)}</b> concentra la mayor deuda vencida (${clp(peorV.vencida)}). Conviene sentarse a revisar su cartera.` : '', c.cheques.proximos7 > 0 ? `Programa el cobro de ${clp(c.cheques.proximos7)} en cheques a fecha que vencen esta semana.` : ''].filter(Boolean))}
+      ${aprende('¿Cómo leer esta sección?', ['<b>Deuda vencida</b>: una factura se considera vencida cuando pasaron más días que el plazo del cliente (o, si no tiene, el de tu política: 7, 14, 21 o 28 días según el monto).', '<b>Días reales de cobro</b>: cuánto demoran en pagar de verdad. Compáralo con el plazo que les das.', '<b>Cheque en cartera</b>: sigue siendo deuda hasta que se cobra en el banco.', 'La deuda y su antigüedad son <b>al día de hoy</b>, no cambian con el período elegido.'])}</section>`;
+
+    // ---- 3. kilos y mermas
+    const peorK = k.porVendedor.filter(x => x.pesos > 0)[0];
+    const sKilos = `<section class="dksec" id="dk-kilos" style="--c:#0F766E;--cs:#E3F6F3"><header><i>3</i><div><h3>Kilos y mermas</h3><p>¿Se está perdiendo producto?</p></div></header>
+      <div class="dksimple"><b>En simple:</b> se facturaron <b>${kg(k.total)}</b>. ${k.faltante > 0 ? `Comparando lo que salió de bodega con lo que volvió y lo que se facturó, <b>faltan kilos por ${clp(k.faltante)}</b>: es producto que salió y no aparece vendido ni devuelto.` : 'No hay kilos faltantes en este período.'}
+        Las mermas y reprocesos suman <b>${clp(me.monto)}</b> (${pct(me.pctVenta)} de la venta).</div>
+      <div class="dkks">${kpi('Kilos facturados', kg(k.total), 'Solo productos que se venden por kilo.')}${kpi('Precio promedio por kilo', clp(k.precioPromedio), 'Venta de esos productos dividida en los kilos.')}
+        ${kpi('Kilos faltantes en plata', clp(k.faltante), 'Salió, no volvió y no se facturó. Se descuenta de la liquidación del vendedor.', pill(fPct >= 2 ? 'bad' : fPct >= 0.5 ? 'warn' : 'ok', pct(fPct) + ' de la venta'))}
+        ${kpi('Mermas y reprocesos', clp(me.monto), 'Producto que volvió y no se pudo vender (monto de las notas de crédito).', pill(me.pctVenta >= 4 ? 'bad' : me.pctVenta >= 2 ? 'warn' : 'ok', pct(me.pctVenta) + ' de la venta'))}</div>
+      <div class="dkg"><div class="dkcard"><b>Productos que más se venden</b><small>En kilos, durante el período.</small>${ranking(k.productos.map(x => ({ l: x.producto, v: x.kilos, s: clp(x.monto) + ' vendidos' })), kg)}</div>
+        <div class="dkcard"><b>Diferencia de kilos por vendedor</b><small>Rojo = faltan kilos (se descuenta). Verde = sobran a favor del vendedor.</small>
+          ${ranking(k.porVendedor.map(x => ({ l: x.vendedor, v: x.pesos, c: x.pesos > 0 ? '#DC2626' : '#16A34A', s: `${kg(Math.abs(x.kilos))} ${x.kilos > 0 ? 'faltan' : 'sobran'}` })), x => clp(Math.abs(x)))}</div></div>
+      <div class="dkcard"><b>Devoluciones</b><small>Producto que volvió a la bodega con nota de crédito.</small>
+        <div class="dkleg">${me.porTipo.map(x => `<div><i style="background:${x.tipo === 'MERMA' ? '#DC2626' : '#F59E0B'}"></i><span>${x.tipo === 'MERMA' ? 'Merma (se descarta)' : x.tipo === 'REPROCESO' ? 'Reproceso (vuelve a producción)' : esc(x.tipo)}</span><b>${clp(x.monto)}</b><em>${x.n} ${plural(x.n, 'caso', 'casos')}</em></div>`).join('')}</div>
+        ${me.productos.length ? `<small style="margin-top:8px">Productos que más vuelven: ${me.productos.map(x => `${esc(x.producto)} (${n1(x.cantidad)})`).join(', ')}</small>` : ''}</div>
+      ${haz([peorK ? `Revisa con <b>${esc(peorK.vendedor)}</b> las diferencias de kilos (${clp(peorK.pesos)}): ¿falta registrar retornos o hay producto sin facturar?` : '', me.pctVenta >= 2 ? `Las mermas son ${pct(me.pctVenta)} de la venta. Mira qué productos vuelven más y por qué (motivo en Devoluciones).` : ''].filter(Boolean))}
+      ${aprende('¿Cómo leer esta sección?', ['<b>Kilos faltantes</b> = kilos que salieron de bodega − kilos que volvieron − kilos facturados. Solo cuenta días donde ya se registró todo el retorno.', '<b>Merma</b> se descarta; <b>reproceso</b> vuelve a producción. Ambas se respaldan con nota de crédito.'])}</section>`;
+
+    // ---- 4. control
     const desc = Object.fromEntries(co.descuentos.map(x => [x.estado, x]));
-    return `<div class="row" style="justify-content:space-between;align-items:flex-end;margin-bottom:6px"><div><h2>Datos para decidir</h2>
-        <p class="lead" style="margin:0">${fcorta(d.desde)} al ${fcorta(d.hasta)} · ${d.dias} día${d.dias === 1 ? '' : 's'}. Los porcentajes y las flechas comparan con el período anterior del mismo largo.</p></div></div>
-      <div class="row dkbar"><div class="seg" id="dkp">${Object.keys(PER).map(x => `<button type="button" data-p="${x}" class="${S.datos.p === x ? 'on' : ''}">${PER[x][0]}</button>`).join('')}</div>
-        <label class="muted dkd">Desde <input type="date" class="in" id="dkd1" value="${d.desde}" max="${hoy}"></label><label class="muted dkd">Hasta <input type="date" class="in" id="dkd2" value="${d.hasta}" max="${hoy}"></label></div>
-      <h3>Para tu atención</h3>
-      <div class="card dkal">${al.length ? al.map(a => `<div class="dka ${a[0]}"><i></i><span>${a[1]}</span></div>`).join('') : '<div class="muted">Sin alertas en este período.</div>'}</div>
+    const eD = co.descuentoPct >= 5 ? 'bad' : co.descuentoPct >= 2 ? 'warn' : 'ok';
+    const efMalos = co.efectivo.contados - co.efectivo.cuadran;
+    const sControl = `<section class="dksec" id="dk-control" style="--c:#B45309;--cs:#FDF1DD"><header><i>4</i><div><h3>Orden y control</h3><p>¿Está todo cerrado, detallado y cuadrado?</p></div></header>
+      <div class="dksimple"><b>En simple:</b> ${problemas === 0 ? 'todo está en orden: no hay días sin cerrar, folios sin detallar ni efectivo faltante.' : `hay ${problemas} ${plural(problemas, 'tema pendiente', 'temas pendientes')}: ${[co.nDiasSinCerrar ? `<b>${co.nDiasSinCerrar}</b> ${plural(co.nDiasSinCerrar, 'día', 'días')} con ventas sin cerrar la rendición` : '', co.sinDetallar.n ? `<b>${co.sinDetallar.n}</b> ${plural(co.sinDetallar.n, 'folio', 'folios')} de días anteriores sin detallar (${clp(co.sinDetallar.monto)})` : '', co.efectivo.falta ? `el efectivo contado quedó <b>${clp(co.efectivo.falta)}</b> bajo lo esperado` : ''].filter(Boolean).join('; ')}.`}</div>
+      <div class="dkks">${kpi('Días sin cerrar', co.nDiasSinCerrar, 'Días con ventas cuya rendición sigue abierta.', pill(co.nDiasSinCerrar === 0 ? 'ok' : co.nDiasSinCerrar > 3 ? 'bad' : 'warn'))}
+        ${kpi('Folios sin detallar', co.sinDetallar.n, `${clp(co.sinDetallar.monto)} de días anteriores sin saber cómo se pagaron.`, pill(co.sinDetallar.n === 0 ? 'ok' : 'warn'))}
+        ${kpi('Efectivo que no cuadró', clp(co.efectivo.falta), `${co.efectivo.cuadran} de ${co.efectivo.contados} ${plural(co.efectivo.contados, 'conteo cuadró', 'conteos cuadraron')}${co.efectivo.sobra ? ` · sobraron ${clp(co.efectivo.sobra)}` : ''}.`, pill(co.efectivo.falta === 0 ? 'ok' : 'bad'))}
+        ${kpi('Descuentos aprobados', clp((desc.APROBADO || { monto: 0 }).monto), 'Rebajas autorizadas sobre el precio.', pill(eD, pct(co.descuentoPct) + ' de la venta'))}${kpi('Gastos', clp(co.gastos.total), 'Gastos anotados por los responsables.')}</div>
+      <div class="dkg"><div class="dkcard"><b>Efectivo faltante por vendedor</b><small>Contado en caja frente a lo que debía entregar.</small>
+          ${ranking(co.efectivo.porVendedor.map(x => ({ l: x.vendedor, v: x.falta, c: '#DC2626', s: `${x.dias} ${plural(x.dias, 'día', 'días')} sin cuadrar${x.sobra ? ' · sobró ' + clp(x.sobra) : ''}` })), clp)}</div>
+        <div class="dkcard"><b>Folios sin detallar por vendedor</b><small>Documentos de días anteriores que aún no tienen forma de pago.</small>
+          ${ranking(co.sinDetallar.porVendedor.map(x => ({ l: x.vendedor, v: x.n, s: clp(x.monto) })), x => x + ' folios')}</div></div>
+      <div class="dkg"><div class="dkcard"><b>Descuentos</b><small>Según su estado.</small><div class="dkleg">${co.descuentos.length ? co.descuentos.map(x => `<div><i style="background:${x.estado === 'APROBADO' ? '#16A34A' : x.estado === 'RECHAZADO' ? '#DC2626' : '#F59E0B'}"></i><span>${({ APROBADO: 'Aprobados', PENDIENTE: 'Pendientes de aprobar', RECHAZADO: 'Rechazados' })[x.estado] || esc(x.estado)}</span><b>${clp(x.monto)}</b><em>${x.n} ${plural(x.n, 'caso', 'casos')}</em></div>`).join('') : '<div class="dkno">Sin descuentos en este período.</div>'}</div></div>
+        <div class="dkcard"><b>Gastos por concepto</b><small>En qué se gastó.</small>${ranking(co.gastos.porConcepto.map(x => ({ l: x.concepto, v: x.monto })), clp)}</div></div>
+      ${co.diasSinCerrar.length ? `<div class="dkcard"><b>Días con la rendición abierta</b><small>Cierra estos días para que nadie pueda cambiar sus cifras.</small><div class="dkchips">${co.diasSinCerrar.map(f => `<span>${fcorta(f)}</span>`).join('')}${co.nDiasSinCerrar > co.diasSinCerrar.length ? `<em>y ${co.nDiasSinCerrar - co.diasSinCerrar.length} más</em>` : ''}</div></div>` : ''}
+      ${haz([co.nDiasSinCerrar ? `Cierra las ${co.nDiasSinCerrar} rendiciones pendientes: mientras más días abiertos, más difícil cuadrar.` : '', co.sinDetallar.n ? 'Pide a los vendedores con folios sin detallar que los completen; sin eso no se sabe cuánto es crédito.' : '', co.efectivo.falta ? `Hubo ${efMalos} ${plural(efMalos, 'conteo', 'conteos')} con diferencia. Revisa con los vendedores de la lista antes de que pase más tiempo.` : '', eD !== 'ok' ? `Los descuentos son ${pct(co.descuentoPct)} de la venta. Revisa quién los pide y por qué.` : ''].filter(Boolean))}
+      ${aprende('¿Cómo leer esta sección?', ['<b>Rendición abierta</b>: el día no se ha cerrado, así que sus cifras todavía se pueden cambiar.', '<b>Folio sin detallar</b>: se emitió pero nadie ha dicho si fue efectivo, transferencia, cheque o crédito.', '<b>Efectivo que no cuadró</b>: lo contado (billetes y monedas) frente a lo que el vendedor debía entregar.'])}</section>`;
 
-      <h3>Ventas</h3>
-      <div class="kpis">${kpi('Venta del período', clp(v.total), delta(v.delta))}${kpi('Documentos', v.docs.toLocaleString('es-CL'))}${kpi('Ticket promedio', clp(v.ticket))}${kpi('Promedio por día', clp(v.promedioDia))}${kpi('Contado (no crédito)', pct(v.contadoPct))}</div>
-      <div class="card" style="margin-top:12px"><b>Venta por día</b><div class="dkchart">${grafico(v.serie)}</div></div>
-      <div class="dkg"><div class="card"><b>Por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Venta', 'Docs', 'Ticket', '% crédito', 'Kilos'], v.porVendedor.map(x => [esc(x.nombre), clp(x.venta), x.docs, clp(x.ticket), pct(x.creditoPct), kg(x.kilos)]))}</div></div>
-        <div class="card"><b>Cómo pagaron</b><div style="margin-top:8px">${barras(v.formas.filter(x => x.forma !== 'NOTA_CREDITO').map(x => ({ l: FORMA[x.forma] || x.forma, v: x.monto, c: x.forma === 'CREDITO' ? 'warn' : '' })), clp)}</div></div></div>
-
-      <h3>Crédito y cobranza</h3>
-      <div class="kpis">${kpi('Deuda total de clientes', clp(c.deuda), `${c.facturas} factura${c.facturas === 1 ? '' : 's'} · ${c.clientes} cliente${c.clientes === 1 ? '' : 's'}`)}${kpi('Vencida', clp(c.vencida), pct(c.vencidaPct) + ' de la deuda')}
-        ${kpi('Antigüedad promedio de la deuda', c.diasPromedioDeuda + ' días')}${kpi('Días reales de cobro', c.diasCobro == null ? '—' : c.diasCobro + ' días', 'desde la factura al pago, en el período')}
-        ${kpi('Cobrado en el período', clp(cb.total), delta(cb.delta))}${kpi('Cheques en cartera', clp(c.cheques.cartera), `${c.cheques.n} cheque${c.cheques.n === 1 ? '' : 's'}`)}</div>
-      <div class="dkg"><div class="card"><b>Antigüedad de la deuda</b><div style="margin-top:8px">${barras(c.aging.map((a, i) => ({ l: a.tramo, v: a.monto, c: i >= 3 ? 'bad' : i === 2 ? 'warn' : '' })), clp)}</div></div>
-        <div class="card"><b>Deuda por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Deuda', 'Vencida'], c.porVendedor.map(x => [esc(x.vendedor), clp(x.deuda), x.vencida ? `<span class="dkr">${clp(x.vencida)}</span>` : '—']))}</div></div></div>
-      <div class="dkg"><div class="card"><b>Los 10 que más deben</b><div style="margin-top:8px">${tabla(['Cliente', 'Deuda', 'Vencida'], c.topDeudores.map(x => [`${esc(x.cliente)}<div class="muted">${esc(x.rut)}</div>`, clp(x.deuda), x.vencida ? `<span class="dkr">${clp(x.vencida)}</span>` : '—']))}</div></div>
-        <div class="card"><b>Más atrasados</b><div style="margin-top:8px">${tabla(['Cliente', 'Atraso', 'Vencido'], c.topAtrasados.map(x => [`${esc(x.cliente)}<div class="muted">${x.ultimoPago ? 'último pago ' + fcorta(x.ultimoPago) : 'sin pagos'}</div>`, x.atraso + ' d', clp(x.vencida)]))}</div></div></div>
-
-      <h3>Kilos y mermas</h3>
-      <div class="kpis">${kpi('Kilos facturados', kg(k.total))}${kpi('Precio promedio por kilo', clp(k.precioPromedio))}${kpi('Kilos faltantes en plata', clp(k.faltante), k.sobrante ? 'a favor: ' + clp(k.sobrante) : '')}
-        ${kpi('Mermas y reprocesos', clp(me.monto), pct(me.pctVenta) + ' de la venta')}</div>
-      <div class="dkg"><div class="card"><b>Productos más vendidos (kilos)</b><div style="margin-top:8px">${barras(k.productos.map(x => ({ l: x.producto, v: x.kilos })), kg)}</div></div>
-        <div class="card"><b>Diferencia de kilos por vendedor</b><div class="muted" style="margin:2px 0 8px">Salió − volvió − facturado. Positivo = falta; se descuenta de su liquidación.</div>${tabla(['Vendedor', 'Kilos', 'En plata'], k.porVendedor.map(x => [esc(x.vendedor), kg(x.kilos), `<span class="${x.pesos > 0 ? 'dkr' : ''}">${clp(x.pesos)}</span>`]))}</div></div>
-      <div class="card" style="margin-top:12px"><b>Devoluciones</b><div style="margin-top:8px">${tabla(['Tipo', 'Casos', 'Monto NC'], me.porTipo.map(x => [x.tipo === 'MERMA' ? 'Merma' : x.tipo === 'REPROCESO' ? 'Reproceso' : esc(x.tipo), x.n, clp(x.monto)]))}</div>
-        ${me.productos.length ? `<div class="muted" style="margin:10px 0 4px">Productos que más vuelven</div>${me.productos.map(x => `<div>${esc(x.producto)} <span class="muted">· ${x.cantidad.toLocaleString('es-CL')} · ${x.tipo === 'MERMA' ? 'merma' : 'reproceso'}</span></div>`).join('')}` : ''}</div>
-
-      <h3>Control</h3>
-      <div class="kpis">${kpi('Folios sin detallar', co.sinDetallar.n, clp(co.sinDetallar.monto) + ' · días anteriores')}${kpi('Días sin cerrar', co.nDiasSinCerrar)}
-        ${kpi('Descuentos aprobados', clp((desc.APROBADO || { monto: 0 }).monto), pct(co.descuentoPct) + ' de la venta')}${kpi('Efectivo que no cuadró', clp(co.efectivo.falta), `${co.efectivo.cuadran} de ${co.efectivo.contados} conteos cuadraron`)}${kpi('Gastos', clp(co.gastos.total))}</div>
-      <div class="dkg"><div class="card"><b>Efectivo: faltantes y sobrantes por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Días', 'Falta', 'Sobra'], co.efectivo.porVendedor.map(x => [esc(x.vendedor), x.dias, x.falta ? `<span class="dkr">${clp(x.falta)}</span>` : '—', x.sobra ? clp(x.sobra) : '—']))}</div></div>
-        <div class="card"><b>Folios sin detallar por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Folios', 'Monto'], co.sinDetallar.porVendedor.map(x => [esc(x.vendedor), x.n, clp(x.monto)]))}</div></div></div>
-      <div class="dkg"><div class="card"><b>Descuentos</b><div style="margin-top:8px">${tabla(['Estado', 'Casos', 'Monto'], co.descuentos.map(x => [({ APROBADO: 'Aprobados', PENDIENTE: 'Pendientes', RECHAZADO: 'Rechazados' })[x.estado] || esc(x.estado), x.n, clp(x.monto)]))}</div></div>
-        <div class="card"><b>Gastos por concepto</b><div style="margin-top:8px">${barras(co.gastos.porConcepto.map(x => ({ l: x.concepto, v: x.monto })), clp)}</div></div></div>
-      ${co.diasSinCerrar.length ? `<div class="card" style="margin-top:12px"><b>Días sin cerrar</b><div class="row" style="gap:6px;margin-top:8px">${co.diasSinCerrar.map(f => `<span class="chip warn">${fcorta(f)}</span>`).join('')}${co.nDiasSinCerrar > co.diasSinCerrar.length ? `<span class="muted">y ${co.nDiasSinCerrar - co.diasSinCerrar.length} más</span>` : ''}</div></div>` : ''}
-      <p class="muted" style="margin-top:16px">Calculado el ${esc(String(d.generado).slice(0, 16))}. La deuda y la antigüedad son al día de hoy; el resto corresponde al período elegido. Notas de crédito se restan de la venta. El plazo de cada factura es el del cliente o, si no tiene, el de la política de crédito por monto neto.</p>`;
+    return `<div class="dk"><div class="dkhead"><div><h2>Indicadores de gestión</h2>
+        <p>Período del <b>${fechaLarga(d.desde)}</b> al <b>${fechaLarga(d.hasta)}</b> (${d.dias} ${plural(d.dias, 'día', 'días')})</p></div></div>
+      <div class="dkbar"><div class="dkseg" id="dkp">${Object.keys(PER).map(x => `<button type="button" data-p="${x}" class="${S.datos.p === x ? 'on' : ''}">${PER[x][0]}</button>`).join('')}</div>
+        <label class="dkd">Desde <input type="date" class="in" id="dkd1" value="${d.desde}" max="${hoy}"></label><label class="dkd">Hasta <input type="date" class="in" id="dkd2" value="${d.hasta}" max="${hoy}"></label></div>
+      <h4 class="dkh4">Resumen del período</h4>
+      <div class="dksem">${resumen.map(r => `<button type="button" class="dks" data-ir="dk-${r[0]}"><small>${r[1]}</small><b>${r[2]}</b>${r[3].join('')}<em>Ver detalle ↓</em></button>`).join('')}</div>
+      ${sVentas}${sCred}${sKilos}${sControl}
+      <p class="dkfoot">Calculado el ${esc(String(d.generado).slice(0, 16))}. Las notas de crédito se restan de la venta. Los porcentajes en verde, amarillo y rojo son referencias generales; ajústalas a lo que sea normal para tu empresa.</p></div>`;
   };
   const cargar = async recarga => {
     const [desde, hasta] = rango();
@@ -2603,6 +2661,7 @@ async function vDatos(m) {
     if (recarga) S.silencio = true;
     try { render(m, html(d)); } finally { S.silencio = false; }
     m.querySelectorAll('#dkp button').forEach(b => b.onclick = () => { S.datos.p = b.dataset.p; cargar(true).catch(() => {}); });
+    m.querySelectorAll('[data-ir]').forEach(b => b.onclick = () => { const t = $('#' + b.dataset.ir, m); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
     const cambio = () => { const a = $('#dkd1', m).value, z = $('#dkd2', m).value; if (a && z) { S.datos = { p: 'x', desde: a, hasta: z }; cargar(true).catch(() => {}); } };
     $('#dkd1', m).onchange = cambio; $('#dkd2', m).onchange = cambio;
   };
