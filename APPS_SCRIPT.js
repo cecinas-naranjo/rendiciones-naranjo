@@ -213,7 +213,7 @@ function setup() {
 const API = {
   batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -804,17 +804,18 @@ function asignarVendedor(token, folio_key, vendedor) {
 
 /* ============================ INFORMES ORDENADOS EN EL DRIVE ============================ */
 
-function carpetaInformes_(fecha) {
+function carpetaInformes_(fecha, tipo) {
   let base;
   if (CFG.INFORMES_FOLDER_ID) base = DriveApp.getFolderById(CFG.INFORMES_FOLDER_ID);
   else {
     let padre;
-    try { const rf = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), ps = rf.getParents(); padre = ps.hasNext() ? ps.next() : rf; }
+    try { padre = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID); }
     catch (e) { padre = DriveApp.getRootFolder(); }
     base = sub_(padre, 'Informes Mi DTE');
   }
   const f = String(fecha).split('-');
-  return sub_(sub_(base, f[0]), f[1]);
+  // Ventas (folios) y kilos van en carpetas distintas: Informes Mi DTE / Ventas Diarias / año / mes  y  Informes Mi DTE / Informe de ventas (kilos) / año / mes
+  return sub_(sub_(sub_(base, tipo === 'dte' ? 'Ventas Diarias' : 'Informe de ventas (kilos)'), f[0]), f[1]);
 }
 /** a: {nombre, fecha 'YYYY-MM-DD', data(base64 de un .xlsx)}. Si ya hay un archivo con ese nombre se reemplaza (la versión de la tarde incluye la de la mañana). */
 function guardarInformeOrdenado(token, a) {
@@ -824,7 +825,7 @@ function guardarInformeOrdenado(token, a) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.fecha))) throw new Error('Fecha no válida.');
   const bytes = Utilities.base64Decode(a.data);
   if (bytes.length > 10 * 1024 * 1024) throw new Error('El archivo pesa más de 10 MB.');
-  const carpeta = carpetaInformes_(a.fecha);
+  const carpeta = carpetaInformes_(a.fecha, /^Ventas Diarias/.test(String(a.nombre)) ? 'dte' : 'detalle');
   let reemplazado = false; const prev = carpeta.getFilesByName(a.nombre);
   while (prev.hasNext()) { prev.next().setTrashed(true); reemplazado = true; }
   const file = carpeta.createFile(Utilities.newBlob(bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', a.nombre));
@@ -1120,7 +1121,7 @@ function adjuntosDe_(r) {
 function carpetaRespaldos_() {
   if (CFG.RESPALDOS_FOLDER_ID) return DriveApp.getFolderById(CFG.RESPALDOS_FOLDER_ID);
   let base;
-  try { const rf = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), ps = rf.getParents(); base = ps.hasNext() ? ps.next() : rf; }
+  try { base = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID); }
   catch (e) { base = DriveApp.getRootFolder(); }
   return sub_(base, 'Respaldos');
 }
@@ -1361,7 +1362,7 @@ function agregarProductoInv(token, p) {
 function carpetaInventario_() {
   if (CFG.INVENTARIO_FOLDER_ID) return DriveApp.getFolderById(CFG.INVENTARIO_FOLDER_ID);
   let base;
-  try { const rf = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), ps = rf.getParents(); base = ps.hasNext() ? ps.next() : rf; }
+  try { base = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID); }
   catch (e) { base = DriveApp.getRootFolder(); }
   return sub_(base, 'Inventario');
 }
@@ -1660,6 +1661,8 @@ function resolverRut_() {
   return n;
 }
 
+// folios que no son un número ("P", "182-183"): la clave incluye al cliente para no confundir documentos distintos
+const claveCredito_ = (tipo, folio, cliente) => folioKey_(tipo, /^\d+$/.test(folio) ? folio : folio + '·' + normTxt_(cliente).slice(0, 24));
 /** filas: [{tipo, cliente, condicion, folio, fecha, monto, estado:'CREDITO'|'CHEQUE', vendedor, recepcion, metodo, obs}] (solo los documentos abiertos de la planilla) */
 function cargarCreditos(token, filas) {
   const u = auth_(token, ['RENDICION','SUPERVISOR']);
@@ -1671,7 +1674,7 @@ function cargarCreditos(token, filas) {
       const tipo = tipoDoc_(f.tipo), folio = String(f.folio || '').trim(), monto = Math.round(num_(f.monto));
       if (!folio || !(monto > 0)) { saltados++; return; }
       // folios que no son un número ("P", "182-183"): la clave incluye al cliente para no confundir documentos distintos
-      const key = folioKey_(tipo, /^\d+$/.test(folio) ? folio : folio + '·' + normTxt_(f.cliente).slice(0, 24)), d = docs[key];
+      const key = claveCredito_(tipo, folio, f.cliente), d = docs[key];
       if (vistos[key]) { duplicados++; return; }          // el mismo documento dos veces en el archivo: vale el primero
       vistos[key] = true;
       const o = { folio_key: key, rut: d && rutNorm_(d.rut) ? rutFmt_(d.rut) : '', cliente_excel: String(f.cliente || '').trim(), tipo, folio, fecha: String(f.fecha || ''),
@@ -1682,6 +1685,7 @@ function cargarCreditos(token, filas) {
       else { nuevos.push(o); ex[key] = o; }
     });
     if (nuevos.length) append_('CREDITOS_CARGA', nuevos);
+    planillaSucia_();
     const resueltos = resolverRut_();
     const todos = read_('CREDITOS_CARGA'), sin = todos.filter(x => !rutNorm_(x.rut) && String(x.estado) !== 'PAGADO');
     return { nuevos: nuevos.length, actualizados, saltados, duplicados, conRut: todos.length - sin.length, sinRut: sin.length, resueltos, sinRutClientes: sinRutClientes_(sin) };
@@ -1745,7 +1749,7 @@ function guardarCobro(token, fecha, cli, pago, items) {
       return Object.assign({ id: uid_(), fecha, vendedor: vend, cliente: String(cli.cliente || '').trim(), folio: String(i.folio || ''), folio_key: String(i.folio_key || ''), rut: String(cli.rut || ''),
         monto: m, forma, banco: forma === 'CHEQUE' ? (pago.banco || '') : (pago.banco || ''), referencia: forma === 'CHEQUE' ? 'Cheque N° ' + (ch.cheque_numero || '') : '',
         registrado_por: u.usuario, registrado: now_() }, ch); });
-    append_('COBRANZA', filas);
+    append_('COBRANZA', filas); planillaSucia_();
     return { id: filas[0].id, ids: filas.map(f => f.id), total: filas.reduce((a, f) => a + f.monto, 0) };
   });
 }
@@ -1789,6 +1793,161 @@ function generarPlanillaPorCobrar(token) {
     try { ss.deleteSheet(ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1')); } catch (e) {}
     return { url: ss.getUrl(), clientes: cls.length, documentos: filas.length, total: filas.reduce((a, f) => a + f[8], 0) };
   });
+}
+
+
+/* ============================ PLANILLA ÚNICA DE CRÉDITOS ============================ */
+// Un solo Google Sheets, siempre el mismo ("Cuentas por cobrar (planilla única)" en la carpeta Cuentas por cobrar). La app lo escribe (pagado y saldo al día)
+// y también lo lee: lo que una persona edite en las filas ORIGEN = CARGA (RUT, cliente, fecha, monto, condición, vendedor, estado, observación) o las filas
+// nuevas que agregue al final pasan a la app, al editar (disparador onEdit) o al presionar "Actualizar planilla". Las filas ORIGEN = APP son ventas a crédito
+// registradas en la app: se ven pero se corrigen en la app.
+const PLANILLA_NOMBRE_ = 'Cuentas por cobrar (planilla única)';
+const PLANILLA_HOJA_ = 'POR COBRAR';
+const PLANILLA_COLS_ = ['CLAVE', 'ORIGEN', 'RUT', 'CLIENTE', 'TIPO', 'FOLIO', 'FECHA (AAAA-MM-DD)', 'MONTO', 'PAGADO', 'SALDO', 'COND. (DÍAS)', 'VENDEDOR', 'ESTADO (CREDITO / CHEQUE / PAGADO)', 'OBSERVACIÓN', 'HUELLA'];
+function planillaSucia_() { try { PropertiesService.getScriptProperties().setProperty('PLANILLA_SUCIA', '1'); } catch (e) {} }
+function planillaCreditos_() {
+  const props = PropertiesService.getScriptProperties(), id = props.getProperty('PLANILLA_CREDITOS_ID');
+  if (id) { try { if (!DriveApp.getFileById(id).isTrashed()) return SpreadsheetApp.openById(id); } catch (e) {} }
+  const dest = sub_(DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), 'Cuentas por cobrar');
+  const it = dest.getFilesByName(PLANILLA_NOMBRE_); let ss;
+  if (it.hasNext()) ss = SpreadsheetApp.openById(it.next().getId());
+  else { ss = SpreadsheetApp.create(PLANILLA_NOMBRE_); DriveApp.getFileById(ss.getId()).moveTo(dest); }
+  props.setProperty('PLANILLA_CREDITOS_ID', ss.getId());
+  props.setProperty('PLANILLA_SUCIA', '1');
+  try {
+    ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'alEditarPlanillaCreditos').forEach(t => ScriptApp.deleteTrigger(t));
+    ScriptApp.newTrigger('alEditarPlanillaCreditos').forSpreadsheet(ss).onEdit().create();
+  } catch (e) { /* sin permiso para disparadores: queda el botón Actualizar planilla */ }
+  return ss;
+}
+function asegurarDisparadorHorario_() {
+  try { if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'planillaCreditosCadaHora')) ScriptApp.newTrigger('planillaCreditosCadaHora').timeBased().everyHours(1).create(); } catch (e) {}
+}
+const huellaCredito_ = c => Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5,
+  [String(c[0]).trim(), String(c[1]).trim(), String(c[2]).trim(), Math.round(num_(c[3])), num_(c[4]) || '', String(c[5]).trim(), String(c[6]).trim(), String(c[7]).trim()].join('¦'))).slice(0, 14);
+const estadoCredito_ = v => { const s = String(v || '').toUpperCase(); return /PAG/.test(s) ? 'PAGADO' : /CHEQ/.test(s) ? 'CHEQUE' : 'CREDITO'; };
+
+/** Pasa a la app lo que la gente cambió en la planilla. Va dentro de withLock_. */
+function importarPlanilla_(ss, escribirMarcas) {
+  const sh = ss.getSheetByName(PLANILLA_HOJA_), res = { actualizados: 0, nuevos: 0 };
+  if (!sh || sh.getLastRow() < 2) return res;
+  const vals = sh.getRange(2, 1, sh.getLastRow() - 1, 15).getValues();
+  const ex = {}; read_('CREDITOS_CARGA').forEach(x => ex[x.folio_key] = x);
+  const marcas = [], nuevos = [];
+  vals.forEach((r, i) => {
+    const clave = String(r[0]).trim(), origen = String(r[1]).trim().toUpperCase(), tipo = tipoDoc_(r[4]), folio = String(r[5]).trim();
+    const campos = [r[2], r[3], r[6] instanceof Date ? normFecha_(r[6]) : String(r[6]).trim(), r[7], r[10], r[11], estadoCredito_(r[12]), r[13]];
+    if (!clave) {
+      const monto = Math.round(num_(r[7])), cliente = String(r[3]).trim();
+      if (!folio || !(monto > 0) || !cliente) return;                              // fila a medio llenar: se ignora
+      const key = claveCredito_(tipo, folio, cliente);
+      if (!ex[key]) {
+        const o = { folio_key: key, rut: rutValido_(r[2]) ? rutFmt_(r[2]) : '', cliente_excel: cliente, tipo, folio, fecha: campos[2], monto, condicion: num_(r[10]) || '',
+          vendedor: String(r[11]).trim(), estado: campos[6] === 'PAGADO' ? 'PAGADO' : campos[6], recepcion: '', metodo: '', obs: String(r[13] || ''), cargado: now_() };
+        nuevos.push(o); ex[key] = o; res.nuevos++;
+      }
+      marcas.push([i + 2, key, huellaCredito_(campos)]);
+      return;
+    }
+    if (origen !== 'CARGA') return;
+    const x = ex[clave]; if (!x || x._row === undefined) return;
+    const h = huellaCredito_(campos); if (h === String(r[14])) return;               // no la tocaron
+    const rut = String(r[2]).trim(), monto = Math.round(num_(r[7]));
+    if (!(monto > 0)) return;
+    x.rut = !rut ? '' : (rutValido_(rut) ? rutFmt_(rut) : x.rut);
+    x.cliente_excel = String(r[3]).trim() || x.cliente_excel; x.fecha = campos[2] || x.fecha; x.monto = monto; x.condicion = num_(r[10]) || '';
+    x.vendedor = String(r[11]).trim(); x.estado = campos[6]; x.obs = String(r[13] || '');
+    updateRow_('CREDITOS_CARGA', x._row, x); res.actualizados++;
+    marcas.push([i + 2, clave, h]);
+  });
+  if (nuevos.length) append_('CREDITOS_CARGA', nuevos);
+  if (res.nuevos || res.actualizados) { resolverRut_(); planillaSucia_(); }
+  if (escribirMarcas) marcas.forEach(m => { sh.getRange(m[0], 1).setValue(m[1]); sh.getRange(m[0], 2).setValue('CARGA'); sh.getRange(m[0], 15).setValue(m[2]); });
+  return res;
+}
+
+/** Escribe en la planilla lo que hay en la app (pagado y saldo al día). Va dentro de withLock_. */
+function exportarPlanilla_(ss) {
+  const r = saldosClientes_(), porKey = {};
+  r.clientes.forEach(c => c.facturas.forEach(f => porKey[f.folio_key] = f));
+  const filas = [];
+  read_('CREDITOS_CARGA').forEach(x => {
+    const f = porKey[x.folio_key], monto = Math.round(num_(x.monto)), pag = f ? f.pagado : monto, sal = f ? f.saldo : 0;
+    const campos = [x.rut || '', x.cliente_excel, String(x.fecha instanceof Date ? normFecha_(x.fecha) : x.fecha || ''), monto, num_(x.condicion) || '', x.vendedor || '', estadoCredito_(x.estado), x.obs || ''];
+    filas.push([x.folio_key, 'CARGA', campos[0], campos[1], x.tipo, x.folio, campos[2], monto, Math.round(pag), Math.round(sal), campos[4], campos[5], campos[6], campos[7], huellaCredito_(campos)]);
+  });
+  r.clientes.forEach(c => c.facturas.forEach(f => { if (f.origen === 'CARGA' || !(f.saldo > 0)) return;
+    filas.push([f.folio_key, 'APP', c.rut || '', c.cliente, f.tipo, f.folio, f.fecha, Math.round(f.credito), Math.round(f.pagado), f.saldo, c.condicion || '', f.vendedorNombre, 'CREDITO', '', '']); }));
+  filas.sort((p, q) => String(p[3]).localeCompare(String(q[3])) || String(p[6]).localeCompare(String(q[6])));
+  let sh = ss.getSheetByName(PLANILLA_HOJA_) || ss.insertSheet(PLANILLA_HOJA_, 0);
+  sh.clear();
+  const n = filas.length, h = Math.max(n + 300, 300);
+  if (sh.getMaxRows() < h + 1) sh.insertRowsAfter(sh.getMaxRows(), h + 1 - sh.getMaxRows());
+  sh.getRange(1, 1, h, 15).setNumberFormat('@');
+  ['H', 'I', 'J', 'K'].forEach(c => sh.getRange(c + '2:' + c + (h + 1)).setNumberFormat(c === 'K' ? '0' : '#,##0'));
+  sh.getRange(1, 1, 1, 15).setValues([PLANILLA_COLS_]).setFontWeight('bold').setBackground('#2A1F1A').setFontColor('#ffffff').setWrap(true);
+  if (n) {
+    sh.getRange(2, 1, n, 15).setValues(filas);
+    const grises = ['A', 'B', 'E', 'F', 'I', 'J', 'O'];
+    grises.forEach(c => sh.getRange(c + '2:' + c + (n + 1)).setBackground('#EFEDEA'));
+    filas.forEach((f, i) => { if (f[1] === 'APP') sh.getRange(i + 2, 1, 1, 15).setBackground('#EFEDEA'); });
+  }
+  sh.setFrozenRows(1); sh.setFrozenColumns(4);
+  [220, 70, 110, 280, 130, 70, 110, 100, 100, 100, 70, 130, 150, 220].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  sh.hideColumns(15); sh.setRowHeight(1, 48);
+  sh.getRange('B1').setNote('CARGA: se puede editar y la app lo lee. APP: venta a crédito hecha en la app (gris), se corrige en la app.');
+  sh.getRange('G1').setNote('Formato AAAA-MM-DD, por ejemplo 2026-09-30.');
+  sh.getRange('I1').setNote('Pagado y saldo los calcula la app con los pagos de Cobranza: no se editan aquí.');
+  // pagos registrados desde la app
+  let pg = ss.getSheetByName('PAGOS REGISTRADOS') || ss.insertSheet('PAGOS REGISTRADOS');
+  pg.clear();
+  const nom = {}; vendedores_().forEach(v => nom[v.usuario] = v.nombre);
+  const pagos = read_('COBRANZA').sort((p, q) => String(q.fecha).localeCompare(String(p.fecha))).map(x => [String(x.fecha), x.cliente, x.folio, num_(x.monto), x.forma, x.banco || '', x.referencia || '', nom[x.vendedor] || x.vendedor, x.registrado_por]);
+  pg.getRange(1, 1, 1, 9).setValues([['FECHA', 'CLIENTE', 'FOLIO', 'MONTO', 'FORMA', 'BANCO', 'REFERENCIA', 'VENDEDOR', 'REGISTRADO POR']]).setFontWeight('bold').setBackground('#2A1F1A').setFontColor('#ffffff');
+  if (pagos.length) { pg.getRange(2, 1, pagos.length, 9).setValues(pagos); pg.getRange(2, 4, pagos.length, 1).setNumberFormat('#,##0'); }
+  pg.setFrozenRows(1); [90, 280, 70, 100, 120, 120, 160, 130, 110].forEach((w, i) => pg.setColumnWidth(i + 1, w));
+  let lm = ss.getSheetByName('LEEME') || ss.insertSheet('LEEME');
+  lm.clear();
+  lm.getRange(1, 1, 7, 1).setValues([['PLANILLA ÚNICA DE CUENTAS POR COBRAR — Cecinas Naranjo'],
+    ['• Es siempre el mismo archivo. La app lo mantiene al día (pagado y saldo).'],
+    ['• Puedes corregir las filas ORIGEN = CARGA (RUT, cliente, fecha, monto, condición, vendedor, estado, observación): la app se actualiza sola al editar.'],
+    ['• Para agregar un crédito, escribe una fila nueva al final de la hoja POR COBRAR (cliente, tipo, folio, fecha, monto) y deja CLAVE vacía.'],
+    ['• Para dar por pagado un documento, pon ESTADO = PAGADO. No borres filas.'],
+    ['• Las filas grises no se editan aquí (ventas a crédito de la app, pagado y saldo).'],
+    ['• Los pagos que se registran en la app (Cobranza) quedan en la hoja PAGOS REGISTRADOS.']]);
+  lm.getRange('A1').setFontWeight('bold').setFontSize(13); lm.setColumnWidth(1, 760);
+  try { ['Hoja 1', 'Sheet1', 'Hoja1'].forEach(nm => { const d = ss.getSheetByName(nm); if (d && ss.getSheets().length > 1) ss.deleteSheet(d); }); ss.setActiveSheet(sh); } catch (e) {}
+  PropertiesService.getScriptProperties().deleteProperty('PLANILLA_SUCIA');
+  return { filas: n, saldo: filas.reduce((s, f) => s + (f[9] || 0), 0) };
+}
+
+/** Botón "Actualizar planilla": primero trae los cambios hechos en la planilla, después la deja al día. */
+function sincronizarPlanillaCreditos(token) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => {
+    const ss = planillaCreditos_(); asegurarDisparadorHorario_();
+    const imp = importarPlanilla_(ss, false);
+    const exp = exportarPlanilla_(ss);
+    return { url: ss.getUrl(), actualizados: imp.actualizados, nuevos: imp.nuevos, documentos: exp.filas, total: exp.saldo };
+  });
+}
+/** Disparador al editar la planilla: la app recibe el cambio al tiro. */
+function alEditarPlanillaCreditos(e) {
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(15000)) return;
+  try {
+    if (e && e.range && e.range.getSheet().getName() !== PLANILLA_HOJA_) return;
+    FRESCO_ = true; MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {};
+    importarPlanilla_(e && e.source ? e.source : planillaCreditos_(), true);
+    cerrarPeticion_();
+  } finally { lock.releaseLock(); }
+}
+/** Cada hora: si hubo pagos o cargas desde la última vez, se actualiza la planilla (antes se traen los cambios que hicieron en ella). */
+function planillaCreditosCadaHora() {
+  if (!PropertiesService.getScriptProperties().getProperty('PLANILLA_SUCIA')) return;
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(20000)) return;
+  try { FRESCO_ = true; MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {};
+    const ss = planillaCreditos_(); importarPlanilla_(ss, false); exportarPlanilla_(ss); cerrarPeticion_();
+  } finally { lock.releaseLock(); }
 }
 
 /* ============================ CHEQUES EN CARTERA ============================ */

@@ -1488,7 +1488,7 @@ async function vSaldos(m) {
   const conDeuda = r.clientes.filter(c => c.deuda > 0);
   render(m, `<h2>Saldos de clientes</h2>
     <p class="lead" style="margin:0 0 12px">Facturas a crédito (las de la lista de créditos y las nuevas) menos los pagos anotados en Cobranza. Todo se une por RUT y el nombre es el del DTE.</p>
-    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn cu sm" id="pl">Generar planilla por cobrar (crédito + cheques)</button>
+    <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn cu sm" id="pl">Abrir planilla única de créditos</button>
       ${r.sinRut ? `<button class="btn ghost sm" id="sr">${r.sinRut} cliente${r.sinRut > 1 ? 's' : ''} sin RUT: completar</button>` : ''}<span class="grow"></span><span class="muted" id="plr"></span></div>
     ${tarjetaPolitica()}
     <div class="kpis"><div><span>Total adeudado</span><b>${clp(r.total)}</b></div>
@@ -1501,8 +1501,9 @@ async function vSaldos(m) {
     <div id="sl"></div>
     <p class="muted" style="margin-top:14px">Todo pago en Cobranza lleva el folio de la factura que paga: se descuenta de esa factura.</p>`);
   const abiertos = {};
-  $('#pl').onclick = async () => { const b = $('#pl'); b.disabled = true; try { const p = await api('generarPlanillaPorCobrar', S.sess.token);
-      $('#plr').innerHTML = `<a class="chip cu" href="${esc(p.url)}" target="_blank" rel="noopener">Abrir planilla · ${p.clientes} clientes · ${clp(p.total)}</a>`; window.open(p.url, '_blank'); } finally { b.disabled = false; } };
+  $('#pl').onclick = async () => { const b = $('#pl'); b.disabled = true; try { const p = await api('sincronizarPlanillaCreditos', S.sess.token);
+      $('#plr').innerHTML = `<a class="chip cu" href="${esc(p.url)}" target="_blank" rel="noopener">Planilla actualizada · ${p.documentos} documentos · ${clp(p.total)}</a>${p.actualizados || p.nuevos ? ` <span class="chip ok">Traje de la planilla: ${p.actualizados} cambiados, ${p.nuevos} nuevos</span>` : ''}`;
+      olvidarCache(true); window.open(p.url, '_blank'); } finally { b.disabled = false; } };
   if ($('#sr')) $('#sr').onclick = async () => { const x = await api('reintentarRut', S.sess.token); abrirSinRut(x.sinRutClientes); };
   const pintar = () => {
     const q = normTxt($('#bq').value), v = $('#bv').value, todos = $('#bp').checked;
@@ -2011,6 +2012,7 @@ async function vImportar(m) {
             $('#res' + i).innerHTML = `<div class="alert ok" style="margin-bottom:0">Cargados <b>${r.nuevos}</b> documentos nuevos${r.actualizados ? ` y actualizados ${r.actualizados}` : ''}${r.saltados || r.duplicados ? ` (${[r.saltados ? r.saltados + ' sin folio o monto' : '', r.duplicados ? r.duplicados + ' repetidos en el archivo' : ''].filter(Boolean).join(', ')}: omitidos)` : ''}.
               <b>${r.conRut}</b> ya tienen RUT${r.sinRut ? `, <b>${r.sinRut}</b> no` : ''}.</div>${r.sinRut ? `<button class="btn ghost sm" style="margin-top:8px" data-sinrut>Completar RUT de ${r.sinRutClientes.length} cliente${r.sinRutClientes.length > 1 ? 's' : ''}</button>` : ''}`;
             const bb = $('[data-sinrut]', $('#res' + i)); if (bb) bb.onclick = () => abrirSinRut(r.sinRutClientes);
+            api('sincronizarPlanillaCreditos', S.sess.token).then(() => $('#res' + i).insertAdjacentHTML('beforeend', '<div class="muted" style="margin-top:6px">La planilla única de créditos en el Drive quedó al día.</div>')).catch(() => {});
             continue;
           }
           const lotes = lotesDe(l);
