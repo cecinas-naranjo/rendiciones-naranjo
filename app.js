@@ -2093,7 +2093,7 @@ async function vImportar(m) {
     const ds = (S.diasTerm && S.diasTerm.length ? S.diasTerm : [S.fecha]).slice().sort();
     const t = await api('listarTerminales', S.sess.token, ds);
     const internos = /^(OFICINA|DESKTOP|PC-)/i;
-    $('#term').innerHTML = `<div class="tw"><table><thead><tr><th>Terminal</th>${ds.map(d => `<th class="r">Docs ${ds.length > 1 || d !== S.fecha ? fcorta(d) : ''}</th>`).join('')}<th>Vendedor</th></tr></thead><tbody>${t.map(x => `
+    $('#term').innerHTML = `<div class="tw"><table><thead><tr><th>Terminal</th>${ds.map(d => `<th class="r">Docs ${fcorta(d)}</th>`).join('')}<th>Vendedor</th></tr></thead><tbody>${t.map(x => `
       <tr><td><b>${esc(x.terminal)}</b> ${resaltar.includes(x.terminal) || (!x.vendedor && x.documentos) ? '<span class="chip bad">sin asignar</span>' : ''}
         ${internos.test(x.terminal) && !x.vendedor ? '<span class="chip">uso interno</span>' : ''}</td>${ds.map(d => `<td class="r">${(x.porFecha || {})[d] || 0}</td>`).join('')}
       <td><select class="in" style="min-height:38px" data-t="${esc(x.terminal)}"><option value="">— Ninguno —</option>${opcVend(x.vendedor)}</select></td></tr>`).join('')}
