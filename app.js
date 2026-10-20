@@ -130,11 +130,11 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
-  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', porCobrar: 'Buscando lo que hay por cobrar…', listarCheques: 'Cargando los cheques…', listarUsuariosAdmin: 'Cargando usuarios…', guardarUsuario: 'Guardando el usuario…', restablecerClave: 'Generando la clave…', marcarCheque: 'Guardando…', cargarCreditos: 'Cargando la lista de créditos…', generarPlanillaPorCobrar: 'Armando la planilla por cobrar…', reintentarRut: 'Buscando RUT…', historial: 'Cargando historial…' };
+  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', porCobrar: 'Buscando lo que hay por cobrar…', listarCheques: 'Cargando los cheques…', listarUsuariosAdmin: 'Cargando usuarios…', guardarUsuario: 'Guardando el usuario…', restablecerClave: 'Generando la clave…', marcarCheque: 'Guardando…', cargarCreditos: 'Cargando la lista de créditos…', generarPlanillaPorCobrar: 'Armando la planilla por cobrar…', reintentarRut: 'Buscando RUT…', historial: 'Cargando historial…', getKpis: 'Calculando los indicadores…' };
 const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
   : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
 
@@ -454,11 +454,11 @@ const TABS = {
     ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos por autorizar', 'percent']], TABS.RENDICION.slice(1));
-TABS.ADMIN = TABS.SUPERVISOR.concat([['usuarios', 'Usuarios', 'users']]);
+TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Datos para decidir', 'chart'], ['usuarios', 'Usuarios', 'users']]);
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques'], 'cash'],
-  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['historial', 'usuarios'], 'dots']];
+  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
 /* ===== MODO PRUEBA (TEMPORAL): el ADMIN salta entre usuarios sin pedir claves. Para quitarlo: MODO_PRUEBA = false aquí y en APPS_SCRIPT.js (CFG). ===== */
@@ -716,7 +716,7 @@ function ir(t, silencioso) {
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
   const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
-  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
     if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -2519,3 +2519,92 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => {
     document.body.appendChild(b);
   });
 });
+
+
+/* ============ DATOS PARA DECIDIR (solo ADMIN, v49) ============
+   Indicadores de un período (ventas, crédito y cobranza, kilos y mermas, control). Todo lo calcula el servidor (`getKpis`); acá solo se dibuja. */
+async function vDatos(m) {
+  const hoy = hoyCL(), sumar = (f, n) => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
+  const mes1 = hoy.slice(0, 8) + '01';
+  const PER = { 7: ['7 días', () => [sumar(hoy, -6), hoy]], 30: ['30 días', () => [sumar(hoy, -29), hoy]], 90: ['90 días', () => [sumar(hoy, -89), hoy]],
+    mes: ['Este mes', () => [mes1, hoy]], ant: ['Mes pasado', () => { const a = new Date(mes1 + 'T12:00:00'); a.setMonth(a.getMonth() - 1); return [a.toLocaleDateString('en-CA'), sumar(mes1, -1)]; }] };
+  S.datos = S.datos || { p: '30', desde: '', hasta: '' };
+  const rango = () => S.datos.p === 'x' && S.datos.desde && S.datos.hasta ? [S.datos.desde, S.datos.hasta] : PER[S.datos.p in PER ? S.datos.p : '30'][1]();
+  const FORMA = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CHEQUE: 'Cheque', CREDITO: 'Crédito', NOTA_CREDITO: 'Nota de crédito', OTRA: 'Otra' };
+  const kg = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-CL') + ' kg';
+  const pct = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-CL') + '%';
+  const kpi = (t, v, sub) => `<div><span>${t}</span><b>${v}</b>${sub ? `<small class="muted" style="display:block;margin-top:2px">${sub}</small>` : ''}</div>`;
+  const delta = x => x == null ? '' : `<span class="chip ${x >= 0 ? 'ok' : 'bad'}">${x >= 0 ? '▲' : '▼'} ${pct(Math.abs(x))} vs. antes</span>`;
+  const barras = (xs, fmt, cls) => { const mx = Math.max(1, ...xs.map(x => Math.abs(x.v)));
+    return xs.length ? xs.map(x => `<div class="dkb"><span class="l" title="${esc(x.l)}">${esc(x.l)}</span><div class="t"><i class="${x.c || cls || ''}" style="width:${Math.max(x.v ? 2 : 0, Math.abs(x.v) / mx * 100)}%"></i></div><b>${fmt(x.v)}</b></div>`).join('') : '<div class="muted">Sin datos en este período.</div>'; };
+  const tabla = (cab, filas) => filas.length ? `<div style="overflow-x:auto"><table class="dkt"><thead><tr>${cab.map((c, i) => `<th class="${i ? 'n' : ''}">${c}</th>`).join('')}</tr></thead><tbody>${filas.map(f => `<tr>${f.map((c, i) => `<td class="${i ? 'n' : ''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="muted">Sin datos en este período.</div>';
+  const grafico = serie => { const n = serie.length, W = 640, H = 150, mx = Math.max(1, ...serie.map(s => s[1])), bw = W / n;
+    return `<svg viewBox="0 0 ${W} ${H + 18}" class="dkg-svg" role="img" aria-label="Ventas por día">${serie.map((s, i) => { const h = Math.max(s[1] > 0 ? 2 : 0, s[1] / mx * H);
+      return `<rect x="${(i * bw + bw * 0.12).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${(bw * 0.76).toFixed(1)}" height="${h.toFixed(1)}" rx="${bw > 6 ? 2 : 0}"><title>${fcorta(s[0])}: ${clp(s[1])}</title></rect>`; }).join('')}
+      <text x="0" y="${H + 14}" class="dkx">${fcorta(serie[0][0])}</text><text x="${W}" y="${H + 14}" class="dkx" text-anchor="end">${fcorta(serie[n - 1][0])}</text></svg>`; };
+
+  const html = d => {
+    const v = d.ventas, c = d.credito, cb = d.cobranza, k = d.kilos, me = d.mermas, co = d.control;
+    const al = [];
+    if (c.deuda > 0 && c.vencidaPct >= 30) al.push(['bad', `La deuda vencida es <b>${clp(c.vencida)}</b> (${pct(c.vencidaPct)} de la cartera), repartida en ${c.clientesVencidos} cliente${c.clientesVencidos === 1 ? '' : 's'}.`]);
+    else if (c.vencida > 0) al.push(['warn', `Hay <b>${clp(c.vencida)}</b> vencidos (${pct(c.vencidaPct)} de la cartera) en ${c.clientesVencidos} cliente${c.clientesVencidos === 1 ? '' : 's'}.`]);
+    if (cb.creditoOtorgado > cb.total && cb.creditoOtorgado > 0) al.push(['warn', `Se dio más crédito (<b>${clp(cb.creditoOtorgado)}</b>) que lo cobrado (<b>${clp(cb.total)}</b>): la deuda está creciendo.`]);
+    if (v.delta != null && v.delta <= -10) al.push(['bad', `Las ventas bajaron <b>${pct(Math.abs(v.delta))}</b> frente al período anterior.`]);
+    if (k.faltante > 0) al.push(['warn', `Kilos que salieron y no volvieron ni se facturaron: <b>${clp(k.faltante)}</b>${k.diasConDiferencia ? ` (${k.diasConDiferencia} caso${k.diasConDiferencia === 1 ? '' : 's'} sobre la tolerancia)` : ''}.`]);
+    if (co.efectivo.falta > 0) al.push(['bad', `El efectivo contado quedó <b>${clp(co.efectivo.falta)}</b> bajo lo esperado en ${co.efectivo.contados - co.efectivo.cuadran} de ${co.efectivo.contados} conteos.`]);
+    if (co.nDiasSinCerrar > 0) al.push(['warn', `<b>${co.nDiasSinCerrar}</b> día${co.nDiasSinCerrar === 1 ? '' : 's'} con ventas sin cerrar la rendición.`]);
+    if (co.sinDetallar.n > 0) al.push(['warn', `<b>${co.sinDetallar.n}</b> folio${co.sinDetallar.n === 1 ? '' : 's'} de días anteriores sin detallar (${clp(co.sinDetallar.monto)}).`]);
+    if (me.pctVenta >= 2) al.push(['warn', `Mermas y reprocesos equivalen a <b>${pct(me.pctVenta)}</b> de la venta (${clp(me.monto)}).`]);
+    if (c.cheques.proximos7 > 0) al.push(['ok', `Esta semana se pueden cobrar <b>${clp(c.cheques.proximos7)}</b> en cheques a fecha.`]);
+    const desc = Object.fromEntries(co.descuentos.map(x => [x.estado, x]));
+    return `<div class="row" style="justify-content:space-between;align-items:flex-end;margin-bottom:6px"><div><h2>Datos para decidir</h2>
+        <p class="lead" style="margin:0">${fcorta(d.desde)} al ${fcorta(d.hasta)} · ${d.dias} día${d.dias === 1 ? '' : 's'}. Los porcentajes y las flechas comparan con el período anterior del mismo largo.</p></div></div>
+      <div class="row dkbar"><div class="seg" id="dkp">${Object.keys(PER).map(x => `<button type="button" data-p="${x}" class="${S.datos.p === x ? 'on' : ''}">${PER[x][0]}</button>`).join('')}</div>
+        <label class="muted dkd">Desde <input type="date" class="in" id="dkd1" value="${d.desde}" max="${hoy}"></label><label class="muted dkd">Hasta <input type="date" class="in" id="dkd2" value="${d.hasta}" max="${hoy}"></label></div>
+      <h3>Para tu atención</h3>
+      <div class="card dkal">${al.length ? al.map(a => `<div class="dka ${a[0]}"><i></i><span>${a[1]}</span></div>`).join('') : '<div class="muted">Sin alertas en este período.</div>'}</div>
+
+      <h3>Ventas</h3>
+      <div class="kpis">${kpi('Venta del período', clp(v.total), delta(v.delta))}${kpi('Documentos', v.docs.toLocaleString('es-CL'))}${kpi('Ticket promedio', clp(v.ticket))}${kpi('Promedio por día', clp(v.promedioDia))}${kpi('Contado (no crédito)', pct(v.contadoPct))}</div>
+      <div class="card" style="margin-top:12px"><b>Venta por día</b><div class="dkchart">${grafico(v.serie)}</div></div>
+      <div class="dkg"><div class="card"><b>Por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Venta', 'Docs', 'Ticket', '% crédito', 'Kilos'], v.porVendedor.map(x => [esc(x.nombre), clp(x.venta), x.docs, clp(x.ticket), pct(x.creditoPct), kg(x.kilos)]))}</div></div>
+        <div class="card"><b>Cómo pagaron</b><div style="margin-top:8px">${barras(v.formas.filter(x => x.forma !== 'NOTA_CREDITO').map(x => ({ l: FORMA[x.forma] || x.forma, v: x.monto, c: x.forma === 'CREDITO' ? 'warn' : '' })), clp)}</div></div></div>
+
+      <h3>Crédito y cobranza</h3>
+      <div class="kpis">${kpi('Deuda total de clientes', clp(c.deuda), `${c.facturas} factura${c.facturas === 1 ? '' : 's'} · ${c.clientes} cliente${c.clientes === 1 ? '' : 's'}`)}${kpi('Vencida', clp(c.vencida), pct(c.vencidaPct) + ' de la deuda')}
+        ${kpi('Antigüedad promedio de la deuda', c.diasPromedioDeuda + ' días')}${kpi('Días reales de cobro', c.diasCobro == null ? '—' : c.diasCobro + ' días', 'desde la factura al pago, en el período')}
+        ${kpi('Cobrado en el período', clp(cb.total), delta(cb.delta))}${kpi('Cheques en cartera', clp(c.cheques.cartera), `${c.cheques.n} cheque${c.cheques.n === 1 ? '' : 's'}`)}</div>
+      <div class="dkg"><div class="card"><b>Antigüedad de la deuda</b><div style="margin-top:8px">${barras(c.aging.map((a, i) => ({ l: a.tramo, v: a.monto, c: i >= 3 ? 'bad' : i === 2 ? 'warn' : '' })), clp)}</div></div>
+        <div class="card"><b>Deuda por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Deuda', 'Vencida'], c.porVendedor.map(x => [esc(x.vendedor), clp(x.deuda), x.vencida ? `<span class="dkr">${clp(x.vencida)}</span>` : '—']))}</div></div></div>
+      <div class="dkg"><div class="card"><b>Los 10 que más deben</b><div style="margin-top:8px">${tabla(['Cliente', 'Deuda', 'Vencida'], c.topDeudores.map(x => [`${esc(x.cliente)}<div class="muted">${esc(x.rut)}</div>`, clp(x.deuda), x.vencida ? `<span class="dkr">${clp(x.vencida)}</span>` : '—']))}</div></div>
+        <div class="card"><b>Más atrasados</b><div style="margin-top:8px">${tabla(['Cliente', 'Atraso', 'Vencido'], c.topAtrasados.map(x => [`${esc(x.cliente)}<div class="muted">${x.ultimoPago ? 'último pago ' + fcorta(x.ultimoPago) : 'sin pagos'}</div>`, x.atraso + ' d', clp(x.vencida)]))}</div></div></div>
+
+      <h3>Kilos y mermas</h3>
+      <div class="kpis">${kpi('Kilos facturados', kg(k.total))}${kpi('Precio promedio por kilo', clp(k.precioPromedio))}${kpi('Kilos faltantes en plata', clp(k.faltante), k.sobrante ? 'a favor: ' + clp(k.sobrante) : '')}
+        ${kpi('Mermas y reprocesos', clp(me.monto), pct(me.pctVenta) + ' de la venta')}</div>
+      <div class="dkg"><div class="card"><b>Productos más vendidos (kilos)</b><div style="margin-top:8px">${barras(k.productos.map(x => ({ l: x.producto, v: x.kilos })), kg)}</div></div>
+        <div class="card"><b>Diferencia de kilos por vendedor</b><div class="muted" style="margin:2px 0 8px">Salió − volvió − facturado. Positivo = falta; se descuenta de su liquidación.</div>${tabla(['Vendedor', 'Kilos', 'En plata'], k.porVendedor.map(x => [esc(x.vendedor), kg(x.kilos), `<span class="${x.pesos > 0 ? 'dkr' : ''}">${clp(x.pesos)}</span>`]))}</div></div>
+      <div class="card" style="margin-top:12px"><b>Devoluciones</b><div style="margin-top:8px">${tabla(['Tipo', 'Casos', 'Monto NC'], me.porTipo.map(x => [x.tipo === 'MERMA' ? 'Merma' : x.tipo === 'REPROCESO' ? 'Reproceso' : esc(x.tipo), x.n, clp(x.monto)]))}</div>
+        ${me.productos.length ? `<div class="muted" style="margin:10px 0 4px">Productos que más vuelven</div>${me.productos.map(x => `<div>${esc(x.producto)} <span class="muted">· ${x.cantidad.toLocaleString('es-CL')} · ${x.tipo === 'MERMA' ? 'merma' : 'reproceso'}</span></div>`).join('')}` : ''}</div>
+
+      <h3>Control</h3>
+      <div class="kpis">${kpi('Folios sin detallar', co.sinDetallar.n, clp(co.sinDetallar.monto) + ' · días anteriores')}${kpi('Días sin cerrar', co.nDiasSinCerrar)}
+        ${kpi('Descuentos aprobados', clp((desc.APROBADO || { monto: 0 }).monto), pct(co.descuentoPct) + ' de la venta')}${kpi('Efectivo que no cuadró', clp(co.efectivo.falta), `${co.efectivo.cuadran} de ${co.efectivo.contados} conteos cuadraron`)}${kpi('Gastos', clp(co.gastos.total))}</div>
+      <div class="dkg"><div class="card"><b>Efectivo: faltantes y sobrantes por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Días', 'Falta', 'Sobra'], co.efectivo.porVendedor.map(x => [esc(x.vendedor), x.dias, x.falta ? `<span class="dkr">${clp(x.falta)}</span>` : '—', x.sobra ? clp(x.sobra) : '—']))}</div></div>
+        <div class="card"><b>Folios sin detallar por vendedor</b><div style="margin-top:8px">${tabla(['Vendedor', 'Folios', 'Monto'], co.sinDetallar.porVendedor.map(x => [esc(x.vendedor), x.n, clp(x.monto)]))}</div></div></div>
+      <div class="dkg"><div class="card"><b>Descuentos</b><div style="margin-top:8px">${tabla(['Estado', 'Casos', 'Monto'], co.descuentos.map(x => [({ APROBADO: 'Aprobados', PENDIENTE: 'Pendientes', RECHAZADO: 'Rechazados' })[x.estado] || esc(x.estado), x.n, clp(x.monto)]))}</div></div>
+        <div class="card"><b>Gastos por concepto</b><div style="margin-top:8px">${barras(co.gastos.porConcepto.map(x => ({ l: x.concepto, v: x.monto })), clp)}</div></div></div>
+      ${co.diasSinCerrar.length ? `<div class="card" style="margin-top:12px"><b>Días sin cerrar</b><div class="row" style="gap:6px;margin-top:8px">${co.diasSinCerrar.map(f => `<span class="chip warn">${fcorta(f)}</span>`).join('')}${co.nDiasSinCerrar > co.diasSinCerrar.length ? `<span class="muted">y ${co.nDiasSinCerrar - co.diasSinCerrar.length} más</span>` : ''}</div></div>` : ''}
+      <p class="muted" style="margin-top:16px">Calculado el ${esc(String(d.generado).slice(0, 16))}. La deuda y la antigüedad son al día de hoy; el resto corresponde al período elegido. Notas de crédito se restan de la venta. El plazo de cada factura es el del cliente o, si no tiene, el de la política de crédito por monto neto.</p>`;
+  };
+  const cargar = async recarga => {
+    const [desde, hasta] = rango();
+    const d = await api('getKpis', S.sess.token, desde, hasta);
+    if (recarga) S.silencio = true;
+    try { render(m, html(d)); } finally { S.silencio = false; }
+    m.querySelectorAll('#dkp button').forEach(b => b.onclick = () => { S.datos.p = b.dataset.p; cargar(true).catch(() => {}); });
+    const cambio = () => { const a = $('#dkd1', m).value, z = $('#dkd2', m).value; if (a && z) { S.datos = { p: 'x', desde: a, hasta: z }; cargar(true).catch(() => {}); } };
+    $('#dkd1', m).onchange = cambio; $('#dkd2', m).onchange = cambio;
+  };
+  await cargar(false);
+}

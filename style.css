@@ -647,3 +647,30 @@ nav.sub button:active{transform:scale(.95)}
  .hday .dl svg{display:none}
  .hbar .icon-btn.only{width:38px}
 }
+
+/* ============ Datos para decidir (v49) ============ */
+.dkbar{gap:12px;margin:10px 0 4px}
+.dkbar .seg{flex-wrap:wrap}
+.dkd{display:inline-flex;align-items:center;gap:6px}
+.dkd .in{width:auto;padding:7px 9px}
+.dkal{padding:6px 16px}
+.dka{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line-2);line-height:1.4}
+.dka:last-child{border-bottom:0}
+.dka i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:6px;background:var(--mut)}
+.dka.bad i{background:var(--bad)}.dka.warn i{background:var(--warn)}.dka.ok i{background:var(--ok)}
+.dkg{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:12px;margin-top:12px}
+.dkb{display:grid;grid-template-columns:minmax(90px,34%) 1fr auto;gap:10px;align-items:center;margin:7px 0;font-size:14px}
+.dkb .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.dkb .t{height:10px;background:#E9E5E1;border-radius:99px;overflow:hidden}
+.dkb .t i{display:block;height:100%;background:var(--cu);border-radius:99px}
+.dkb .t i.warn{background:var(--warn)}.dkb .t i.bad{background:var(--bad)}
+.dkb b{white-space:nowrap}
+.dkt th.n,.dkt td.n{text-align:right}
+.dkt th:first-child,.dkt td:first-child{white-space:normal;min-width:120px}
+.dkr{color:var(--bad);font-weight:700}
+.dkchart{margin-top:10px}
+.dkg-svg{width:100%;height:auto;display:block}
+.dkg-svg rect{fill:var(--cu)}
+.dkg-svg rect:hover{fill:var(--cu-2)}
+.dkx{font-size:11px;fill:var(--mut)}
+@media (max-width:560px){.kpis b{font-size:21px}.dkb{grid-template-columns:minmax(80px,38%) 1fr auto}}

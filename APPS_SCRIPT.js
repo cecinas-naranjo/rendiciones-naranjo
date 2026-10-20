@@ -214,7 +214,7 @@ function setup() {
 const API = {
   batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -255,7 +255,7 @@ function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
 const LECTURAS_ = { ping: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
-  getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, batch: 1 };
+  getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
 function batch(llamadas) {
@@ -2653,4 +2653,159 @@ function historial(token) {
   auth_(token, ['RENDICION','SUPERVISOR']);
   return read_('RENDICIONES').map(x => ({ fecha: x.fecha, estado: x.estado, cerrado_por: x.cerrado_por, url: x.archivo_url }))
     .sort((a, b) => a.fecha < b.fecha ? 1 : -1).slice(0, 60);
+}
+
+
+/* ============================ DATOS PARA DECIDIR (solo ADMIN) ============================ */
+// Indicadores de un período: ventas, crédito y cobranza, kilos y mermas, control. Solo lee; se calcula sobre lo ya guardado.
+const diasEntre_ = (a, b) => Math.round((new Date(String(b) + 'T12:00:00') - new Date(String(a) + 'T12:00:00')) / 864e5);
+const TABLAS_KPI_ = ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'DESCUENTOS', 'VENTAS_DETALLE', 'DESPACHO', 'DEVOLUCIONES', 'PRODUCTOS', 'USUARIOS', 'CREDITOS_CARGA',
+  'CLIENTES', 'CHEQUES_ESTADO', 'RENDICIONES', 'GASTOS', 'CONTEO_EFECTIVO', 'DEPOSITOS'];
+function getKpis(token, desde, hasta) {
+  auth_(token, ['ADMIN']);
+  const iso = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+  hasta = iso(hasta) ? String(hasta) : hoy_();
+  desde = iso(desde) ? String(desde) : sumarDias_(hasta, -29);
+  if (desde > hasta) { const t = desde; desde = hasta; hasta = t; }
+  if (diasEntre_(desde, hasta) > 400) throw new Error('Elige un período de hasta 13 meses.');
+  return conCache_('kpi|' + desde + '|' + hasta, TABLAS_KPI_, () => kpis_(desde, hasta));
+}
+function kpis_(desde, hasta) {
+  const hoy = hoy_(), en = f => f >= desde && f <= hasta, r0 = n => Math.round(Number(n) || 0);
+  const nombres = {}; read_('USUARIOS').forEach(u => nombres[u.usuario] = u.nombre);
+  const nom = u => nombres[u] || u || 'Sin asignar';
+  const esNC = d => /cr[eé]dito/i.test(String(d.tipo));
+  const signo = d => esNC(d) ? -Math.abs(num_(d.total)) : num_(d.total);
+  const docsTodos = read_('DOCUMENTOS');
+  const nDias = diasEntre_(desde, hasta) + 1, ant1 = sumarDias_(desde, -1), ant0 = sumarDias_(desde, -nDias);
+  const delta = (a, b) => b ? Math.round((a - b) / Math.abs(b) * 1000) / 10 : null;
+  const ventaDe = (a, b) => docsTodos.reduce((s, d) => d.fecha >= a && d.fecha <= b ? s + signo(d) : s, 0);
+  const docs = docsTodos.filter(d => en(d.fecha)), docsVenta = docs.filter(d => !esNC(d));
+
+  // ---- ventas
+  const venta = ventaDe(desde, hasta), ventaAnt = ventaDe(ant0, ant1);
+  const serieM = {}; docs.forEach(d => serieM[d.fecha] = (serieM[d.fecha] || 0) + signo(d));
+  const serie = []; for (let i = 0; i < nDias; i++) { const f = sumarDias_(desde, i); serie.push([f, r0(serieM[f])]); }
+  const pv = {}, V = u => pv[u] = pv[u] || { usuario: u, nombre: nom(u), venta: 0, docs: 0, credito: 0, descuentos: 0, cobranza: 0, kilos: 0 };
+  docs.forEach(d => { const o = V(d.vendedor); o.venta += signo(d); if (!esNC(d)) o.docs++; });
+  const formas = { EFECTIVO: 0, TRANSFERENCIA: 0, CHEQUE: 0, CREDITO: 0, NOTA_CREDITO: 0 };
+  read_('PAGOS').filter(p => en(p.fecha)).forEach(p => {
+    const f = p.forma === 'DEP_EFECTIVO' ? 'EFECTIVO' : p.forma;
+    if (formas[f] !== undefined) formas[f] += num_(p.monto);
+    if (p.forma === 'CREDITO') V(p.vendedor).credito += num_(p.monto);
+  });
+  const totPagos = formas.EFECTIVO + formas.TRANSFERENCIA + formas.CHEQUE + formas.CREDITO;
+  const descuentos = {}; read_('DESCUENTOS').filter(x => en(x.fecha)).forEach(x => {
+    const e = String(x.estado || 'PENDIENTE'), o = descuentos[e] = descuentos[e] || { n: 0, monto: 0 };
+    o.n++; o.monto += num_(x.monto); if (e === 'APROBADO') V(x.vendedor).descuentos += num_(x.monto);
+  });
+
+  // ---- cobranza
+  const cobAll = read_('COBRANZA'), cob = cobAll.filter(x => en(x.fecha));
+  const cobT = cob.reduce((a, x) => a + num_(x.monto), 0), cobAnt = cobAll.filter(x => x.fecha >= ant0 && x.fecha <= ant1).reduce((a, x) => a + num_(x.monto), 0);
+  const cobForma = {}; cob.forEach(x => { const f = x.forma || 'OTRA'; cobForma[f] = (cobForma[f] || 0) + num_(x.monto); V(x.vendedor).cobranza += num_(x.monto); });
+
+  // ---- crédito (antigüedad y vencido; plazo = el del cliente o, si no tiene, el de la política por monto neto)
+  const sal = conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_());
+  const plazoPol = neto => neto > 300000 ? 28 : neto > 120000 ? 21 : neto > 60000 ? 14 : 7;
+  const tramos = [['0 a 7 días', 0, 7], ['8 a 14 días', 8, 14], ['15 a 30 días', 15, 30], ['31 a 60 días', 31, 60], ['Más de 60 días', 61, 1e9]];
+  const aging = tramos.map(t => ({ tramo: t[0], monto: 0, facturas: 0 }));
+  let deuda = 0, vencida = 0, sumaDias = 0, nFact = 0; const dv = {}, topC = [];
+  sal.clientes.forEach(c => {
+    let cv = 0, cd = 0, atrasoMax = 0;
+    c.facturas.forEach(f => {
+      if (f.saldo <= 0) return;
+      const plazo = c.condicion > 0 ? c.condicion : plazoPol(f.credito / 1.19), atraso = f.dias - plazo;
+      cd += f.saldo; deuda += f.saldo; sumaDias += f.saldo * f.dias; nFact++;
+      const i = tramos.findIndex(t => f.dias >= t[1] && f.dias <= t[2]); aging[i < 0 ? aging.length - 1 : i].monto += f.saldo; aging[i < 0 ? aging.length - 1 : i].facturas++;
+      const o = dv[f.vendedorNombre] = dv[f.vendedorNombre] || { vendedor: f.vendedorNombre, deuda: 0, vencida: 0 };
+      o.deuda += f.saldo;
+      if (atraso > 0) { cv += f.saldo; vencida += f.saldo; o.vencida += f.saldo; atrasoMax = Math.max(atrasoMax, atraso); }
+    });
+    if (cd > 0) topC.push({ cliente: c.cliente, rut: c.rut, deuda: r0(cd), vencida: r0(cv), atraso: atrasoMax, ultimoPago: c.ultimoPago || '' });
+  });
+  let sm = 0, sd = 0;
+  sal.clientes.forEach(c => c.facturas.forEach(f => (f.pagos || []).forEach(p => {
+    if (!en(String(p.fecha))) return; const d = diasEntre_(f.fecha, p.fecha); if (!isFinite(d)) return;
+    sm += p.monto; sd += p.monto * Math.max(0, d);
+  })));
+  const ch = chequesTodos_().filter(c => c.estado === 'CARTERA'), en7 = sumarDias_(hoy, 7), sumaCh = xs => r0(xs.reduce((a, c) => a + c.monto, 0));
+
+  // ---- kilos y mermas
+  const unidad = {}; read_('PRODUCTOS').forEach(p => unidad[codeKey_(p.codigo)] = p.unidad);
+  const det = read_('VENTAS_DETALLE').filter(x => en(x.fecha) && !esGuiaFlag_(x.es_guia));
+  let kilosT = 0; const kp = {};
+  det.forEach(x => {
+    if (unidad[codeKey_(x.codigo)] === 'UN') return;
+    const q = num_(x.cantidad); kilosT += q; V(x.vendedor).kilos += q;
+    const o = kp[x.producto] = kp[x.producto] || { producto: x.producto, kilos: 0, monto: 0 }; o.kilos += q; o.monto += num_(x.total);
+  });
+  const desp = read_('DESPACHO').filter(x => en(x.fecha)), despDia = {}, detDia = {};
+  desp.forEach(x => (despDia[x.fecha] = despDia[x.fecha] || []).push(x));
+  det.forEach(x => (detDia[x.fecha] = detDia[x.fecha] || []).push(x));
+  let falta = 0, sobra = 0, diasConDif = 0; const kvd = {};
+  Object.keys(despDia).forEach(f => {
+    const dd = detDia[f] || []; if (!dd.length) return;
+    const pr = preciosKg_(dd), vs = {}; despDia[f].forEach(x => vs[x.vendedor] = 1);
+    Object.keys(vs).forEach(v => {
+      if (despDia[f].some(x => x.vendedor === v && x.salida !== '' && x.retorno === '')) return;        // aún falta registrar el retorno
+      const k = kilosDe_(v, despDia[f], dd, unidad, pr); if (!(k.salida > 0)) return;
+      if (k.diferenciaPesos > 0) falta += k.diferenciaPesos; else sobra += -k.diferenciaPesos;
+      if (Math.abs(k.diferencia) > CFG.TOLERANCIA_KG) diasConDif++;
+      const o = kvd[v] = kvd[v] || { vendedor: nom(v), kilos: 0, pesos: 0 }; o.kilos += k.diferencia; o.pesos += k.diferenciaPesos;
+    });
+  });
+  const mer = { MERMA: { n: 0, monto: 0 }, REPROCESO: { n: 0, monto: 0 } }, mp = {};
+  read_('DEVOLUCIONES').filter(x => en(x.fecha)).forEach(x => {
+    const t = String(x.tipo || '').toUpperCase(), o = mer[t] = mer[t] || { n: 0, monto: 0 }; o.n++; o.monto += num_(x.monto);
+    const p = mp[x.producto] = mp[x.producto] || { producto: x.producto, cantidad: 0, n: 0, tipo: t }; p.cantidad += num_(x.cantidad); p.n++;
+  });
+  const merMonto = Object.keys(mer).reduce((a, k) => a + mer[k].monto, 0);
+
+  // ---- control
+  const sinDet = docsVenta.filter(d => d.fecha < hoy && d.estado !== 'DETALLADO'), sdv = {};
+  sinDet.forEach(d => { const o = sdv[nom(d.vendedor)] = sdv[nom(d.vendedor)] || { vendedor: nom(d.vendedor), n: 0, monto: 0 }; o.n++; o.monto += num_(d.total); });
+  const cerradas = {}; read_('RENDICIONES').filter(r => r.estado === 'CERRADA').forEach(r => cerradas[r.fecha] = true);
+  const diasAbiertos = {}; docsVenta.forEach(d => { if (d.fecha < hoy && !cerradas[d.fecha]) diasAbiertos[d.fecha] = 1; });
+  const cont = read_('CONTEO_EFECTIVO').filter(x => en(x.fecha) && x.vendedor !== 'GENERAL');
+  const fechasC = Object.keys(cont.reduce((m, x) => (m[x.fecha] = 1, m), {})).sort().reverse().slice(0, 31);
+  let cN = 0, cOk = 0, cFalta = 0, cSobra = 0; const cv = {}, cMalos = [];
+  fechasC.forEach(f => {
+    let r; try { r = resumen_(f); } catch (e) { return; }
+    cont.filter(x => x.fecha === f).forEach(x => {
+      const t = r.porVendedor.find(p => p.vendedor === x.vendedor); if (!t) return;
+      const contado = BILLETES.reduce((a, b) => a + b * num_(x['b' + b]), 0) + num_(x.monedas), dif = r0(contado - t.efectivoEntregar);
+      cN++; if (dif === 0) cOk++; else { if (dif < 0) cFalta += -dif; else cSobra += dif; const o = cv[nom(x.vendedor)] = cv[nom(x.vendedor)] || { vendedor: nom(x.vendedor), falta: 0, sobra: 0, dias: 0 }; o.dias++; if (dif < 0) o.falta += -dif; else o.sobra += dif; cMalos.push({ fecha: f, vendedor: nom(x.vendedor), dif }); }
+    });
+  });
+  const gas = read_('GASTOS').filter(x => en(x.fecha)), gc = {};
+  gas.forEach(x => gc[x.concepto || 'Sin concepto'] = (gc[x.concepto || 'Sin concepto'] || 0) + num_(x.monto));
+  const top = (o, k, n) => Object.keys(o).map(x => o[x]).sort((a, b) => b[k] - a[k]).slice(0, n);
+
+  return {
+    desde, hasta, hoy, dias: nDias, generado: now_(),
+    ventas: { total: r0(venta), anterior: r0(ventaAnt), delta: delta(venta, ventaAnt), docs: docsVenta.length, ticket: docsVenta.length ? r0(venta / docsVenta.length) : 0,
+      promedioDia: r0(venta / nDias), serie,
+      porVendedor: Object.keys(pv).map(k => pv[k]).filter(o => o.venta || o.docs).sort((a, b) => b.venta - a.venta)
+        .map(o => ({ nombre: o.nombre, venta: r0(o.venta), docs: o.docs, ticket: o.docs ? r0(o.venta / o.docs) : 0, credito: r0(o.credito), creditoPct: o.venta > 0 ? Math.round(o.credito / o.venta * 1000) / 10 : 0, descuentos: r0(o.descuentos), cobranza: r0(o.cobranza), kilos: Math.round(o.kilos * 10) / 10 })),
+      formas: Object.keys(formas).map(k => ({ forma: k, monto: r0(formas[k]) })), contadoPct: totPagos > 0 ? Math.round((totPagos - formas.CREDITO) / totPagos * 1000) / 10 : 0 },
+    credito: { deuda: r0(deuda), vencida: r0(vencida), vencidaPct: deuda > 0 ? Math.round(vencida / deuda * 1000) / 10 : 0, facturas: nFact, clientes: topC.length,
+      clientesVencidos: topC.filter(c => c.vencida > 0).length, diasPromedioDeuda: deuda > 0 ? Math.round(sumaDias / deuda) : 0, diasCobro: sm > 0 ? Math.round(sd / sm) : null,
+      aging: aging.map(a => ({ tramo: a.tramo, monto: r0(a.monto), facturas: a.facturas })),
+      topDeudores: topC.sort((a, b) => b.deuda - a.deuda).slice(0, 10), topAtrasados: topC.filter(c => c.vencida > 0).sort((a, b) => b.atraso - a.atraso || b.vencida - a.vencida).slice(0, 10),
+      porVendedor: top(dv, 'deuda', 20).map(o => ({ vendedor: o.vendedor, deuda: r0(o.deuda), vencida: r0(o.vencida) })),
+      cheques: { cartera: sumaCh(ch), n: ch.length, alDia: sumaCh(ch.filter(c => !c.aFecha)), aFecha: sumaCh(ch.filter(c => c.aFecha)), proximos7: sumaCh(ch.filter(c => c.aFecha && c.fechaCheque <= en7)) } },
+    cobranza: { total: r0(cobT), anterior: r0(cobAnt), delta: delta(cobT, cobAnt), creditoOtorgado: r0(formas.CREDITO), porForma: Object.keys(cobForma).map(k => ({ forma: k, monto: r0(cobForma[k]) })) },
+    kilos: { total: Math.round(kilosT * 10) / 10, precioPromedio: kilosT > 0 ? r0(det.filter(x => unidad[codeKey_(x.codigo)] !== 'UN').reduce((a, x) => a + num_(x.total), 0) / kilosT) : 0,
+      productos: top(kp, 'kilos', 8).map(o => ({ producto: o.producto, kilos: Math.round(o.kilos * 10) / 10, monto: r0(o.monto) })),
+      faltante: r0(falta), sobrante: r0(sobra), diasConDiferencia: diasConDif, porVendedor: top(kvd, 'pesos', 12).map(o => ({ vendedor: o.vendedor, kilos: Math.round(o.kilos * 100) / 100, pesos: r0(o.pesos) })) },
+    mermas: { monto: r0(merMonto), pctVenta: venta > 0 ? Math.round(merMonto / venta * 1000) / 10 : 0, porTipo: Object.keys(mer).map(k => ({ tipo: k, n: mer[k].n, monto: r0(mer[k].monto) })),
+      productos: top(mp, 'cantidad', 6).map(o => ({ producto: o.producto, cantidad: Math.round(o.cantidad * 100) / 100, n: o.n, tipo: o.tipo })) },
+    control: { descuentos: Object.keys(descuentos).map(k => ({ estado: k, n: descuentos[k].n, monto: r0(descuentos[k].monto) })),
+      descuentoPct: venta > 0 ? Math.round(((descuentos.APROBADO || { monto: 0 }).monto) / venta * 1000) / 10 : 0,
+      sinDetallar: { n: sinDet.length, monto: r0(sinDet.reduce((a, d) => a + num_(d.total), 0)), porVendedor: top(sdv, 'n', 8).map(o => ({ vendedor: o.vendedor, n: o.n, monto: r0(o.monto) })) },
+      diasSinCerrar: Object.keys(diasAbiertos).sort().reverse().slice(0, 15), nDiasSinCerrar: Object.keys(diasAbiertos).length,
+      efectivo: { contados: cN, cuadran: cOk, falta: r0(cFalta), sobra: r0(cSobra), porVendedor: top(cv, 'falta', 8).map(o => ({ vendedor: o.vendedor, dias: o.dias, falta: r0(o.falta), sobra: r0(o.sobra) })), recientes: cMalos.slice(0, 6) },
+      gastos: { total: r0(gas.reduce((a, x) => a + num_(x.monto), 0)), porConcepto: top(Object.keys(gc).reduce((m, k) => (m[k] = { concepto: k, monto: gc[k] }, m), {}), 'monto', 6).map(o => ({ concepto: o.concepto, monto: r0(o.monto) })) } }
+  };
 }
