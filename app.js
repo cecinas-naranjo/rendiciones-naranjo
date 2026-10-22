@@ -1755,14 +1755,22 @@ function leerCreditos(rows, hi, head) {
 const sinTilde = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 // Mi DTE entrega las ventas del mostrador con el nombre del computador de oficina. Se separan según el cliente.
 const EQUIPO_OFICINA = /^(DESKTOP|PC-|OFICINA)/;
-const SUPERMERCADOS = [/AMAR HERMANOS/, /KUNCAR/, /\bUNICO\b/, /SUPER ?OFERTA/, /OPERADORA DE COMERCIO/, /DISTRIBUIDORA.*MORENO/];
+const SUPERMERCADOS = [/AMAR HERMANOS/, /KUNCAR/, /\bSUPER ?UNICO\b|\bUNICO\b/, /SUPER ?OFERTA/, /OPERADORA DE COMERCIO/, /DISTRIBUIDORA.*MORENO/];
 const DISTRIBUIDORES = [/PATRICIO MONTES/, /JUAN CARLOS SILVA/, /OSCAR LAGOS/, /CESAR (RICARDO )?CAMPOS/, /\bANBA\b/, /\bAAMF\b/, /PICHIHUILLINCO/, /\bAMIR\b/];
-/** Devuelve null si el documento sale con su propio equipo. equipo = lo que se importa; grupo = como lo rotula la planilla de Ventas Diarias. */
-function clasificarVenta(tipo, cliente, equipo) {
+// Lista de clientes entregada por la empresa (RUT sin dígito → [tipo, nombre]). S = supermercado, D = distribuidor, B = venta en bodega.
+// Los clientes de ruta (cada uno con su vendedor) no se listan: salen con el terminal del vendedor.
+const CLIENTES_TIPO = {6467072:['B',"JAIME ULISES PARADA CANCINO"],8571343:['B',"LUIS ANDRES SAEZ THIELEMANN"],10240346:['B',"JUAN GATICA VEGA"],10594880:['D',"JUAN CARLOS SILVA AYALA"],10967967:['D',"CESAR RICARDO CAMPOS MORA"],11603891:['B',"RODRIGO ROLANDO FIGUEROA MANRIQUEZ"],12990206:['B',"MIGUEL FERNANDEZ SAEZ"],14076345:['B',"SIMON ZAPATA SANHUEZA"],14219974:['B',"JOEL LEIVA VARAS"],14299882:['B',"MANUEL ALBERTO CAMPOMANES GUTIERREZ"],15651662:['D',"OSCAR ELADIO LAGOS LAGOS"],16389061:['B',"ELICEO ANDRES RIOS BRIONES"],16707893:['B',"MARIA TERESA TRONCOSO RIVERA"],18727612:['B',"LEONARDO ANDRES SAN MARTIN PEREZ"],19198892:['B',"JAVIER ROBLES CANARIO"],19923028:['B',"CARLA LEIVA"],20645043:['B',"ADRIELA ESCARLETH CARDENAS RODRIGUEZ"],20872678:['B',"SAMUEL BENJAMIN RUBILAR MUNOZ"],20947573:['B',"RODOLFO ISLA"],21143098:['B',"SERGIO CERNA ARANCIBIA"],21255436:['B',"CARLOS GONZALES ISLA"],27004862:['B',"YORMAN RAFAEL MORENO DIAZ"],27038200:['B',"JUAN MEJIA"],27531771:['B',"BRIAN JOSE DIAZ FLORES"],76062357:['S',"DISTRIBUIDORA Y MAYORISTA CRISTIAN MORENO SPA"],76128330:['S',"COMERCIAL SUPERUNICO STA BARBARA LTDA"],76278969:['S',"COMERCIAL SUPERUNICO LAJA LTDA"],76279855:['S',"COMERCIAL SUPERUNICO ANGOL LTDA"],76965456:['D',"SOCIEDAD CECINAS PICHIHUILLINCO LIMITADA"],77180289:['S',"DISTRIBUIDORA Y SUPERMERCADOS SUPEROFERTA SPA"],77228386:['D',"COMERCIALIZADORA PATRICIO MONTES INOSTROZA E.I.R.L"],77349320:['S',"COMERCIAL AMAR HERMANOS Y COMPANIA LTDA"],77759355:['B',"SCHNEEBERGER EVENTOS Y PRODUCCIONES SPA"],77822839:['B',"INVERSIONES Y COMERCIALIZADORA LUCAR SPA"],78006381:['S',"OPERADORA DE COMERCIO"],78007363:['D',"ANBA SPA"],78390639:['D',"COMERCIALIZADORA AAMF SUR SPA"],81096600:['S',"KUNCAR Y CIA LTDA."]};
+const CLIENTES_POR_NOMBRE = Object.fromEntries(Object.values(CLIENTES_TIPO).map(([t, n]) => [n, t]));
+const rutCuerpo = r => { const x = String(r == null ? '' : r).toUpperCase().replace(/[^0-9K-]/g, ''); if (!x) return ''; return (x.includes('-') ? x.split('-')[0] : x.slice(0, -1)).replace(/\D/g, '').replace(/^0+/, ''); };
+const GRUPOS_CLI = { S: { equipo: 'SUPERMERCADO', grupo: 'SUPERMERCADO' }, D: { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA' }, B: { equipo: 'BODEGA', grupo: 'BODEGA' } };
+/** Devuelve null si el documento sale con su propio equipo. equipo = lo que se importa; grupo = como lo rotula la planilla de Ventas Diarias.
+    Primero se busca al cliente en la lista (por RUT o por nombre exacto); si no está, se usan las reglas por nombre de antes. */
+function clasificarVenta(tipo, cliente, equipo, rut) {
   const eq = String(equipo || '').trim().toUpperCase(), t = String(tipo || '');
   if (eq === 'DISTRIBUIDORA') return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA' };    // archivo ya ordenado a mano
   if (!EQUIPO_OFICINA.test(eq) || /gu[ií]a|nota de cr/i.test(t)) return null;
-  const n = sinTilde(cliente);
+  const n = sinTilde(cliente), k = rutCuerpo(rut), enLista = (CLIENTES_TIPO[k] && CLIENTES_TIPO[k][0]) || CLIENTES_POR_NOMBRE[n];
+  if (enLista) return GRUPOS_CLI[enLista];
   if (SUPERMERCADOS.some(r => r.test(n))) return { equipo: 'SUPERMERCADO', grupo: 'SUPERMERCADO' };
   if (DISTRIBUIDORES.some(r => r.test(n))) return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA' };
   if (/boleta/i.test(t)) return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA', supuesto: true };   // el único distribuidor que pide boleta
@@ -1786,7 +1794,7 @@ function ordenarInformes(leidos) {
     l.orden = { SUPERMERCADO: 0, DISTRIBUIDORA: 0, BODEGA: 0, supuestos: 0, completadas: 0 };
     for (const f of l.filas) {
       const tipo = dte ? f.Documento : f.Nombre, cli = dte ? f['Nombre Cliente'] : f['Razon social'];
-      const c = clasificarVenta(tipo, cli, f[campo]);
+      const c = clasificarVenta(tipo, cli, f[campo], dte ? f.RUT : '');
       if (c) {
         f._equipoOrig = f[campo]; f[campo] = c.equipo; f._grupo = c.grupo;
         const k = tipo + '|' + f.Folio;

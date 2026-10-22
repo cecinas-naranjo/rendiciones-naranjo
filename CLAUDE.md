@@ -314,3 +314,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v51 — "Indicadores de gestión"
 - Título formal. El resumen inicial son 4 tarjetas neutras solo con cifras (sin semáforo ni opiniones); se quitaron las etiquetas Bien/Atención/Crítico de los encabezados de sección. Se corrigió el fondo oscuro heredado del `header` global en `.dksec>header`.
 - Sigue habiendo en cada sección "En simple", "Qué podrías hacer" y "¿Cómo leer…?" (texto orientativo).
+
+## v52 — Lista de clientes para clasificar ventas de oficina
+- Archivo de la empresa "CLIENTES Y QUÉ SON" (643 clientes con RUT): 8 supermercados, 7 distribuidores, 23 "venta en bodega", 605 clientes de ruta (traen su terminal NARANJOT#). Se incrusta en app.js como `CLIENTES_TIPO` (RUT sin DV → [S|D|B, nombre normalizado]); solo los 38 que no son de ruta.
+- `clasificarVenta(tipo, cliente, equipo, rut)`: para documentos de oficina busca primero por RUT (Mi DTE trae RUT; Informe de ventas solo razón social → nombre exacto), luego las reglas por nombre de antes. Corrige que "SUPERUNICO" no calzaba con `\bUNICO\b`. Amir (distribuidor) no está en la lista y sigue por regla.
+- Para actualizar: cambiar `CLIENTES_TIPO` (hay un Excel `Clientes_clasificados.xlsx` generado). Ventas de oficina a clientes de ruta siguen yendo a BODEGA.
