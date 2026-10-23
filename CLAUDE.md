@@ -319,3 +319,13 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Archivo de la empresa "CLIENTES Y QUÉ SON" (643 clientes con RUT): 8 supermercados, 7 distribuidores, 23 "venta en bodega", 605 clientes de ruta (traen su terminal NARANJOT#). Se incrusta en app.js como `CLIENTES_TIPO` (RUT sin DV → [S|D|B, nombre normalizado]); solo los 38 que no son de ruta.
 - `clasificarVenta(tipo, cliente, equipo, rut)`: para documentos de oficina busca primero por RUT (Mi DTE trae RUT; Informe de ventas solo razón social → nombre exacto), luego las reglas por nombre de antes. Corrige que "SUPERUNICO" no calzaba con `\bUNICO\b`. Amir (distribuidor) no está en la lista y sigue por regla.
 - Para actualizar: cambiar `CLIENTES_TIPO` (hay un Excel `Clientes_clasificados.xlsx` generado). Ventas de oficina a clientes de ruta siguen yendo a BODEGA.
+
+## v53 — Carga sugerida por vendedor (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Pantalla Despacho: tarjeta "Carga sugerida para <vendedor>" + línea "Sugerido N un ≈ X kg" bajo cada producto + botón "Usar como salida" (solo rellena salidas vacías).
+- Servidor `getSugerido(token, fecha, vendedor)` (lectura, caché con `conCache_`, roles BODEGA/RENDICION/SUPERVISOR): promedio por DÍA DE VENTA del vendedor (días con facturas, sin guías ni NC) del mes calendario anterior a `fecha`; si ese mes tiene <3 días de venta usa las últimas 4 semanas; sin datos → `sinHistoria`.
+- Unidades: productos PROPIOS por kilo → `round(promedio / kgUnidad)`, `CFG.KG_POR_UNIDAD = {porDefecto: 3, porCodigo: {'7': 1.8}}` (cervecero 1,8 kg). Productos UN → unidades directas. Otros por kilo (chuleta, etc.) → kg redondeado a 0,5. Productos CAMARA no se sugieren.
+- Cliente: se pide aparte después de pintar Despacho (no demora la pantalla). Probado con datos simulados (guías y mes en curso no cuentan).
+
+## v54 — La carga sugerida se rige por el día de venta
+- `sugerido_` ya no promedia el mes anterior: mira los MISMOS días de la semana (p. ej. viernes) de las últimas 12 semanas en que el vendedor facturó, con peso 0,6^k (más reciente = más peso), por lo que se ajusta sola con cada venta. Si ese día tiene <2 ventas usa sus días de venta de las últimas 8 semanas (`base: 'general'`). Devuelve `ult` (cantidad la última vez) por producto; la pantalla lo muestra "· última vez N".
+- Pendiente posible: colchón % sobre lo sugerido y usar retornos reales (DESPACHO) para afinar.

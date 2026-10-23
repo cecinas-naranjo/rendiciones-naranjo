@@ -21,6 +21,8 @@ const CFG = {
   MODO_PRUEBA: true,
   // Diferencia de kilos (vendido según bodega vs facturado) desde la cual se alerta, por vendedor
   TOLERANCIA_KG: 1,
+  // Sugerencia de carga: peso aproximado de una unidad de cecina (kg). Se aplica a los productos PROPIOS por kilo; excepciones por código de Mi DTE.
+  KG_POR_UNIDAD: { porDefecto: 3, porCodigo: { '7': 1.8 } },   // 7 = salchichón cervecero
   // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
   INFORMES_FOLDER_ID: '',
   // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
@@ -255,7 +257,7 @@ function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
 const LECTURAS_ = { ping: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
-  getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, batch: 1 };
+  getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, getSugerido: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
 function batch(llamadas) {
@@ -2808,4 +2810,49 @@ function kpis_(desde, hasta) {
       efectivo: { contados: cN, cuadran: cOk, falta: r0(cFalta), sobra: r0(cSobra), porVendedor: top(cv, 'falta', 8).map(o => ({ vendedor: o.vendedor, dias: o.dias, falta: r0(o.falta), sobra: r0(o.sobra) })), recientes: cMalos.slice(0, 6) },
       gastos: { total: r0(gas.reduce((a, x) => a + num_(x.monto), 0)), porConcepto: top(Object.keys(gc).reduce((m, k) => (m[k] = { concepto: k, monto: gc[k] }, m), {}), 'monto', 6).map(o => ({ concepto: o.concepto, monto: r0(o.monto) })) } }
   };
+}
+
+
+/* ============================ SUGERENCIA DE CARGA (v53) ============================ */
+// Qué debería llevar un vendedor un día de venta: lo que vendió en promedio por día de venta el mes anterior (de lo facturado).
+// Las cecinas (PROPIOS por kilo) se dan también en unidades (CFG.KG_POR_UNIDAD).
+function kgUnidad_(p) {
+  if (String(p.categoria).toUpperCase() !== 'PROPIOS' || String(p.unidad).toUpperCase() === 'UN') return 0;
+  const c = CFG.KG_POR_UNIDAD, k = codeKey_(p.codigo);
+  if (c.porCodigo[k]) return c.porCodigo[k];
+  return /CERVECERO/i.test(String(p.nombre)) ? 1.8 : c.porDefecto;
+}
+function getSugerido(token, fecha, vendedor) {
+  auth_(token, ['BODEGA', 'RENDICION', 'SUPERVISOR']);
+  fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
+  return conCache_('sug|' + vendedor + '|' + fecha, ['VENTAS_DETALLE', 'PRODUCTOS'], () => sugerido_(fecha, String(vendedor || '')));
+}
+function sugerido_(fecha, vendedor) {
+  // Se rige por el DÍA DE VENTA: se miran los mismos días de la semana (p. ej. los viernes) de las últimas 12 semanas en que el vendedor facturó,
+  // dando más peso a los más recientes (cada semana pesa 0,6 de la anterior), así la sugerencia se va ajustando sola con cada venta nueva.
+  // Si ese día de la semana tiene menos de 2 ventas, se usa el promedio ponderado de todos sus días de venta de las últimas 8 semanas.
+  const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const dow = f => new Date(f + 'T12:00:00').getDay(), dia = dow(fecha);
+  const todas = read_('VENTAS_DETALLE').filter(x => x.vendedor === vendedor && !esGuiaFlag_(x.es_guia) && x.fecha < fecha);
+  const lim12 = sumarDias_(fecha, -84), lim8 = sumarDias_(fecha, -56);
+  let det = todas.filter(x => x.fecha >= lim12 && dow(x.fecha) === dia), base = 'dia';
+  const fechasDe = d => Object.keys(d.reduce((o, x) => (o[x.fecha] = 1, o), {})).sort().reverse();   // más reciente primero
+  if (fechasDe(det).length < 2) { det = todas.filter(x => x.fecha >= lim8); base = 'general'; }
+  const fechas = fechasDe(det);
+  if (!fechas.length) return { sinHistoria: true, vendedor };
+  const peso = {}; fechas.forEach((f, i) => peso[f] = Math.pow(0.6, i));
+  const sumaPesos = fechas.reduce((a, f) => a + peso[f], 0);
+  const porDia = {}, ultimo = {};   // codigo → fecha → cantidad
+  det.forEach(x => { const c = codeKey_(x.codigo), o = porDia[c] = porDia[c] || {}; o[x.fecha] = (o[x.fecha] || 0) + num_(x.cantidad); });
+  const items = {}; let totalKg = 0, totalUn = 0;
+  read_('PRODUCTOS').forEach(p => {
+    const c = codeKey_(p.codigo), d = porDia[c]; if (!d || p.seccion === 'CAMARA') return;
+    const prom = fechas.reduce((a, f) => a + (d[f] || 0) * peso[f], 0) / sumaPesos, ult = d[fechas[0]] || 0;
+    const kgU = kgUnidad_(p), esUN = String(p.unidad).toUpperCase() === 'UN';
+    if (esUN) { const un = Math.round(prom); if (un > 0) { items[c] = { un, kg: 0, kgUn: 0, ult: Math.round(ult) }; totalUn += un; } return; }
+    if (kgU) { const un = Math.round(prom / kgU), kg = Math.round(un * kgU * 10) / 10; if (un > 0) { items[c] = { un, kg, kgUn: kgU, ult: Math.round(ult / kgU) }; totalKg += kg; totalUn += un; } return; }
+    const kg = Math.round(prom * 2) / 2; if (kg > 0) { items[c] = { un: 0, kg, kgUn: 0, ult: Math.round(ult * 10) / 10 }; totalKg += kg; }
+  });
+  return { vendedor, base, diaNombre: DIAS[dia], nDias: fechas.length, desde: fechas[fechas.length - 1], hasta: fechas[0], items,
+    totalKg: Math.round(totalKg * 10) / 10, totalUn };
 }

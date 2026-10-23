@@ -130,11 +130,11 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
-  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', porCobrar: 'Buscando lo que hay por cobrar…', listarCheques: 'Cargando los cheques…', listarUsuariosAdmin: 'Cargando usuarios…', guardarUsuario: 'Guardando el usuario…', restablecerClave: 'Generando la clave…', marcarCheque: 'Guardando…', cargarCreditos: 'Cargando la lista de créditos…', generarPlanillaPorCobrar: 'Armando la planilla por cobrar…', reintentarRut: 'Buscando RUT…', historial: 'Cargando historial…', getKpis: 'Calculando los indicadores…' };
+  misDocumentos: 'Cargando folios…', getInspeccion: 'Preparando el detalle…', xlsx: 'Preparando el lector de Excel…', getDespacho: 'Cargando despacho…', listarMov: 'Cargando…', listarDevoluciones: 'Cargando devoluciones…', getConteoEfectivo: 'Cargando el conteo…', porCobrar: 'Buscando lo que hay por cobrar…', listarCheques: 'Cargando los cheques…', listarUsuariosAdmin: 'Cargando usuarios…', guardarUsuario: 'Guardando el usuario…', restablecerClave: 'Generando la clave…', marcarCheque: 'Guardando…', cargarCreditos: 'Cargando la lista de créditos…', generarPlanillaPorCobrar: 'Armando la planilla por cobrar…', reintentarRut: 'Buscando RUT…', historial: 'Cargando historial…', getKpis: 'Calculando los indicadores…', getSugerido: 'Calculando la carga sugerida…' };
 const textoBoton = fn => /^(guardar|save|resolver|asignar)/.test(fn) ? 'Guardando…' : /^importar/.test(fn) ? 'Importando…' : /^borrar/.test(fn) ? 'Borrando…'
   : /^cerrar/.test(fn) ? 'Cerrando…' : /^(generar|vista)/.test(fn) ? 'Generando…' : /^subir/.test(fn) ? 'Subiendo…' : fn === 'login' ? 'Ingresando…' : 'Procesando…';
 
@@ -1195,6 +1195,7 @@ async function vDespacho(m) {
     <div class="row" style="margin-bottom:12px"><select class="in" style="width:auto" id="dv">${opcVend(S.vend)}</select>
       ${r.guias.map(g => `<button class="btn ghost sm" data-g="${esc(g.folio)}">Cargar salida desde guía ${esc(g.folio)}</button>`).join('')}</div>
     ${r.hayDetalle ? '' : '<p class="muted">Cuando se importe el Informe de ventas de Mi DTE, aquí verás los kilos facturados y la diferencia.</p>'}
+    <div id="sgc"></div>
     <div class="colh"><span style="text-align:left">Producto</span><span>Salida</span><span>Retorno</span></div>
     <div id="dt">${orden.map(c => {
       const conDatos = cats[c].some(p => reg[p.codigo] || r.facturado[p.codigo]);
@@ -1227,6 +1228,25 @@ async function vDespacho(m) {
     $('#tv').textContent = kg(sal - ret) + ' kg';
   }
   $('#dt').oninput = calc; calc();
+  // Carga sugerida: promedio por día de venta del mes anterior, en unidades (se pide aparte para no demorar la pantalla)
+  if (S.vend) api('getSugerido', S.sess.token, S.fecha, S.vend).then(sg => {
+    if (!document.body.contains(m) || S.vend === undefined || $('#sgc', m) === null) return;
+    const nom = ((S.cat.vendedores.find(v => v.usuario === S.vend) || {}).nombre) || S.vend;
+    if (sg.sinHistoria) { $('#sgc', m).innerHTML = `<div class="sgc"><b>Carga sugerida</b><p class="muted">Todavía no hay ventas anteriores de ${esc(nom)} para calcularla.</p></div>`; return; }
+    let n = 0;
+    filas.forEach(el => { const it = sg.items[el.dataset.c]; if (!it) return; n++;
+      const txt = it.kgUn ? `<b>${it.un} un</b> <span>≈ ${kg(it.kg)} kg</span>` : it.un ? `<b>${it.un} un</b>` : `<b>${kg(it.kg)} kg</b>`;
+      $('.pn', el).insertAdjacentHTML('beforeend', `<span class="sg" title="Última vez: ${it.kgUn || it.un ? it.ult + ' un' : kg(it.ult) + ' kg'}">Sugerido ${txt}<span> · última vez ${it.kgUn || it.un ? it.ult + ' un' : kg(it.ult) + ' kg'}</span></span>`);
+      el.dataset.sg = it.un && !it.kgUn ? it.un : it.kg; });
+    $$('.cat', m).forEach(d => { if ($$('[data-sg]', d).length) d.open = true; });
+    $('#sgc', m).innerHTML = `<div class="sgc"><div><b>Carga sugerida para ${esc(nom)}</b>
+        <p class="muted">${sg.base === 'dia' ? `Según lo que vendió los últimos ${sg.nDias} ${esc(sg.diaNombre)}s (los más recientes pesan más; se ajusta sola con cada venta).` : `Aún no tiene suficientes ${esc(sg.diaNombre)}s: se usa el promedio de sus últimos ${sg.nDias} días de venta.`} Cecinas en unidades de ~3 kg (cervecero 1,8 kg).</p></div>
+      <div class="sgt"><span><b>${sg.totalUn}</b> unidades</span><span><b>${kg(sg.totalKg)}</b> kg</span></div>
+      <button class="btn ghost sm" id="sgu" type="button">Usar como salida</button></div>`;
+    $('#sgu', m).onclick = () => { let c = 0;
+      filas.forEach(el => { const i = $('[data-k=salida]', el); if (el.dataset.sg !== undefined && i.value === '') { i.value = el.dataset.sg; c++; } });
+      calc(); toast(c ? `Salida cargada con lo sugerido en ${c} productos. Revisa y guarda.` : 'Los productos sugeridos ya tienen salida anotada.'); };
+  }).catch(() => {});
   m.onclick = e => { const g = e.target.dataset.g; if (!g) return;
     const guia = r.guias.find(x => x.folio === g);
     filas.forEach(el => { const k = guia.lineas[el.dataset.c]; if (k !== undefined) $('[data-k=salida]', el).value = Math.round(k * 1000) / 1000; });
