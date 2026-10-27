@@ -1183,6 +1183,7 @@ async function vDevoluciones(m) {
 }
 
 /* ============ DESPACHO Y RETORNO ============ */
+const pluralDia = d => /s$/.test(d) ? d : d + 's';   // lunes, martes… no cambian; sábado → sábados
 async function vDespacho(m) {
   if (!S.vend) S.vend = S.cat.vendedores[0] && S.cat.vendedores[0].usuario;
   const r = await api('getDespacho', S.sess.token, S.fecha, S.vend);
@@ -1240,7 +1241,7 @@ async function vDespacho(m) {
       el.dataset.sg = it.un && !it.kgUn ? it.un : it.kg; });
     $$('.cat', m).forEach(d => { if ($$('[data-sg]', d).length) d.open = true; });
     $('#sgc', m).innerHTML = `<div class="sgc"><div><b>Carga sugerida para ${esc(nom)}</b>
-        <p class="muted">${sg.base === 'dia' ? `Según lo que vendió los últimos ${sg.nDias} ${esc(sg.diaNombre)}s (los más recientes pesan más; se ajusta sola con cada venta).` : `Aún no tiene suficientes ${esc(sg.diaNombre)}s: se usa el promedio de sus últimos ${sg.nDias} días de venta.`} Cecinas en unidades de ~3 kg (cervecero 1,8 kg).</p></div>
+        <p class="muted">${sg.base === 'dia' ? `Según lo que vendió los últimos ${sg.nDias} ${esc(pluralDia(sg.diaNombre))} (los más recientes pesan más; se ajusta sola con cada venta).` : `Aún no tiene suficientes ${esc(pluralDia(sg.diaNombre))}: se usa el promedio de sus últimos ${sg.nDias} días de venta.`} Cecinas en unidades de ~3 kg (cervecero 1,8 kg).</p></div>
       <div class="sgt"><span><b>${sg.totalUn}</b> unidades</span><span><b>${kg(sg.totalKg)}</b> kg</span></div>
       <button class="btn ghost sm" id="sgu" type="button">Usar como salida</button></div>`;
     $('#sgu', m).onclick = () => { let c = 0;

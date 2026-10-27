@@ -329,3 +329,20 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v54 — La carga sugerida se rige por el día de venta
 - `sugerido_` ya no promedia el mes anterior: mira los MISMOS días de la semana (p. ej. viernes) de las últimas 12 semanas en que el vendedor facturó, con peso 0,6^k (más reciente = más peso), por lo que se ajusta sola con cada venta. Si ese día tiene <2 ventas usa sus días de venta de las últimas 8 semanas (`base: 'general'`). Devuelve `ult` (cantidad la última vez) por producto; la pantalla lo muestra "· última vez N".
 - Pendiente posible: colchón % sobre lo sugerido y usar retornos reales (DESPACHO) para afinar.
+
+## v55 — Corrección: `getSugerido` faltaba en el objeto `API` (daba "Acción desconocida"). Ahora está registrado.
+
+## v56 — Patés y longanizas se sugieren por kilo
+- `CFG.SOLO_KILOS = ['1','1.1','3']` (longaniza, longaniza larga, paté de cerdo; también por nombre LONGANIZA/PATE): la carga sugerida los da en kg (redondeo 0,5), no en unidades. El resto de cecinas sigue en unidades de 3 kg (cervecero 1,8). Congelados/otros: sin cambios.
+
+## Datos de demostración (v57, solo servidor: pegar APPS_SCRIPT.js COMPLETO)
+- `cargarDatosDemo()` (solo desde el editor, no está en `API`): crea ~4 semanas de datos FICTICIOS parecidos a los reales con los vendedores y productos PROPIOS que ya existen: 30 clientes inventados (RUT con dígito válido, condición 0–28 d), facturas/boletas, detalle de líneas, pagos (efectivo/transferencia/cheque/crédito), cobranza de créditos, despacho con retornos (algunos faltantes), descuentos (aprobados/rechazados + 2 pendientes hoy), gastos, devoluciones, conteo de efectivo (≈12% con faltante) y rendiciones cerradas salvo los 2 últimos días. HOY queda con folios PENDIENTES, guía de despacho y sin despacho/retorno para mostrarlo en vivo.
+- Se niega a correr si ya hay DOCUMENTOS o PAGOS: flujo = (copia de la planilla o respaldo) → `limpiarPruebas` → `cargarDatosDemo`. Datos determinísticos (semilla fija), no incluye inventario de bodega (INVENTARIO_MOV).
+- Probado en el simulador: KPIs, sugerido, resumen, despacho, saldos y conteo responden sobre esos datos.
+- (v57b) La demo incluye INVENTARIO_MOV: saldo inicial el primer día, ingreso de fábrica diario ≈ lo que salió con holgura, ingresos semanales en cámara/otros y algunas salidas (degustación, muestra, merma, consumo). Hoy queda sin ingreso para anotarlo en vivo. Probado: sin saldos negativos.
+- `prepararDemo()` (editor, `CONFIRMO = false` → true): borra todo (`limpiarTodo_`, la misma lógica de `limpiarPruebas`, que ahora la usa) y carga la demo en un paso. Conserva USUARIOS y PRODUCTOS.
+- (v57c) HOY en la demo trae la salida de bodega ya hecha: DESPACHO con `salida` y `retorno` vacío por vendedor, siempre mayor a lo facturado (×1,12–1,27) más 1–2 productos que lleva y quizá no vende; la guía de despacho de hoy repite esas mismas cantidades. En la demo se anota el retorno en la tarde y se ve la diferencia.
+- (v57d) La demo no genera ventas sábados ni domingos (solo lunes a viernes).
+- (v57e) Diferencias de kilos de la demo realistas: ~5% de las líneas con 0,1–1 kg faltante (antes ~1,5 kg promedio y 10%); retorno en décimas de kg. Resultado: 2,7–5 kg por vendedor en 4 semanas (≈$93.000 en total).
+
+## v58 — Texto de la carga sugerida: plural correcto del día (lunes/martes no llevan 's'; antes decía 'luness').
