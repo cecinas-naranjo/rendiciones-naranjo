@@ -235,16 +235,11 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Clases nuevas: `.hero`, `.hpasos/.hpaso`, `.hday`, `.menu`, `.acciones.col`, `details.mas`. OJO: `.pasos` ya existe (stepper de Resumen), por eso las de Hoy son `.hpaso*`.
 - Pendiente: revisar con el mismo criterio las pantallas de oficina (Resumen, Cobranza, Saldos) y Bodega.
 
-## MODO PRUEBA (TEMPORAL, v35)
-- Para probar roles rápido: el ADMIN ve un botón morado "Probar como…" (abajo a la derecha) que lista los usuarios activos por rol; al tocar uno entra como esa persona sin clave. Mientras se prueba, el botón dice "Probando como <nombre> · <rol>" y permite volver al ADMIN.
-- Servidor: `entrarComo(token, usuario, fecha)` (solo ADMIN, solo si `CFG.MODO_PRUEBA` es true; deja registro en Logger). Cliente: `MODO_PRUEBA` en app.js; sesión del admin guardada en localStorage `rn_admin`; `montarProbar/abrirProbar/cambiarA`. Salir cierra también la sesión del admin.
-- **QUITAR antes de usar en serio**: `CFG.MODO_PRUEBA: false` en APPS_SCRIPT.js (desactiva de verdad la función en el servidor) y `const MODO_PRUEBA = false` en app.js.
-
 ## Dejar la app en blanco para entregarla (limpiarPruebas)
 - Solo desde el editor de Apps Script (no está en `API`). `vistaPreviaLimpieza()` muestra en el registro cuántas filas se borrarían; `limpiarPruebas()` exige cambiar `CONFIRMO = false` a `true` dentro de la función (y volver a dejarlo en false).
 - Conserva `LIMPIEZA_CONSERVAR` = USUARIOS y PRODUCTOS; vacía todas las demás hojas del SCHEMA (folios, pagos, cobranza, gastos, depósitos, inventario, conteos, créditos cargados, clientes, cheques, operaciones, rendiciones, sesiones). Limpia también las sesiones de la caché (todos deben volver a entrar) e invalida las cachés.
 - No toca Drive (rendiciones, informes, respaldos, planillas): se borran a mano.
-- Antes de entregar: limpiarPruebas → poner `MODO_PRUEBA` en false (servidor y app) → nueva versión de la implementación.
+- Antes de entregar: limpiarPruebas → nueva versión de la implementación. (El modo prueba y los datos demo ya no existen desde v59.)
 
 ## Depósitos: claridad de estado (v37)
 - Problema: tras depositar, aparecían folios "nuevos" en la lista y no se sabía si estaban depositados. Ahora la pantalla muestra KPIs "Por depositar" / "Ya depositado" (suma y cantidad), el título "Por depositar (N)" con aviso de que los folios nuevos aún no están depositados, cada depósito registrado trae "Ver qué incluye" (folio/cobranza, cliente, monto), y al guardar el aviso dice cuánto queda por depositar.
@@ -335,14 +330,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v56 — Patés y longanizas se sugieren por kilo
 - `CFG.SOLO_KILOS = ['1','1.1','3']` (longaniza, longaniza larga, paté de cerdo; también por nombre LONGANIZA/PATE): la carga sugerida los da en kg (redondeo 0,5), no en unidades. El resto de cecinas sigue en unidades de 3 kg (cervecero 1,8). Congelados/otros: sin cambios.
 
-## Datos de demostración (v57, solo servidor: pegar APPS_SCRIPT.js COMPLETO)
-- `cargarDatosDemo()` (solo desde el editor, no está en `API`): crea ~4 semanas de datos FICTICIOS parecidos a los reales con los vendedores y productos PROPIOS que ya existen: 30 clientes inventados (RUT con dígito válido, condición 0–28 d), facturas/boletas, detalle de líneas, pagos (efectivo/transferencia/cheque/crédito), cobranza de créditos, despacho con retornos (algunos faltantes), descuentos (aprobados/rechazados + 2 pendientes hoy), gastos, devoluciones, conteo de efectivo (≈12% con faltante) y rendiciones cerradas salvo los 2 últimos días. HOY queda con folios PENDIENTES, guía de despacho y sin despacho/retorno para mostrarlo en vivo.
-- Se niega a correr si ya hay DOCUMENTOS o PAGOS: flujo = (copia de la planilla o respaldo) → `limpiarPruebas` → `cargarDatosDemo`. Datos determinísticos (semilla fija), no incluye inventario de bodega (INVENTARIO_MOV).
-- Probado en el simulador: KPIs, sugerido, resumen, despacho, saldos y conteo responden sobre esos datos.
-- (v57b) La demo incluye INVENTARIO_MOV: saldo inicial el primer día, ingreso de fábrica diario ≈ lo que salió con holgura, ingresos semanales en cámara/otros y algunas salidas (degustación, muestra, merma, consumo). Hoy queda sin ingreso para anotarlo en vivo. Probado: sin saldos negativos.
-- `prepararDemo()` (editor, `CONFIRMO = false` → true): borra todo (`limpiarTodo_`, la misma lógica de `limpiarPruebas`, que ahora la usa) y carga la demo en un paso. Conserva USUARIOS y PRODUCTOS.
-- (v57c) HOY en la demo trae la salida de bodega ya hecha: DESPACHO con `salida` y `retorno` vacío por vendedor, siempre mayor a lo facturado (×1,12–1,27) más 1–2 productos que lleva y quizá no vende; la guía de despacho de hoy repite esas mismas cantidades. En la demo se anota el retorno en la tarde y se ve la diferencia.
-- (v57d) La demo no genera ventas sábados ni domingos (solo lunes a viernes).
-- (v57e) Diferencias de kilos de la demo realistas: ~5% de las líneas con 0,1–1 kg faltante (antes ~1,5 kg promedio y 10%); retorno en décimas de kg. Resultado: 2,7–5 kg por vendedor en 4 semanas (≈$93.000 en total).
-
 ## v58 — Texto de la carga sugerida: plural correcto del día (lunes/martes no llevan 's'; antes decía 'luness').
+
+## v59 — Listo para uso real
+- Se quitaron el modo prueba (botón "Probar como…", `entrarComo`, `CFG.MODO_PRUEBA`) y el generador de datos demo (`cargarDatosDemo`, `demo_`, `prepararDemo`). La app ya no tiene nada temporal.
+- Para empezar de cero: ejecutar `limpiarPruebas` una sola vez desde el editor (CONFIRMO = true y luego false). Conserva USUARIOS y PRODUCTOS. **Cuando ya haya datos reales, `limpiarPruebas` y `limpiarTodo_` borran todo: conviene quitarlas del script o dejar CONFIRMO siempre en false.**
+- Los archivos de Drive (rendiciones, informes, respaldos, planillas) no se borran con la limpieza.

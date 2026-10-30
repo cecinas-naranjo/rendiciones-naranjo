@@ -569,10 +569,6 @@ details.mas[open]>summary::before{content:'– '}
 .hpaso .t{flex:1;min-width:0}
 
 /* ===== MODO PRUEBA (temporal) ===== */
-#probar{position:fixed;right:12px;bottom:16px;z-index:60;display:flex;flex-direction:column;align-items:flex-start;gap:0;background:#6B2FD0;color:#fff;border:0;border-radius:14px;padding:8px 14px;box-shadow:0 6px 20px rgba(0,0,0,.35);text-align:left}
-#probar small{font-size:11px;opacity:.85;letter-spacing:.04em;text-transform:uppercase}
-#probar b{font-size:14.5px}
-body.has-bottom #probar{bottom:84px}
 .urow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:6px;min-height:56px}
 .urow small{display:block;color:var(--ink-2)}
 .urow.on{border-color:var(--cu);background:#FBF1EA}
@@ -730,3 +726,9 @@ nav.sub button:active{transform:scale(.95)}
 .dks>div b{font-size:13.5px;color:#1F2733;text-align:right}
 
 .dksec>header{background:none!important;color:inherit!important;position:static!important;box-shadow:none!important;border:0!important;min-height:0!important}
+
+/* v53: carga sugerida en Despacho */
+.sgc{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:#EEF4FF;border:1px solid #C9D9F7;border-radius:14px;padding:12px 14px;margin-bottom:12px}
+.sgc p{margin:2px 0 0;font-size:13px}
+.sgt{display:flex;gap:14px;font-size:14px}.sgt b{font-size:20px}
+.pn .sg{display:block;font-size:12.5px;color:#1D4ED8;margin-top:1px}.pn .sg span{color:#5B6472}
