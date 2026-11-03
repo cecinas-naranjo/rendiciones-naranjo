@@ -1265,7 +1265,7 @@ async function vDespacho(m) {
           const dif = Math.round((vend - fac) * 10) / 10;
           if (Math.abs(dif) > 0.2) h += `<span class="${dif > 0 ? 'warn' : 'bad'}">Vendido ${kg(vend)} · facturado ${kg(fac)} · diferencia <b>${dif > 0 ? '+' : ''}${kg(dif)}</b></span>`;
         }
-      } else if (el.dataset.sg !== undefined && s === '') {
+      } else if (el.dataset.sg !== undefined) {
         h += `<span class="sug">Sugerido <b>${esc(el.dataset.sgt)}</b></span>`;
       }
       st.innerHTML = h;
