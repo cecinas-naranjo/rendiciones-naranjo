@@ -32,6 +32,8 @@ const CFG = {
   // Destinos de "otras salidas". Los 4 primeros siempre tienen columna en la planilla; el resto aparece si se usa ese día.
   DESTINOS: ['REPROCESO','CONSUMO','CONSUMO EXTERNO','LAMINADO','MERMA','DEGUSTACION','MUESTRA','OTRAS SALIDAS CON GUIA','SUPERMERCADO'],
   // Distribuidores: en la planilla de inventario cada uno tiene su columna de salida (aparece si retiró ese día)
+  // Carga sugerida: cuántos días se miran (mismo día de la semana) y colchón sobre el promedio
+  SUG_DIAS: 8, SUG_COLCHON: 0.20,
   DISTRIBUIDORES: ['PATRICIO','CESAR','JUAN CARLOS','AMIR','OSCAR','CHILOE']
 };
 
@@ -2829,26 +2831,27 @@ function getSugerido(token, fecha, vendedor) {
   return conCache_('sug|' + vendedor + '|' + fecha, ['VENTAS_DETALLE', 'PRODUCTOS'], () => sugerido_(fecha, String(vendedor || '')));
 }
 function sugerido_(fecha, vendedor) {
-  // Se rige por el DÍA DE VENTA: se miran los mismos días de la semana (p. ej. los viernes) de las últimas 12 semanas en que el vendedor facturó,
-  // dando más peso a los más recientes (cada semana pesa 0,6 de la anterior), así la sugerencia se va ajustando sola con cada venta nueva.
-  // Si ese día de la semana tiene menos de 2 ventas, se usa el promedio ponderado de todos sus días de venta de las últimas 8 semanas.
+  // Método de la planilla: se toman los últimos 8 mismos días de la semana (p. ej. los 8 últimos lunes) en que el vendedor facturó;
+  // por producto se descarta el día más bajo de venta, se promedian los demás y al promedio se le suma un 20 %.
+  // Si ese día de la semana tiene menos de 2 ventas, se usan sus últimos 8 días de venta (cualquier día).
   const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const N = CFG.SUG_DIAS, COL = CFG.SUG_COLCHON;
   const dow = f => new Date(f + 'T12:00:00').getDay(), dia = dow(fecha);
   const todas = read_('VENTAS_DETALLE').filter(x => x.vendedor === vendedor && !esGuiaFlag_(x.es_guia) && x.fecha < fecha);
-  const lim12 = sumarDias_(fecha, -84), lim8 = sumarDias_(fecha, -56);
-  let det = todas.filter(x => x.fecha >= lim12 && dow(x.fecha) === dia), base = 'dia';
   const fechasDe = d => Object.keys(d.reduce((o, x) => (o[x.fecha] = 1, o), {})).sort().reverse();   // más reciente primero
-  if (fechasDe(det).length < 2) { det = todas.filter(x => x.fecha >= lim8); base = 'general'; }
-  const fechas = fechasDe(det);
+  let det = todas.filter(x => dow(x.fecha) === dia), base = 'dia';
+  let fechas = fechasDe(det).slice(0, N);
+  if (fechas.length < 2) { base = 'general'; fechas = fechasDe(todas).slice(0, N); }
   if (!fechas.length) return { sinHistoria: true, vendedor };
-  const peso = {}; fechas.forEach((f, i) => peso[f] = Math.pow(0.6, i));
-  const sumaPesos = fechas.reduce((a, f) => a + peso[f], 0);
-  const porDia = {}, ultimo = {};   // codigo → fecha → cantidad
+  const usa = {}; fechas.forEach(f => usa[f] = 1); det = todas.filter(x => usa[x.fecha]);
+  const porDia = {};   // codigo → fecha → cantidad
   det.forEach(x => { const c = codeKey_(x.codigo), o = porDia[c] = porDia[c] || {}; o[x.fecha] = (o[x.fecha] || 0) + num_(x.cantidad); });
   const items = {}; let totalKg = 0, totalUn = 0;
   read_('PRODUCTOS').forEach(p => {
     const c = codeKey_(p.codigo), d = porDia[c]; if (!d || p.seccion === 'CAMARA') return;
-    const prom = fechas.reduce((a, f) => a + (d[f] || 0) * peso[f], 0) / sumaPesos, ult = d[fechas[0]] || 0;
+    const vals = fechas.map(f => d[f] || 0), ult = vals[0];
+    if (vals.length >= 3) vals.splice(vals.indexOf(Math.min.apply(null, vals)), 1);          // se descarta el día más bajo
+    const prom = vals.reduce((a, v) => a + v, 0) / vals.length * (1 + COL);
     const kgU = kgUnidad_(p), esUN = String(p.unidad).toUpperCase() === 'UN';
     if (esUN) { const un = Math.round(prom); if (un > 0) { items[c] = { un, kg: 0, kgUn: 0, ult: Math.round(ult) }; totalUn += un; } return; }
     if (kgU) { const un = Math.round(prom / kgU), kg = Math.round(un * kgU * 10) / 10; if (un > 0) { items[c] = { un, kg, kgUn: kgU, ult: Math.round(ult / kgU) }; totalKg += kg; totalUn += un; } return; }

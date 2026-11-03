@@ -348,3 +348,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Se guarda en DESPACHO con `vendedor` = `DIST:NOMBRE` | `CONSUMO` | `SALA` (sin cambio de esquema). `destinoDesp_()` lleva (salida − retorno) a la columna del inventario: distribuidor → su columna, CONSUMO → CONSUMO, SALA → CONSUMO EXTERNO. Supermercados sigue como un solo total (SUPERMERCADOS/DISTRIBUIDOR → SUPERMERCADO), sin separar por razón social.
 - KPI de kilos (falta/sobra) ignora estos destinos; no piden sugerido.
 - Requiere pegar APPS_SCRIPT.js nuevo (nueva versión de implementación).
+
+## v62 — Carga sugerida con el método de la planilla
+- `sugerido_`: últimos 8 mismos días de la semana en que el vendedor facturó (`CFG.SUG_DIAS`); por producto se descarta el día más bajo (los días sin venta cuentan 0), se promedia el resto y se suma 20 % (`CFG.SUG_COLCHON`). Con menos de 3 días no se descarta ninguno. Si ese día tiene <2 ventas, usa sus últimos 8 días de venta. Reemplaza el promedio ponderado 0,6 de v53. Textos "¿Cómo se calcula?" actualizados.
