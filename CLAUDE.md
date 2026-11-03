@@ -380,3 +380,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v70 — Arreglo de los botones de filtro y tarjeta de adelantos
 - Bug de v60: las reglas del selector Salida/Retorno de Despacho estaban en `.seg` global y deformaban todos los demás selectores (filtros de Mis folios, buscador/filtro de Inventario, hojas). Ahora son `.seg.dseg` (solo Despacho). Los `.seg` normales vuelven a ser una fila compacta. **No definir reglas globales de `.seg`.**
 - Tarjeta "Anotar folios por adelantado" con ícono y fondo cobre claro; en celular el botón ocupa el ancho.
+
+## v71 — Se quitó "emite el día antes" (solo frontend)
+- Por pedido del usuario: la app ya no cambia la fecha de los folios al importar. `aplicarAntes()` devuelve vacío (no hay tarjeta "Folios emitidos el día antes") y se quitó la casilla de Usuarios (`emiteAntes` se guarda en false). El servidor y la columna `emite_antes` quedan sin tocar (inofensivos); la corrección de fecha de documentos ya cargados en `importarDTE` sigue existiendo. Las fechas de las notas de crédito sí se pueden seguir moviendo a mano.

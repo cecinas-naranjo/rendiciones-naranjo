@@ -1618,14 +1618,14 @@ async function vUsuarios(m) {
       <label class="f" for="u3" style="margin-top:10px">RUT</label><input class="in" id="u3" value="${esc(u.rut)}" placeholder="12.345.678-5" autocomplete="off">
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
       <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
-        <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="u7" ${u.emiteAntes ? 'checked' : ''}> Emite sus folios el día antes de la ruta (se pasan al día siguiente al importar)</label></div>
+      </div>
       <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u6" ${u.activo ? 'checked' : ''}> Activo (si lo desactivas, no puede ingresar)</label></div>
       <div class="foot"><button class="btn ghost" id="ux">Cancelar</button><span class="grow"></span><button class="btn cu" id="ug">Guardar</button></div></div>`;
     document.body.appendChild(ov);
     const rolCh = () => { $('#u5w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
     $('#ux', ov).onclick = () => cerrarHoja(ov);
     $('#ug', ov).onclick = async () => {
-      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: $('#u7', ov).checked };
+      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: false };
       if (!o.nombre) return toast('Escribe el nombre.', true);
       if (!o.rut && !o.correo) return toast('Indica el RUT o el correo.', true);
       const r = await api('guardarUsuario', S.sess.token, o); cerrarHoja(ov);
@@ -2132,6 +2132,7 @@ async function vImportar(m) {
   const sumaDia = (iso, n) => { const [a, m, d] = iso.split('-'); return new Date(Date.UTC(+a, m - 1, +d + n)).toISOString().slice(0, 10); };
   const vendDeTerminal = () => { const mp = {}; (S.cat.vendedores || []).forEach(v => String(v.terminales || '').split(',').map(x => x.trim().toUpperCase()).filter(String).forEach(t => mp[t] = v)); return mp; };
   function aplicarAntes() {
+    return { resumen: {}, max: '' };      // v71: ya no se cambia la fecha de los folios al importar (se quitó "emite el día antes")
     const mp = vendDeTerminal(), docs = leidos.filter(l => !l.error && (l.tipo === 'dte' || l.tipo === 'detalle'));
     const todas = docs.flatMap(l => l.filas.map(f => (f._fOrig = f._fOrig || (f._ncMovida ? isoFecha(f.Fecha) : isoFecha(f.Fecha)))));
     const max = todas.sort().slice(-1)[0] || '', resumen = {};
