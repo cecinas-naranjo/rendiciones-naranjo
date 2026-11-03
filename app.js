@@ -1212,7 +1212,7 @@ async function vDespacho(m) {
   render(m, `<h2>Despacho y retorno</h2><p class="lead">${fechaLarga(S.fecha)}</p>
     <div class="dvs" id="dvs">${vends.filter(v => v.pseudo !== 'dist').map(card).join('')}<button type="button" class="dvc ${esDist(S.vend) ? 'on' : ''}" data-u="${esc(esDist(S.vend) ? S.vend : 'DIST:' + dists[0])}" data-grp="1"><b>Distribuidores</b><span class="dvst"></span></button></div>
     ${esDist(S.vend) ? `<div class="dvs dsub" id="dsub">${dv.map(v => `<button type="button" class="dvc ${v.usuario === S.vend ? 'on' : ''}" data-u="${esc(v.usuario)}"><b>${esc(v.corto)}</b><span class="dvst" data-st="${esc(v.usuario)}"></span></button>`).join('')}</div>` : ''}
-    <div class="seg" id="seg" role="tablist"><button type="button" data-m="salida"><b>1 · Salida</b><small>en la mañana</small></button><button type="button" data-m="retorno"><b>2 · Retorno</b><small>en la tarde</small></button></div>
+    <div class="seg" id="seg" role="tablist"><button type="button" data-m="salida"><b>Salida</b></button><button type="button" data-m="retorno"><b>Retorno</b></button></div>
     <p class="dvh" id="dvh"></p>${pseudo ? `<p class="muted dvn">${esc(NOTA[pseudo])}</p>` : ''}
     <div id="dvg"></div>
     <div id="sgc"></div>

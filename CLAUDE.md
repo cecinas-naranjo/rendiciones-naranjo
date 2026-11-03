@@ -360,3 +360,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v65
 - El "Sugerido X" de cada producto queda visible aunque el bodeguero ya haya escrito la salida (antes se ocultaba al digitar).
+
+## v66
+- Despacho: los pasos se llaman solo "Salida" y "Retorno" (sin "1 ·", "2 ·" ni "en la mañana/tarde").
