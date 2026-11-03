@@ -1140,74 +1140,147 @@ async function vDespacho(m) {
   const r = await api('getDespacho', S.sess.token, S.fecha, S.vend);
   const reg = {}; r.filas.forEach(f => reg[f.codigo] = f);
   const val = x => x === '' || x == null ? '' : x;
+  // Además de los vendedores: venta en bodega, consumo y cada distribuidor (salida/retorno propios; el inventario los lleva a su columna)
+  const dists = S.cat.distribuidores || ['PATRICIO', 'CESAR', 'JUAN CARLOS', 'AMIR', 'OSCAR', 'CHILOE'];
+  const cap = t => t.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+  const extras = [];
+  if (!S.cat.vendedores.some(v => v.usuario === 'SALA')) extras.push({ usuario: 'SALA', nombre: 'Venta en bodega', pseudo: 'sala' });
+  extras.push({ usuario: 'CONSUMO', nombre: 'Consumo', pseudo: 'consumo' });
+  const dv = dists.map(d => ({ usuario: 'DIST:' + d, nombre: 'Distribuidor ' + cap(d), pseudo: 'dist', corto: cap(d) }));
+  const vends = S.cat.vendedores.concat(extras, dv), esDist = u => String(u).indexOf('DIST:') === 0;
+  const idx = vends.findIndex(v => v.usuario === S.vend), sig = vends[idx + 1];
+  const nomDe = u => ((vends.find(v => v.usuario === u) || {}).nombre) || u;
+  const pseudo = (vends[idx] || {}).pseudo;
+  const NOTA = { sala: 'Lo que se vende en la bodega (sin boleta de vendedor). Sale del inventario como consumo externo.', consumo: 'Lo que se consume en la fábrica o la bodega. Sale del inventario como consumo.',
+    dist: 'Lo que retira este distribuidor (sale con boleta genérica). Si algo vuelve, anótalo como retorno.' };
+  const card = v => `<button type="button" class="dvc ${v.usuario === S.vend ? 'on' : ''}" data-u="${esc(v.usuario)}"><b>${esc(v.nombre)}</b><span class="dvst" data-st="${esc(v.usuario)}"></span></button>`;
+  if (!S.dmod) S.dmod = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'America/Santiago' }).format(new Date())) < 13 ? 'salida' : 'retorno';
   const cats = {};
   S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
   const orden = Object.keys(cats).sort((a, b) => (Object.keys(CATS).indexOf(a) + 99) % 99 - (Object.keys(CATS).indexOf(b) + 99) % 99);
-  render(m, `<h2>Despacho y retorno</h2><p class="lead">${fechaLarga(S.fecha)}. En la mañana anota la salida; en la tarde, al pesar lo que vuelve, el retorno.</p>
-    <div class="row" style="margin-bottom:12px"><select class="in" style="width:auto" id="dv">${opcVend(S.vend)}</select>
-      ${r.guias.map(g => `<button class="btn ghost sm" data-g="${esc(g.folio)}">Cargar salida desde guía ${esc(g.folio)}</button>`).join('')}</div>
-    ${r.hayDetalle ? '' : '<p class="muted">Cuando se importe el Informe de ventas de Mi DTE, aquí verás los kilos facturados y la diferencia.</p>'}
+  const nin = (k, p, v) => `<div class="nin" data-w="${k}"><button type="button" class="mn" tabindex="-1" aria-label="Menos">−</button>
+      <input class="in n" data-k="${k}" inputmode="decimal" aria-label="${k === 'salida' ? 'Salida' : 'Retorno'} ${esc(p.nombre)}" placeholder="0" value="${val(v)}"><button type="button" class="pl" tabindex="-1" aria-label="Más">+</button></div>`;
+  render(m, `<h2>Despacho y retorno</h2><p class="lead">${fechaLarga(S.fecha)}</p>
+    <div class="dvs" id="dvs">${vends.filter(v => v.pseudo !== 'dist').map(card).join('')}<button type="button" class="dvc ${esDist(S.vend) ? 'on' : ''}" data-u="${esc(esDist(S.vend) ? S.vend : 'DIST:' + dists[0])}" data-grp="1"><b>Distribuidores</b><span class="dvst"></span></button></div>
+    ${esDist(S.vend) ? `<div class="dvs dsub" id="dsub">${dv.map(v => `<button type="button" class="dvc ${v.usuario === S.vend ? 'on' : ''}" data-u="${esc(v.usuario)}"><b>${esc(v.corto)}</b><span class="dvst" data-st="${esc(v.usuario)}"></span></button>`).join('')}</div>` : ''}
+    <div class="seg" id="seg" role="tablist"><button type="button" data-m="salida"><b>1 · Salida</b><small>en la mañana</small></button><button type="button" data-m="retorno"><b>2 · Retorno</b><small>en la tarde</small></button></div>
+    <p class="dvh" id="dvh"></p>${pseudo ? `<p class="muted dvn">${esc(NOTA[pseudo])}</p>` : ''}
+    <div id="dvg"></div>
     <div id="sgc"></div>
-    <div class="colh"><span style="text-align:left">Producto</span><span>Salida</span><span>Retorno</span></div>
-    <div id="dt">${orden.map(c => {
-      const conDatos = cats[c].some(p => reg[p.codigo] || r.facturado[p.codigo]);
-      return `<details class="cat" ${c === 'PROPIOS' || conDatos ? 'open' : ''}><summary><span class="grow">${CATS[c] || esc(c)}</span><span class="muted" data-tot="${esc(c)}"></span></summary>
-      ${cats[c].map(p => { const f = reg[p.codigo] || {}; return `<div class="prod" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
-        <div class="pn">${esc(p.nombre)}<small>${p.unidad === 'UN' ? 'unidades' : 'kilos'}</small></div>
-        <input class="in n" data-k="salida" inputmode="decimal" aria-label="Salida ${esc(p.nombre)}" value="${val(f.salida)}">
-        <input class="in n" data-k="retorno" inputmode="decimal" aria-label="Retorno ${esc(p.nombre)}" value="${val(f.retorno)}">
-        <div class="st"></div></div>`; }).join('')}</details>`; }).join('')}</div>
-    <div class="sticky-foot"><div class="card"><div><div class="muted">Kilos vendidos</div><b id="tv" style="font-size:20px"></b></div>
-      <button class="btn cu" id="sv">Guardar</button></div></div>`);
-  $('#dv').onchange = e => { S.vend = e.target.value; ir('despacho'); };
-  const filas = $$('.prod', m);
-  function calc() {
-    let sal = 0, ret = 0; const porCat = {};
+    <div id="vac" class="vac" hidden></div>
+    <div id="dt" class="dt dm-${S.dmod}">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
+      return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
+        <div class="pn">${esc(p.nombre)}<small>${p.unidad === 'UN' ? 'se anota en unidades' : 'se anota en kilos'}</small></div>
+        ${nin('salida', p, f.salida)}${nin('retorno', p, f.retorno)}
+        <div class="st"></div></div>`; }).join('')).join('')}</div>
+    <button type="button" class="btn ghost sm" id="mas" hidden></button>
+    <div class="sticky-foot"><div class="card dvf"><div class="dvfi"><div class="muted" id="fl"></div><b id="tv"></b></div>
+      <div class="dvfb"><button class="btn ${sig ? 'ghost' : 'cu'}" id="sv" type="button">Guardar</button>${sig ? `<button class="btn cu" id="sn" type="button">Guardar y seguir<span class="lg"> con ${esc(sig.nombre)}</span> ›</button>` : ''}</div></div></div>`);
+  const filas = $$('.pr', m), dt = $('#dt', m);
+  const inp = (el, k) => $('[data-k=' + k + ']', el), S0 = el => inp(el, 'salida').value, R0 = el => inp(el, 'retorno').value;
+  const estado = (nS, nR) => !nS ? ['Sin salida', 'x'] : !nR ? ['Salida lista', 'a'] : nR < nS ? [`Retorno ${nR} de ${nS}`, 'b'] : ['Completo ✓', 'ok'];
+  const guiaTiene = el => r.guias.some(g => g.lineas[el.dataset.c] !== undefined);
+  let sucio = false;
+
+  function pintarVend(u, nS, nR) { const e = $('[data-st="' + u + '"]', m); if (!e) return; const [t, c] = estado(nS, nR); e.textContent = t; e.className = 'dvst ' + c; }
+  function aplicarVis() {
+    const modo = S.dmod; let vis = 0;
     filas.forEach(el => {
-      const c = el.dataset.c, s = $('[data-k=salida]', el).value, rt = $('[data-k=retorno]', el).value;
-      const fac = r.facturado[c] || 0, vend = dec(s) - dec(rt), st = $('.st', el);
-      let h = '';
-      if (s !== '') h += `<span>Vendido <b>${kg(vend)}</b></span>`;
-      if (r.hayDetalle && (s !== '' || fac)) {
-        const dif = Math.round((vend - fac) * 10) / 10;
-        h += `<span>Facturado <b>${kg(fac)}</b></span>`;
-        if (s !== '' && rt !== '') h += `<span class="${Math.abs(dif) > 0.2 ? (dif > 0 ? 'warn' : 'bad') : ''}">Diferencia <b>${dif > 0 ? '+' : ''}${kg(dif)}</b></span>`;
+      const s = S0(el), rt = R0(el), tieneS = s !== '' && dec(s) > 0;
+      const rel = modo === 'salida' ? (s !== '' || rt !== '' || el.dataset.sg !== undefined || guiaTiene(el)) : (tieneS || rt !== '');
+      el.classList.toggle('oc', !rel); if (rel) vis++;
+    });
+    const ocultos = filas.length - vis, mas = $('#mas', m), todos = dt.classList.contains('todos');
+    mas.hidden = !ocultos && !todos; mas.textContent = todos ? 'Mostrar solo los productos del día' : `Agregar otro producto (${ocultos} más)`;
+    const vacio = modo === 'retorno' && !filas.some(el => { const s = S0(el); return s !== '' && dec(s) > 0; });
+    const vac = $('#vac', m); vac.hidden = !vacio || todos;
+    vac.innerHTML = vacio ? `<b>${esc(nomDe(S.vend))} todavía no tiene salida anotada.</b><p>Para registrar un retorno primero hay que anotar lo que se llevó.</p><button type="button" class="btn cu sm" id="airs">Anotar la salida</button>` : '';
+    const ai = $('#airs', m); if (ai) ai.onclick = () => poner('salida');
+  }
+  function poner(modo) {
+    S.dmod = modo; dt.className = 'dt dm-' + modo + (dt.classList.contains('todos') ? ' todos' : '');
+    $$('#seg button', m).forEach(b => b.classList.toggle('on', b.dataset.m === modo));
+    $('#dvh', m).innerHTML = modo === 'salida' ? `Anota cuánto se lleva <b>${esc(nomDe(S.vend))}</b> hoy. Usa + y − o escribe el número.` : `Anota lo que <b>${esc(nomDe(S.vend))}</b> devuelve al volver. Sale lo que se llevó como referencia.`;
+    $('#sgc', m).hidden = modo !== 'salida'; $('#dvg', m).hidden = modo !== 'salida';
+    aplicarVis(); calc();
+  }
+  function calc() {
+    let sal = 0, ret = 0, nS = 0, nR = 0, nSv = 0; 
+    filas.forEach(el => {
+      const c = el.dataset.c, s = S0(el), rt = R0(el), st = $('.st', el), esKg = el.dataset.u !== 'UN';
+      const fac = r.facturado[c] || 0, vend = dec(s) - dec(rt); let h = '';
+      if (S.dmod === 'retorno') {
+        if (s !== '') h += `<span>Salió <b>${esKg ? kg(dec(s)) + ' kg' : dec(s) + ' un'}</b></span>`;
+        if (rt !== '' && dec(rt) > dec(s)) h += `<span class="bad">Es más de lo que salió</span>`;
+        else if (r.hayDetalle && s !== '' && rt !== '') {
+          const dif = Math.round((vend - fac) * 10) / 10;
+          if (Math.abs(dif) > 0.2) h += `<span class="${dif > 0 ? 'warn' : 'bad'}">Vendido ${kg(vend)} · facturado ${kg(fac)} · diferencia <b>${dif > 0 ? '+' : ''}${kg(dif)}</b></span>`;
+        }
+      } else if (el.dataset.sg !== undefined && s === '') {
+        h += `<span class="sug">Sugerido <b>${esc(el.dataset.sgt)}</b></span>`;
       }
       st.innerHTML = h;
-      if (el.dataset.u !== 'UN') { sal += dec(s); ret += dec(rt); porCat[el.dataset.cat] = (porCat[el.dataset.cat] || 0) + dec(s); }
+      const hecho = (S.dmod === 'salida' ? s : rt) !== ''; el.classList.toggle('ok', hecho);
+      if (s !== '' && dec(s) > 0) nS++; if (rt !== '' && s !== '' && dec(s) > 0) nR++; if (hecho) nSv++;
+      if (esKg) { sal += dec(s); ret += dec(rt); }
     });
-    $$('[data-tot]', m).forEach(x => { const v = porCat[x.dataset.tot]; x.textContent = v ? kg(v) + ' kg salida' : ''; });
-    $('#tv').textContent = kg(sal - ret) + ' kg';
+    pintarVend(S.vend, nS, nR);
+    $('#fl', m).textContent = S.dmod === 'salida' ? `${nS} productos con salida` : nS ? `Retorno anotado en ${nR} de ${nS} productos` : 'Sin salida anotada';
+    $('#tv', m).textContent = S.dmod === 'salida' ? kg(sal) + ' kg saldrán' : nR ? kg(sal - ret) + ' kg vendidos' : '';
   }
-  $('#dt').oninput = calc; calc();
-  // Carga sugerida: promedio por día de venta del mes anterior, en unidades (se pide aparte para no demorar la pantalla)
-  if (S.vend) api('getSugerido', S.sess.token, S.fecha, S.vend).then(sg => {
-    if (!document.body.contains(m) || S.vend === undefined || $('#sgc', m) === null) return;
-    const nom = ((S.cat.vendedores.find(v => v.usuario === S.vend) || {}).nombre) || S.vend;
-    if (sg.sinHistoria) { $('#sgc', m).innerHTML = `<div class="sgc"><b>Carga sugerida</b><p class="muted">Todavía no hay ventas anteriores de ${esc(nom)} para calcularla.</p></div>`; return; }
-    let n = 0;
-    filas.forEach(el => { const it = sg.items[el.dataset.c]; if (!it) return; n++;
-      const txt = it.kgUn ? `<b>${it.un} un</b> <span>≈ ${kg(it.kg)} kg</span>` : it.un ? `<b>${it.un} un</b>` : `<b>${kg(it.kg)} kg</b>`;
-      $('.pn', el).insertAdjacentHTML('beforeend', `<span class="sg" title="Última vez: ${it.kgUn || it.un ? it.ult + ' un' : kg(it.ult) + ' kg'}">Sugerido ${txt}<span> · última vez ${it.kgUn || it.un ? it.ult + ' un' : kg(it.ult) + ' kg'}</span></span>`);
-      el.dataset.sg = it.un && !it.kgUn ? it.un : it.kg; });
-    $$('.cat', m).forEach(d => { if ($$('[data-sg]', d).length) d.open = true; });
-    $('#sgc', m).innerHTML = `<div class="sgc"><div><b>Carga sugerida para ${esc(nom)}</b>
-        <p class="muted">${sg.base === 'dia' ? `Según lo que vendió los últimos ${sg.nDias} ${esc(pluralDia(sg.diaNombre))} (los más recientes pesan más; se ajusta sola con cada venta).` : `Aún no tiene suficientes ${esc(pluralDia(sg.diaNombre))}: se usa el promedio de sus últimos ${sg.nDias} días de venta.`} Cecinas en unidades de ~3 kg (cervecero 1,8 kg).</p></div>
-      <div class="sgt"><span><b>${sg.totalUn}</b> unidades</span><span><b>${kg(sg.totalKg)}</b> kg</span></div>
-      <button class="btn ghost sm" id="sgu" type="button">Usar como salida</button></div>`;
-    $('#sgu', m).onclick = () => { let c = 0;
-      filas.forEach(el => { const i = $('[data-k=salida]', el); if (el.dataset.sg !== undefined && i.value === '') { i.value = el.dataset.sg; c++; } });
-      calc(); toast(c ? `Salida cargada con lo sugerido en ${c} productos. Revisa y guarda.` : 'Los productos sugeridos ya tienen salida anotada.'); };
-  }).catch(() => {});
-  m.onclick = e => { const g = e.target.dataset.g; if (!g) return;
+  // eventos
+  const cambiar = e => { const b = e.target.closest('.dvc'); if (!b || b.dataset.u === S.vend) return;
+    if (sucio && !confirm('Hay cambios sin guardar. Si cambias de vendedor se pierden. ¿Cambiar igual?')) return;
+    S.vend = b.dataset.u; ir('despacho'); };
+  $('#dvs', m).onclick = cambiar; if ($('#dsub', m)) $('#dsub', m).onclick = cambiar;
+  $('#seg', m).onclick = e => { const b = e.target.closest('button'); if (b) poner(b.dataset.m); };
+  dt.oninput = () => { sucio = true; calc(); };
+  dt.onclick = e => { const b = e.target.closest('.mn,.pl'); if (!b) return;
+    const el = b.closest('.pr'), i = $('input', b.parentNode), paso = el.dataset.u === 'UN' ? 1 : 0.5;
+    const v = Math.max(0, Math.round((dec(i.value) + (b.classList.contains('pl') ? paso : -paso)) * 1000) / 1000);
+    i.value = v === 0 && i.value === '' ? '' : String(v); sucio = true; calc(); };
+  dt.addEventListener('focusin', e => { if (e.target.matches('input')) setTimeout(() => e.target.select && e.target.select(), 0); });
+  dt.addEventListener('keydown', e => { if (e.key !== 'Enter' || !e.target.matches('input')) return; e.preventDefault();
+    const ins = $$('.pr:not(.oc) .nin[data-w=' + S.dmod + '] input', dt), i = ins.indexOf(e.target); if (ins[i + 1]) ins[i + 1].focus(); else e.target.blur(); });
+  $('#mas', m).onclick = () => { dt.classList.toggle('todos'); aplicarVis(); };
+  // carga sugerida y guías (solo en Salida)
+  $('#dvg', m).innerHTML = r.guias.map(g => `<button class="btn ghost sm" type="button" data-g="${esc(g.folio)}">Cargar salida desde la guía ${esc(g.folio)}</button>`).join('');
+  $('#dvg', m).onclick = e => { const g = e.target.dataset.g; if (!g) return;
     const guia = r.guias.find(x => x.folio === g);
-    filas.forEach(el => { const k = guia.lineas[el.dataset.c]; if (k !== undefined) $('[data-k=salida]', el).value = Math.round(k * 1000) / 1000; });
-    $$('.cat', m).forEach(d => { if ($$('[data-k=salida]', d).some(i => i.value)) d.open = true; });
-    calc(); toast('Salida cargada desde la guía ' + g + '. Revisa y guarda.'); };
-  $('#sv').onclick = async () => {
-    const datos = filas.map(el => ({ codigo: el.dataset.c, salida: $('[data-k=salida]', el).value.replace(',', '.'), retorno: $('[data-k=retorno]', el).value.replace(',', '.') }));
-    await api('saveDespacho', S.sess.token, S.fecha, S.vend, datos); toast('Despacho de ' + S.vend + ' guardado');
+    filas.forEach(el => { const k = guia.lineas[el.dataset.c]; if (k !== undefined) inp(el, 'salida').value = Math.round(k * 1000) / 1000; });
+    sucio = true; aplicarVis(); calc(); toast('Salida cargada desde la guía ' + g + '. Revisa y guarda.'); };
+  if (S.vend && !pseudo) api('getSugerido', S.sess.token, S.fecha, S.vend).then(sg => {
+    if (!document.body.contains(m) || $('#sgc', m) === null) return;
+    const nom = nomDe(S.vend);
+    if (sg.sinHistoria) { $('#sgc', m).innerHTML = `<div class="sgc"><div><b>Carga sugerida</b><p class="muted">Todavía no hay ventas anteriores de ${esc(nom)} para calcularla.</p></div></div>`; return; }
+    filas.forEach(el => { const it = sg.items[el.dataset.c]; if (!it) return;
+      el.dataset.sgt = it.kgUn ? `${it.un} un (≈ ${kg(it.kg)} kg)` : it.un ? `${it.un} un` : `${kg(it.kg)} kg`;
+      el.dataset.sg = it.un && !it.kgUn ? it.un : it.kg; });
+    $('#sgc', m).innerHTML = `<div class="sgc"><div><b>Carga sugerida para ${esc(nom)}: ${sg.totalUn} unidades (≈ ${kg(sg.totalKg)} kg)</b>
+        <details class="sgd"><summary>¿Cómo se calcula?</summary><p class="muted">${sg.base === 'dia' ? `Según lo que vendió los últimos ${sg.nDias} ${esc(pluralDia(sg.diaNombre))}: los más recientes pesan más y se ajusta sola con cada venta.` : `Aún no tiene suficientes ${esc(pluralDia(sg.diaNombre))}: se usa el promedio de sus días de venta de las últimas semanas.`}</p></details></div>
+      <button class="btn cu sm" id="sgu" type="button">Usar como salida</button></div>`;
+    $('#sgu', m).onclick = () => { let c = 0;
+      filas.forEach(el => { const i = inp(el, 'salida'); if (el.dataset.sg !== undefined && i.value === '') { i.value = el.dataset.sg; c++; } });
+      if (c) sucio = true; aplicarVis(); calc(); toast(c ? `Salida cargada con lo sugerido en ${c} productos. Revisa y guarda.` : 'Los productos sugeridos ya tienen salida anotada.'); };
+    aplicarVis(); calc();
+  }).catch(() => {});
+  // estado de cada vendedor (una sola llamada para todos)
+  (async () => {
+    try {
+      await pedirLote(vends.map(v => ['getDespacho', [S.sess.token, S.fecha, v.usuario]]));
+      for (const v of vends) { if (v.usuario === S.vend || (v.pseudo === 'dist' && !esDist(S.vend))) continue;
+        const d = await api('getDespacho', S.sess.token, S.fecha, v.usuario); if (!document.body.contains(m)) return;
+        const fl = d.filas.filter(f => f.salida !== '' && dec(f.salida) > 0); pintarVend(v.usuario, fl.length, fl.filter(f => f.retorno !== '').length); }
+    } catch (e) {}
+  })();
+  const guardar = async sigue => {
+    const datos = filas.map(el => ({ codigo: el.dataset.c, salida: S0(el).replace(',', '.'), retorno: R0(el).replace(',', '.') }));
+    await api('saveDespacho', S.sess.token, S.fecha, S.vend, datos); sucio = false;
+    if (sigue && sig) { toast('Guardado. Ahora ' + sig.nombre); S.vend = sig.usuario; ir('despacho'); } else toast('Despacho de ' + nomDe(S.vend) + ' guardado');
   };
+  $('#sv', m).onclick = () => guardar(false);
+  if ($('#sn', m)) $('#sn', m).onclick = () => guardar(true);
+  poner(S.dmod);
 }
 
 /* ============ INVENTARIO DE BODEGA ============ */

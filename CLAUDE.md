@@ -336,3 +336,15 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Se quitaron el modo prueba (botón "Probar como…", `entrarComo`, `CFG.MODO_PRUEBA`) y el generador de datos demo (`cargarDatosDemo`, `demo_`, `prepararDemo`). La app ya no tiene nada temporal.
 - Para empezar de cero: ejecutar `limpiarPruebas` una sola vez desde el editor (CONFIRMO = true y luego false). Conserva USUARIOS y PRODUCTOS. **Cuando ya haya datos reales, `limpiarPruebas` y `limpiarTodo_` borran todo: conviene quitarlas del script o dejar CONFIRMO siempre en false.**
 - Los archivos de Drive (rendiciones, informes, respaldos, planillas) no se borran con la limpieza.
+
+## v60 — Despacho del bodeguero rehecho (solo frontend: app.js, style.css, sw.js)
+- Pensado para tablet y PC, un vendedor y un paso a la vez. Arriba: tarjetas de vendedores con su estado (Sin salida / Salida lista / Retorno N de M / Completo ✓, calculado con `pedirLote` de getDespacho de todos). Luego dos pasos: **1 · Salida (mañana)** y **2 · Retorno (tarde)**; abre según la hora (antes de las 13:00 = Salida) y recuerda el último paso elegido (`S.dmod`).
+- Solo se ven los productos que importan: en Salida los que tienen salida, sugerido o guía; en Retorno los que salieron. "Agregar otro producto (N más)" muestra el resto por categoría. Cada producto es una tarjeta con − / + (0,5 kg, 1 si es unidad) y un número grande; Enter pasa al siguiente. Los dos campos (salida y retorno) siguen en el DOM y se guardan juntos con `saveDespacho` (sin cambios en el servidor).
+- Retorno: muestra "Salió X"; solo avisa cuando el retorno es mayor que la salida o la diferencia con lo facturado supera 0,2 kg. Salida: carga sugerida en una línea con "Usar como salida" (la explicación va en "¿Cómo se calcula?") y "Sugerido N" en cada producto.
+- Pie fijo: avance y "Guardar" / "Guardar y seguir con <siguiente vendedor>". Cambiar de vendedor con cambios sin guardar pide confirmación.
+
+## v61 — Distribuidores, consumo y venta en bodega en Despacho
+- Despacho (bodeguero) ahora tiene tarjetas extra: **Venta en bodega** (SALA), **Consumo** y **Distribuidores** (sub‑selector PATRICIO, CESAR, JUAN CARLOS, AMIR, OSCAR, CHILOE, desde `CFG.DISTRIBUIDORES` vía `catalogo().distribuidores`). Cada uno tiene salida y retorno como un vendedor.
+- Se guarda en DESPACHO con `vendedor` = `DIST:NOMBRE` | `CONSUMO` | `SALA` (sin cambio de esquema). `destinoDesp_()` lleva (salida − retorno) a la columna del inventario: distribuidor → su columna, CONSUMO → CONSUMO, SALA → CONSUMO EXTERNO. Supermercados sigue como un solo total (SUPERMERCADOS/DISTRIBUIDOR → SUPERMERCADO), sin separar por razón social.
+- KPI de kilos (falta/sobra) ignora estos destinos; no piden sugerido.
+- Requiere pegar APPS_SCRIPT.js nuevo (nueva versión de implementación).

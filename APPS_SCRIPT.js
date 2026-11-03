@@ -28,7 +28,7 @@ const CFG = {
   // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
   INVENTARIO_FOLDER_ID: '',
   // Vendedores cuyo despacho no va en columna propia sino como destino (igual que en la planilla de inventario)
-  DESTINO_DE_VENDEDOR: { DISTRIBUIDOR: 'SUPERMERCADO', SUPERMERCADOS: 'SUPERMERCADO', SALA: 'CONSUMO EXTERNO' },
+  DESTINO_DE_VENDEDOR: { DISTRIBUIDOR: 'SUPERMERCADO', SUPERMERCADOS: 'SUPERMERCADO', SALA: 'CONSUMO EXTERNO', CONSUMO: 'CONSUMO' },
   // Destinos de "otras salidas". Los 4 primeros siempre tienen columna en la planilla; el resto aparece si se usa ese día.
   DESTINOS: ['REPROCESO','CONSUMO','CONSUMO EXTERNO','LAMINADO','MERMA','DEGUSTACION','MUESTRA','OTRAS SALIDAS CON GUIA','SUPERMERCADO'],
   // Distribuidores: en la planilla de inventario cada uno tiene su columna de salida (aparece si retiró ese día)
@@ -702,7 +702,7 @@ function vendedores_() {
 function catalogo(token) {
   auth_(token);
   return {
-    hoy: hoy_(),
+    hoy: hoy_(), distribuidores: CFG.DISTRIBUIDORES,
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA')
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
       .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio) })),
@@ -1280,6 +1280,12 @@ function productosInv_() {
 const r3_ = x => Math.round(x * 1000) / 1000;
 
 /** Calcula el inventario de un día para todos los productos (recorre la historia desde el último saldo o conteo). */
+/** Destino de inventario de una fila de DESPACHO que no es de un vendedor: 'DIST:NOMBRE' (distribuidor), SALA, CONSUMO, supermercados. '' = vendedor normal. */
+function destinoDesp_(v) {
+  v = String(v || '');
+  if (v.indexOf('DIST:') === 0) return v.slice(5).toUpperCase();
+  return CFG.DESTINO_DE_VENDEDOR[v] || '';
+}
 function inventarioDia_(fecha) {
   const prods = productosInv_();
   const vend = vendedores_(), colVend = vend.filter(v => !CFG.DESTINO_DE_VENDEDOR[v.usuario]).map(v => v.usuario);
@@ -1295,7 +1301,7 @@ function inventarioDia_(fecha) {
     else if (m.tipo === 'SALIDA') { x.otras[m.destino] = (x.otras[m.destino] || 0) + q; x.otrasMan[m.destino] = (x.otrasMan[m.destino] || 0) + q; }
     else if (m.tipo === 'CONTEO') x.conteo = q; });
   desp.forEach(d => { const c = codeKey_(d.codigo), x = D(c, d.fecha); fechas[d.fecha] = 1;
-    const dest = CFG.DESTINO_DE_VENDEDOR[d.vendedor];
+    const dest = destinoDesp_(d.vendedor);
     if (dest) { x.otras[dest] = (x.otras[dest] || 0) + num_(d.salida) - num_(d.retorno); return; }
     x.salVend[d.vendedor] = (x.salVend[d.vendedor] || 0) + num_(d.salida);
     x.retVend[d.vendedor] = (x.retVend[d.vendedor] || 0) + num_(d.retorno); });
@@ -2743,6 +2749,7 @@ function kpis_(desde, hasta) {
     const dd = detDia[f] || []; if (!dd.length) return;
     const pr = preciosKg_(dd), vs = {}; despDia[f].forEach(x => vs[x.vendedor] = 1);
     Object.keys(vs).forEach(v => {
+      if (destinoDesp_(v)) return;                                                                     // distribuidores, consumo y sala no se cruzan con facturado
       if (despDia[f].some(x => x.vendedor === v && x.salida !== '' && x.retorno === '')) return;        // aún falta registrar el retorno
       const k = kilosDe_(v, despDia[f], dd, unidad, pr); if (!(k.salida > 0)) return;
       if (k.diferenciaPesos > 0) falta += k.diferenciaPesos; else sobra += -k.diferenciaPesos;
