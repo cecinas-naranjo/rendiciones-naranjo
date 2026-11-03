@@ -59,7 +59,8 @@ const SCHEMA = {
   CHEQUES_ESTADO: ['clave','estado','fecha','registrado_por','registrado','obs'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
-  ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos']
+  ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos'],
+  ANULACIONES: ['id','fecha','vendedor','tipo','folio','folio_key','cliente','modo','lineas','monto','motivo','reemplazo','vuelve','estado','nc_folio','nota','registrado_por','registrado','resuelto_por','resuelto']
 };
 
 // Formas de pago estructuradas (reemplazan el texto libre "ESTADO Y EF 20000", etc.)
@@ -223,7 +224,7 @@ function setup() {
 const API = {
   batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -251,7 +252,7 @@ function doPost(e) {
 }
 
 /** Guardados que agregan filas: si la app los reenvía (se cortó internet y no se supo si llegaron), se reconocen por su `op` y no se duplican. */
-const NO_REPETIR_ = { guardarMov: 1, guardarCobro: 1, guardarDevolucion: 1, guardarDeposito: 1 };
+const NO_REPETIR_ = { guardarMov: 1, guardarCobro: 1, guardarDevolucion: 1, guardarDeposito: 1, solicitarAnulacion: 1 };
 function opAplicada_(op) { return read_('OPERACIONES').some(x => x.op === op); }
 function registrarOp_(op, fn) {
   withLock_(() => {
@@ -263,7 +264,7 @@ function registrarOp_(op, fn) {
 function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { ping: 1, listarAdelantos: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
+const LECTURAS_ = { ping: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, getSugerido: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -744,7 +745,9 @@ function getDespacho(token, fecha, vendedor) {
     if (esGuiaFlag_(r.es_guia)) { (guias[r.folio] = guias[r.folio] || {})[c] = ((guias[r.folio] || {})[c] || 0) + num_(r.cantidad); }
     else facturado[c] = (facturado[c] || 0) + num_(r.cantidad);
   });
+  anulKg_(fecha).filter(x => x.vendedor === vendedor).forEach(x => { facturado[x.codigo] = (facturado[x.codigo] || 0) - x.kg; });     // folios anulados no cuentan como vendidos
   return {
+    vuelven: anulVuelve_(fecha).filter(x => x.vendedor === vendedor),
     filas: byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor)
       .map(r => ({ codigo: codeKey_(r.codigo), salida: r.salida, retorno: r.retorno, obs: r.obs })),
     facturado, hayDetalle: det.length > 0,
@@ -868,6 +871,7 @@ function cruzarAdelantos_() {
     else if (d.vendedor !== a.vendedor) { estado = 'REVISAR'; nota = 'Mi DTE lo asignó a otro terminal/vendedor.'; }
     else if (Math.round(num_(d.total)) !== Math.round(num_(a.monto))) { estado = 'REVISAR'; nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + '.'; }
     else if (read_('DESCUENTOS').some(x => x.folio_key === d.folio_key && (x.estado === 'PENDIENTE' || x.estado === 'APROBADO'))) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
+    else if (anulacionesDe_(d.fecha).some(x => x.folio_key === d.folio_key && x.estado !== 'RECHAZADA')) { estado = 'REVISAR'; nota = 'Tiene una anulación o nota de crédito: detállalo normal.'; }
     else { aplicarAdelanto_(a, d); estado = 'APLICADO'; aplicados++; }
     if (estado === 'REVISAR') revisar++;
     if (a.estado !== estado || a.nota !== nota) { a.estado = estado; a.nota = nota; a.resuelto = now_(); updateRow_('ADELANTOS', a._row, a); }
@@ -925,6 +929,146 @@ function borrarAdelanto(token, id) {
     if (u.rol === 'VENDEDOR' && a.vendedor !== u.usuario) throw new Error('Este folio no es tuyo.');
     if (a.estado === 'APLICADO') throw new Error('Ese folio ya quedó detallado; corrígelo desde Mis folios.');
     deleteRows_('ADELANTOS', [a._row]); return true;
+  });
+}
+
+/* ============================ ANULACIONES Y NOTAS DE CRÉDITO POR FOLIO (v72) ============================ */
+// El vendedor avisa que un folio necesita nota de crédito (se equivocó, cobró de más…): anula el documento COMPLETO o POR PARTES
+// (cada producto con sus kilos y su monto). ADMIN/SUPERVISOR la aprueban. Aprobada: el monto anulado se trata como un descuento
+// (el vendedor ya no lo rinde), se descuenta de los kilos facturados y, si el producto volvió, el bodeguero lo anota en el retorno.
+// Estados: PENDIENTE · APROBADA · RECHAZADA. `nc_folio` (opcional) = folio de la nota de crédito en Mi DTE: esa NC se oculta
+// para que no se cuente dos veces.
+function asegurarAnulaciones_() {
+  if (MEMO_.__anul) return;
+  const ss = SpreadsheetApp.getActive();
+  if (!ss.getSheetByName('ANULACIONES')) {
+    const sh = ss.insertSheet('ANULACIONES'), head = SCHEMA.ANULACIONES;
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
+    MEMO_.ANULACIONES = null;
+  }
+  MEMO_.__anul = true;
+}
+function anulacionesDe_(fecha) { asegurarAnulaciones_(); return read_('ANULACIONES').filter(a => !fecha || a.fecha === fecha); }
+function lineasAnul_(a) { try { const l = JSON.parse(a.lineas || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
+/** Monto anulado y aprobado por folio_key de ese día. */
+function ncAprobDe_(fecha) {
+  const m = {};
+  anulacionesDe_(fecha).filter(a => a.estado === 'APROBADA').forEach(a => m[a.folio_key] = (m[a.folio_key] || 0) + Math.round(num_(a.monto)));
+  return m;
+}
+/** Kilos anulados y aprobados del día (solo productos por kilo): [{vendedor, codigo, producto, kg}]. Si un folio se anuló completo y no trae líneas, usa las del Informe de ventas. */
+function anulKg_(fecha) {
+  const unidad = {}; read_('PRODUCTOS').forEach(p => unidad[codeKey_(p.codigo)] = p.unidad);
+  const det = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
+  const out = [];
+  anulacionesDe_(fecha).filter(a => a.estado === 'APROBADA').forEach(a => {
+    let ls = lineasAnul_(a);
+    if (!ls.length && a.modo === 'COMPLETO') ls = det.filter(r => r.folio_key === a.folio_key).map(r => ({ codigo: r.codigo, producto: r.producto, unidad: unidad[codeKey_(r.codigo)] || 'KG', cantidad: num_(r.cantidad) }));
+    ls.forEach(l => { const c = codeKey_(l.codigo), un = unidad[c] || l.unidad || 'KG'; if (un === 'UN') return;
+      const kg = num_(l.cantidad); if (kg > 0) out.push({ vendedor: a.vendedor, codigo: c, producto: l.producto || '', kg }); });
+  });
+  return out;
+}
+/** Unidades anuladas y aprobadas del día de productos por unidad (para avisar al bodeguero). */
+function anulVuelve_(fecha) {
+  const r = [];
+  anulacionesDe_(fecha).filter(a => a.estado === 'APROBADA' && String(a.vuelve) === 'SI').forEach(a => lineasAnul_(a).forEach(l => r.push({ vendedor: a.vendedor, folio: a.folio, producto: l.producto || '', unidad: l.unidad || 'KG', cantidad: num_(l.cantidad) })));
+  return r;
+}
+function formatoAnul_(a, docs) {
+  const d = docs && docs[a.folio_key];
+  return { id: a.id, fecha: a.fecha, vendedor: a.vendedor, tipo: /bol/i.test(a.tipo) ? 'Boleta' : 'Factura', folio: a.folio, folio_key: a.folio_key,
+    cliente: a.cliente || (d ? d.cliente : ''), modo: a.modo, lineas: lineasAnul_(a), monto: Math.round(num_(a.monto)), motivo: a.motivo, reemplazo: a.reemplazo,
+    vuelve: String(a.vuelve) === 'SI', estado: a.estado, nc_folio: a.nc_folio, nota: a.nota, totalDoc: d ? Math.round(num_(d.total)) : 0, existe: !!d, registrado_por: a.registrado_por, resuelto_por: a.resuelto_por };
+}
+/** modo: 'COMPLETO' | 'PARCIAL'. lineas: [{codigo, producto, unidad, cantidad, monto}] (obligatorias si es PARCIAL). */
+function solicitarAnulacion(token, fecha, tipo, folio, modo, lineas, monto, motivo, reemplazo, vuelve, vendedor) {
+  const u = auth_(token, ['VENDEDOR', 'RENDICION', 'SUPERVISOR', 'ADMIN']);
+  const v = u.rol === 'VENDEDOR' ? u.usuario : String(vendedor || '');
+  if (!v) throw new Error('Indica el vendedor.');
+  fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
+  assertAbierta_(fecha);
+  const t = /bol/i.test(String(tipo)) ? 'Boleta Electrónica' : 'Factura Electrónica', f = String(folio || '').replace(/\D/g, '').replace(/^0+/, '');
+  if (!f) throw new Error('Escribe el número del folio que se anula.');
+  modo = modo === 'PARCIAL' ? 'PARCIAL' : 'COMPLETO';
+  const ls = (lineas || []).map(l => {
+    const cant = Number(String(l.cantidad == null ? '' : l.cantidad).replace(',', '.')) || 0, m = Number(String(l.monto == null ? '' : l.monto).replace(/\D/g, '')) || 0;
+    if (!(cant > 0)) throw new Error('Falta la cantidad en uno de los productos.');
+    if (!(m > 0)) throw new Error('Falta el monto en uno de los productos.');
+    return { codigo: String(l.codigo || ''), producto: String(l.producto || '').slice(0, 80), unidad: l.unidad === 'UN' ? 'UN' : 'KG', cantidad: Math.round(cant * 100) / 100, monto: m };
+  });
+  if (modo === 'PARCIAL' && !ls.length) throw new Error('Agrega al menos un producto con sus kilos y su monto.');
+  return withLock_(() => {
+    asegurarAnulaciones_();
+    const key = folioKey_(t, f), d = read_('DOCUMENTOS').find(x => x.folio_key === key);
+    if (d && u.rol === 'VENDEDOR' && d.vendedor !== u.usuario) throw new Error('Ese folio no es tuyo.');
+    const previas = read_('ANULACIONES').filter(a => a.folio_key === key && a.estado !== 'RECHAZADA');
+    if (previas.some(a => a.modo === 'COMPLETO')) throw new Error('Ese folio ya tiene una anulación completa.');
+    if (modo === 'COMPLETO' && previas.length) throw new Error('Ese folio ya tiene anulaciones por partes: pide que se rechacen antes de anularlo completo.');
+    let m = modo === 'COMPLETO' ? (d ? Math.round(num_(d.total)) : Number(String(monto == null ? '' : monto).replace(/\D/g, '')) || 0) : ls.reduce((a, l) => a + l.monto, 0);
+    if (!(m > 0)) throw new Error(modo === 'COMPLETO' ? 'Escribe el monto total del folio.' : 'El monto debe ser mayor que cero.');
+    if (d) {
+      const yaDesc = read_('DESCUENTOS').filter(x => x.folio_key === key && x.estado !== 'RECHAZADO').reduce((a, x) => a + Math.round(num_(x.monto)), 0);
+      const yaAnul = previas.reduce((a, x) => a + Math.round(num_(x.monto)), 0);
+      if (m + yaAnul + yaDesc > Math.round(num_(d.total))) throw new Error('Lo anulado ($' + (m + yaAnul) + ') más descuentos supera el total del folio ($' + Math.round(num_(d.total)) + ').');
+    }
+    const reg = { id: uid_(), fecha, vendedor: v, tipo: t, folio: f, folio_key: key, cliente: d ? d.cliente : '', modo, lineas: JSON.stringify(ls), monto: m,
+      motivo: String(motivo || '').slice(0, 200), reemplazo: String(reemplazo || '').replace(/\D/g, ''), vuelve: vuelve ? 'SI' : 'NO', estado: 'PENDIENTE', nc_folio: '', nota: '',
+      registrado_por: u.usuario, registrado: now_(), resuelto_por: '', resuelto: '' };
+    append_('ANULACIONES', [reg]);
+    return { id: reg.id, monto: m, existe: !!d };
+  });
+}
+function listarAnulaciones(token, fecha, vendedor) {
+  const u = auth_(token);
+  fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
+  const v = u.rol === 'VENDEDOR' ? u.usuario : String(vendedor || '');
+  const docs = {}; byFecha_('DOCUMENTOS', fecha).forEach(d => docs[d.folio_key] = d);
+  return anulacionesDe_(fecha).filter(a => !v || a.vendedor === v).map(a => formatoAnul_(a, docs)).reverse();
+}
+function anulacionesPendientes(token) {
+  auth_(token, ROLES_AUTORIZAN);
+  const nombres = {}; read_('USUARIOS').forEach(x => nombres[x.usuario] = x.nombre);
+  const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
+  return anulacionesDe_().filter(a => a.estado === 'PENDIENTE').map(a => Object.assign(formatoAnul_(a, docs), { vendedorNombre: nombres[a.vendedor] || a.vendedor }));
+}
+/** Aprueba o rechaza. ncFolio (opcional): N° de la nota de crédito en Mi DTE, para ocultarla y no contarla dos veces. */
+function resolverAnulacion(token, id, aprobar, ncFolio, nota) {
+  const u = auth_(token, ROLES_AUTORIZAN);
+  return withLock_(() => {
+    asegurarAnulaciones_();
+    const a = read_('ANULACIONES').find(x => x.id === String(id));
+    if (!a) throw new Error('Anulación no encontrada.');
+    assertAbierta_(a.fecha);
+    a.estado = aprobar ? 'APROBADA' : 'RECHAZADA'; a.resuelto_por = u.usuario; a.resuelto = now_();
+    a.nc_folio = aprobar ? String(ncFolio || '').replace(/\D/g, '').replace(/^0+/, '') : ''; a.nota = String(nota || '').slice(0, 200);
+    updateRow_('ANULACIONES', a._row, a);
+    const d = read_('DOCUMENTOS').find(x => x.folio_key === a.folio_key);
+    if (d) {
+      const desc = read_('DESCUENTOS').filter(x => x.folio_key === d.folio_key && x.estado === 'APROBADO').reduce((s, x) => s + num_(x.monto), 0);
+      const nc = read_('ANULACIONES').filter(x => x.folio_key === d.folio_key && x.estado === 'APROBADA').reduce((s, x) => s + num_(x.monto), 0);
+      const pagos = read_('PAGOS').filter(x => x.folio_key === d.folio_key), pagado = pagos.reduce((s, x) => s + num_(x.monto), 0);
+      const restante = Math.round(num_(d.total) - desc - nc);
+      if (restante <= 0) {            // anulado completo: no hay nada que rendir
+        if (pagos.length) deleteRows_('PAGOS', pagos.map(x => x._row));
+        if (d.estado !== 'DETALLADO') { d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d); }
+      } else if (d.estado === 'DETALLADO' && Math.round(pagado) !== restante) {   // lo detallado ya no cuadra: el vendedor lo corrige
+        d.estado = 'PENDIENTE'; updateRow_('DOCUMENTOS', d._row, d);
+      }
+    }
+    return true;
+  });
+}
+function borrarAnulacion(token, id) {
+  const u = auth_(token);
+  return withLock_(() => {
+    asegurarAnulaciones_();
+    const a = read_('ANULACIONES').find(x => x.id === String(id));
+    if (!a) return true;
+    if (u.rol === 'VENDEDOR' && a.vendedor !== u.usuario) throw new Error('Esta anulación no es tuya.');
+    if (a.estado !== 'PENDIENTE') throw new Error('Esa anulación ya fue resuelta; pide a supervisión que la revise.');
+    assertAbierta_(a.fecha);
+    deleteRows_('ANULACIONES', [a._row]); return true;
   });
 }
 
@@ -1075,17 +1219,29 @@ function asignarTerminal(token, terminal, vendedor) {
 function docsDelDia_(fecha, vendedor) {
   const pagos = byFecha_('PAGOS', fecha), descs = byFecha_('DESCUENTOS', fecha);
   const nombres = {}; read_('USUARIOS').forEach(u => nombres[u.usuario] = u.nombre);
-  return byFecha_('DOCUMENTOS', fecha).filter(d => !vendedor || d.vendedor === vendedor).map(d => {
+  const anuls = anulacionesDe_(fecha);
+  // notas de crédito de Mi DTE ya enlazadas a una anulación aprobada: se ocultan (su efecto ya está en el folio anulado)
+  const ncOcultas = {}; anuls.filter(a => a.estado === 'APROBADA' && a.nc_folio).forEach(a => ncOcultas[String(a.nc_folio)] = 1);
+  return byFecha_('DOCUMENTOS', fecha).filter(d => !vendedor || d.vendedor === vendedor)
+    .filter(d => !(ncOcultas[String(d.folio).replace(/\D/g, '').replace(/^0+/, '')] && /cr[eé]dito/i.test(String(d.tipo)))).map(d => {
     const p = pagos.filter(x => x.folio_key === d.folio_key);
     const ds = descs.filter(x => x.folio_key === d.folio_key);
-    const descAprob = ds.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + num_(x.monto), 0);
-    const pagado = p.reduce((a, x) => a + num_(x.monto), 0);
+    const as = anuls.filter(x => x.folio_key === d.folio_key);
+    const ncAprob = as.filter(x => x.estado === 'APROBADA').reduce((a, x) => a + Math.round(num_(x.monto)), 0);
+    const descAprob = ds.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + num_(x.monto), 0) + ncAprob;
+    const completo = ncAprob > 0 && Math.round(num_(d.total) - descAprob) <= 0;
+    const pg = completo ? [] : p;
+    const pagado = pg.reduce((a, x) => a + num_(x.monto), 0);
     return {
       folio_key: d.folio_key, tipo: d.tipo, folio: d.folio, cliente: d.cliente, rut: d.rut, total: num_(d.total),
-      condicion_dte: d.condicion_dte, terminal: d.terminal, vendedor: d.vendedor, estado: d.estado,
-      pagos: p.map(x => ({ forma: x.forma, banco: x.banco, monto: num_(x.monto), referencia: x.referencia,
+      condicion_dte: d.condicion_dte, terminal: d.terminal, vendedor: d.vendedor, estado: completo ? 'DETALLADO' : d.estado,
+      pagos: pg.map(x => ({ forma: x.forma, banco: x.banco, monto: num_(x.monto), referencia: x.referencia,
         cheque_numero: x.cheque_numero || '', cheque_fecha: x.cheque_fecha || '', cheque_titular: x.cheque_titular || '' })),
-      descuentos: ds.map(x => ({ id: x.id, monto: num_(x.monto), motivo: x.motivo, estado: x.estado, autorizado_por: x.autorizado_por })),
+      // las anulaciones aprobadas se ven como un descuento más (marcado nc:true) para que todas las cuentas del folio sigan cuadrando
+      descuentos: ds.map(x => ({ id: x.id, monto: num_(x.monto), motivo: x.motivo, estado: x.estado, autorizado_por: x.autorizado_por }))
+        .concat(as.filter(x => x.estado === 'APROBADA').map(x => ({ id: x.id, monto: Math.round(num_(x.monto)), motivo: (x.modo === 'COMPLETO' ? 'Anulación completa' : 'Nota de crédito parcial') + (x.motivo ? ': ' + x.motivo : ''), estado: 'APROBADO', autorizado_por: x.resuelto_por, nc: true }))),
+      anulaciones: as.map(x => ({ id: x.id, modo: x.modo, monto: Math.round(num_(x.monto)), estado: x.estado })),
+      ncAprob, anulado: completo,
       pagado, descAprob, diferencia: num_(d.total) - pagado - descAprob,
       // si lo detalló otra persona (encargada o administración), se muestra para que el vendedor lo sepa
       detalladoPor: p[0] && p[0].registrado_por && p[0].registrado_por !== d.vendedor ? (nombres[p[0].registrado_por] || p[0].registrado_por) : ''
@@ -1117,7 +1273,8 @@ function guardarDetalle(token, fecha, folio_key, pagos, descuento, minimo) {
     const descMonto = descuento ? num_(descuento.monto) : 0;
     const prevDesc = read_('DESCUENTOS').filter(x => x.folio_key === folio_key);
     const aprobado = prevDesc.find(x => x.estado === 'APROBADO');
-    const descVigente = descMonto || (aprobado ? num_(aprobado.monto) : 0);
+    const ncAprob = ncAprobDe_(d.fecha)[folio_key] || 0;      // anulaciones aprobadas (nota de crédito parcial o completa)
+    const descVigente = (descMonto || (aprobado ? num_(aprobado.monto) : 0)) + ncAprob;
     if (Math.round(suma + descVigente) !== Math.round(num_(d.total)))
       throw new Error('La suma (' + (suma + descVigente) + ') no cuadra con el total del documento (' + num_(d.total) + ').');
 
@@ -1148,7 +1305,7 @@ function guardarVarios(token, fecha, items) {
   assertAbierta_(fecha);
   return withLock_(() => {
     const docs = {}; read_('DOCUMENTOS').forEach(d => { if (d.fecha === fecha) docs[d.folio_key] = d; });
-    const descs = byFecha_('DESCUENTOS', fecha);
+    const descs = byFecha_('DESCUENTOS', fecha), ncs = ncAprobDe_(fecha);
     const ok = [], saltados = [];
     (items || []).forEach(it => {
       const d = docs[it.folio_key];
@@ -1157,7 +1314,7 @@ function guardarVarios(token, fecha, items) {
       if ((it.forma === 'TRANSFERENCIA' || it.forma === 'DEP_EFECTIVO') && !it.banco) throw new Error('Falta el banco de la transferencia.');
       const ds = descs.filter(x => x.folio_key === d.folio_key);
       if (d.estado === 'DETALLADO' || ds.some(x => x.estado === 'PENDIENTE')) return saltados.push(it.folio_key);
-      const aprob = ds.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + num_(x.monto), 0);
+      const aprob = ds.filter(x => x.estado === 'APROBADO').reduce((a, x) => a + num_(x.monto), 0) + (ncs[d.folio_key] || 0);
       ok.push({ d, forma: it.forma, banco: it.banco || '', monto: num_(d.total) - aprob, ch: it.forma === 'CHEQUE' ? datosCheque_(it) : {} });
     });
     const keys = {}; ok.forEach(x => keys[x.d.folio_key] = 1);
@@ -2258,11 +2415,12 @@ function preciosKg_(detV) {
 }
 /** Kilos de un vendedor: salida − retorno vs facturado, por producto, con 2 decimales, y la diferencia valorizada en pesos
  *  (positivo = salió y no volvió ni se facturó: se descuenta de su liquidación). */
-function kilosDe_(v, desp, detV, unidad, precios) {
+function kilosDe_(v, desp, detV, unidad, precios, anul) {
   const m = {};
   const it = (c, nombre) => m[c] = m[c] || { codigo: c, producto: nombre, salida: 0, retorno: 0, facturado: 0 };
   desp.filter(x => x.vendedor === v && x.unidad !== 'UN').forEach(x => { const o = it(codeKey_(x.codigo), x.producto); o.salida += num_(x.salida); o.retorno += num_(x.retorno); });
   detV.filter(x => x.vendedor === v && unidad[codeKey_(x.codigo)] !== 'UN').forEach(x => { it(codeKey_(x.codigo), x.producto).facturado += num_(x.cantidad); });
+  (anul || []).filter(x => x.vendedor === v).forEach(x => { it(x.codigo, x.producto).facturado -= x.kg; });     // kilos de folios anulados (aprobados): no se vendieron
   const r2 = n => Math.round(n * 100) / 100, L = Object.keys(m).map(c => m[c]);
   const detalle = L.map(o => { const dif = o.salida - o.retorno - o.facturado, pr = precios[o.codigo] || 0;
     return { codigo: o.codigo, producto: o.producto, salida: r2(o.salida), retorno: r2(o.retorno), facturado: r2(o.facturado), diferencia: r2(dif), precio: Math.round(pr), monto: Math.round(dif * pr) }; });
@@ -2351,7 +2509,7 @@ function resumen_(fecha) {
     } else tot.depositoDif = 0;
     tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.gastos - tot.depositos;
     const k = desp.filter(x => x.vendedor === v);
-    tot.kilos = kilosDe_(v, desp, detV, unidad, precios);
+    tot.kilos = kilosDe_(v, desp, detV, unidad, precios, anulKg_(fecha));
     tot.sinRetorno = k.filter(x => x.salida !== '' && x.retorno === '').length;
     // la diferencia de kilos solo se evalúa cuando ya se registró todo el retorno
     tot.kilos.alerta = hayDetalle && tot.kilos.salida > 0 && tot.sinRetorno === 0 && Math.abs(tot.kilos.diferencia) > CFG.TOLERANCIA_KG;
@@ -2444,7 +2602,7 @@ function getInspeccion(token, fecha, vendedor) {
       totales: { venta, credito, nc, descuentos: desc, contado: venta - credito - nc - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         entregar: efVentas + efCob - tGas - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, creditos,
-      kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
+      kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
       folios: ds.map(d => ({ folio_key: d.folio_key, folio: d.folio, tipo: d.tipo.replace(' Electrónica', ''), cliente: d.cliente, rut: d.rut || '',
         total: num_(d.total), estado: d.estado, descAprob: num_(d.descAprob), detalladoPor: d.detalladoPor || '',
         descPend: d.descuentos.some(x => x.estado === 'PENDIENTE'),
@@ -2868,7 +3026,7 @@ function kpis_(desde, hasta) {
     Object.keys(vs).forEach(v => {
       if (destinoDesp_(v)) return;                                                                     // distribuidores, consumo y sala no se cruzan con facturado
       if (despDia[f].some(x => x.vendedor === v && x.salida !== '' && x.retorno === '')) return;        // aún falta registrar el retorno
-      const k = kilosDe_(v, despDia[f], dd, unidad, pr); if (!(k.salida > 0)) return;
+      const k = kilosDe_(v, despDia[f], dd, unidad, pr, anulKg_(f)); if (!(k.salida > 0)) return;
       if (k.diferenciaPesos > 0) falta += k.diferenciaPesos; else sobra += -k.diferenciaPesos;
       if (Math.abs(k.diferencia) > CFG.TOLERANCIA_KG) diasConDif++;
       const o = kvd[v] = kvd[v] || { vendedor: nom(v), kilos: 0, pesos: 0 }; o.kilos += k.diferencia; o.pesos += k.diferenciaPesos;

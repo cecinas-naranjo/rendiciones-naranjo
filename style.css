@@ -806,3 +806,8 @@ body.has-bottom #probar{bottom:84px}
 @media(max-width:480px){.card.adl{flex-wrap:wrap}.card.adl .btn{width:100%}.filtros .seg{width:100%}.filtros .seg button{flex:1}}
 .filtros .seg button{white-space:nowrap}
 @media(max-width:480px){.filtros .seg button{padding:7px 6px;font-size:13.5px}.filtros .seg button .cn{margin-left:2px;padding:0 5px}}
+
+/* v72 — Anular folio / nota de crédito */
+.card.anl{background:#F3F1F8;border-color:#DDD8EC}
+.card.anl .ic{background:#5B4B8A}
+.adln select.in{width:100%}

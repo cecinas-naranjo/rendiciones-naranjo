@@ -10,6 +10,7 @@ const clp = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
 const kg = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const soloDigitos = v => Number(String(v).replace(/\D/g, '')) || 0;
+const nk = n => String(Math.round((Number(String(n).replace(',', '.')) || 0) * 100) / 100).replace('.', ',');
 const dec = v => Number(String(v).replace(',', '.')) || 0;
 const fechaLarga = iso => { const d = new Date(iso + 'T12:00:00'); return d.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' }); };
 const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
@@ -130,7 +131,7 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos', 'listarAnulaciones', 'anulacionesPendientes']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
@@ -253,7 +254,7 @@ async function api(fn, ...args) {
    Lo que se guarda sin internet queda en el teléfono (cola persistente, sobrevive aunque se cierre la app) y se envía solo, en orden,
    cuando vuelve la conexión. Las pantallas ya vistas se muestran desde la memoria del teléfono con lo pendiente superpuesto.
    El servidor reconoce los reenvíos (`op`) para no duplicar registros. */
-const COLA_FN = new Set(['guardarDetalle', 'guardarVarios', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDevolucion', 'saveDespacho', 'guardarDeposito', 'guardarConteoEfectivo', 'adelantarFolio', 'borrarAdelanto']);
+const COLA_FN = new Set(['guardarDetalle', 'guardarVarios', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDevolucion', 'saveDespacho', 'guardarDeposito', 'guardarConteoEfectivo', 'adelantarFolio', 'borrarAdelanto', 'solicitarAnulacion', 'borrarAnulacion']);
 let EN_LINEA = navigator.onLine !== false, sincronizando = false;
 let PEND = []; try { PEND = JSON.parse(localStorage.getItem('rn_cola') || '[]'); } catch (e) {}
 const idOp = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -344,6 +345,15 @@ function superponer(fn, args, data) {
           data.unshift({ id: 'pend_' + p.op, tipo: /bol/i.test(p.args[1]) ? 'Boleta' : 'Factura', folio: fol, monto: soloDigitos(p.args[3]), forma: pg.length > 1 ? 'MIXTO' : (pg[0] || {}).forma, banco: (pg[0] || {}).banco || '', estado: 'ESPERANDO', nota: '', sinEnviar: true });
         }
         if (p.fn === 'borrarAdelanto') data = data.filter(x => x.id !== p.args[0]);
+      });
+    } else if (fn === 'listarAnulaciones') {
+      ps.forEach(p => {
+        if (p.fn === 'solicitarAnulacion' && p.args[0] === args[1] && (S.sess.rol === 'VENDEDOR' || p.args[9] === args[2])) {
+          const ls = p.args[4] || [], fol = String(p.args[2]).replace(/\D/g, '').replace(/^0+/, '');
+          data.unshift({ id: 'pend_' + p.op, tipo: /bol/i.test(p.args[1]) ? 'Boleta' : 'Factura', folio: fol, modo: p.args[3], lineas: ls, monto: p.args[3] === 'COMPLETO' ? soloDigitos(p.args[5]) : ls.reduce((a, l) => a + soloDigitos(l.monto), 0),
+            estado: 'PENDIENTE', sinEnviar: true, motivo: p.args[6] || '' });
+        }
+        if (p.fn === 'borrarAnulacion') data = data.filter(x => x.id !== p.args[0]);
       });
     } else if (fn === 'listarDevoluciones') {
       ps.forEach(p => { if (p.fn === 'guardarDevolucion' && p.args[0] === args[1]) { const o = p.args[1], pr = (S.cat.productos || []).find(x => String(x.codigo) === String(o.codigo)) || {};
@@ -466,7 +476,7 @@ const TABS = {
     ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'],
     ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
-TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Descuentos por autorizar', 'percent']], TABS.RENDICION.slice(1));
+TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
@@ -871,6 +881,94 @@ function abrirAdelanto(vend, alCerrar) {
   $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo));
   pintarPagos(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
 }
+/* ============ ANULAR FOLIO / NOTA DE CRÉDITO (v72) ============ */
+const MOTIVOS_AN = ['Error en un producto', 'Cobré de más', 'El cliente devolvió producto', 'Documento mal emitido', 'Otro'];
+function abrirAnulacion(vend, docs, alCerrar) {
+  let tipo = 'Factura', modo = 'COMPLETO', lineas = [{ codigo: '', cantidad: '', monto: '' }], vuelve = false;
+  try { tipo = localStorage.getItem('rn_adl_tipo') || tipo; } catch (e) {}
+  const prods = (S.cat.productos || []).filter(p => p.codigo !== '' && p.codigo != null).slice().sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anular folio"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Anular folio o nota de crédito</div>
+    <p class="muted" style="margin:2px 0 10px">Supervisión lo aprueba. Una vez aprobado, ese monto ya no lo rindes y los kilos se descuentan de lo facturado. Funciona también sin internet.</p>
+    <div class="seg" id="anT"><button type="button" data-t="Boleta">Boleta</button><button type="button" data-t="Factura">Factura</button></div>
+    <label class="f" style="margin:10px 0 0">N° del folio que se anula<input class="in n" id="anF" inputmode="numeric" autocomplete="off"></label>
+    <div id="anI" class="muted" style="margin:4px 0 0;min-height:20px"></div>
+    <div class="muted" style="margin-top:10px;font-weight:700">¿Qué se anula?</div>
+    <div class="seg" id="anM"><button type="button" data-m="COMPLETO">Folio completo</button><button type="button" data-m="PARCIAL">Por partes</button></div>
+    <div id="anC"></div>
+    <label class="f" style="margin:12px 0 0">Motivo<select class="in" id="anMo"><option value="">Elige…</option>${MOTIVOS_AN.map(x => `<option>${esc(x)}</option>`).join('')}</select></label>
+    <label class="f" style="margin:10px 0 0">N° del folio nuevo que lo reemplaza (si lo hay)<input class="in n" id="anR" inputmode="numeric" autocomplete="off"></label>
+    <div class="muted" style="margin-top:10px;font-weight:700">¿El producto volvió a la bodega?</div>
+    <div class="seg" id="anV"><button type="button" data-v="0">No (va en otra factura)</button><button type="button" data-v="1">Sí, volvió</button></div>
+    <div id="anL" style="margin-top:14px"></div></div>
+    <div class="foot"><button class="btn ghost" id="anX" type="button">Listo</button><span class="grow"></span><button class="btn cu" id="anS" type="button">Enviar para aprobar</button></div></div>`;
+  document.body.appendChild(ov);
+  let cambios = false;
+  const cerrar = () => { cerrarHoja(ov); if (cambios && alCerrar) alCerrar(); };
+  $('#anX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  const keyDoc = () => { const f = $('#anF', ov).value.replace(/\D/g, '').replace(/^0+/, ''); return (docs || []).find(d => String(d.folio).replace(/^0+/, '') === f && (tipo === 'Boleta') === /bol/i.test(d.tipo)); };
+  function info() {
+    const d = keyDoc(), e = $('#anI', ov);
+    e.innerHTML = d ? `${esc(d.cliente)} · <b>${clp(d.total)}</b>` : ($('#anF', ov).value ? 'Aún no llega de Mi DTE: escribe el monto total.' : '');
+    pintarC();
+  }
+  function pintarC() {
+    const d = keyDoc(), c = $('#anC', ov);
+    if (modo === 'COMPLETO') { c.innerHTML = d ? `<p class="muted" style="margin:8px 0 0">Se anula todo el folio por <b>${clp(d.total)}</b>.</p>`
+      : `<label class="f" style="margin:8px 0 0">Monto total del folio $<input class="in n" id="anTot" inputmode="numeric" autocomplete="off"></label>`; return; }
+    c.innerHTML = lineas.map((l, i) => { const p = prods.find(x => String(x.codigo) === String(l.codigo)); return `<div class="adln" data-i="${i}">
+      <div class="row" style="margin:8px 0 2px"><b>Producto ${i + 1}</b><span class="grow"></span>${lineas.length > 1 ? '<button type="button" class="btn ghost sm" data-q>Quitar</button>' : ''}</div>
+      <select class="in" data-k="codigo" aria-label="Producto"><option value="">Elige el producto…</option>${prods.map(x => `<option value="${esc(x.codigo)}" ${String(x.codigo) === String(l.codigo) ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select>
+      <div class="grid g2" style="margin-top:6px"><label class="f" style="margin:0">${p && p.unidad === 'UN' ? 'Unidades' : 'Kilos'}<input class="in n" data-k="cantidad" inputmode="decimal" value="${esc(l.cantidad)}"></label>
+        <label class="f" style="margin:0">Monto $<input class="in n" data-k="monto" inputmode="numeric" value="${esc(l.monto)}"></label></div></div>`; }).join('')
+      + `<button type="button" class="ghostlink" id="anMas" style="display:block;margin-top:6px;background:none;border:0;padding:4px 0;color:var(--cu-2);font-weight:600;cursor:pointer">+ Agregar otro producto</button>
+      <div class="muted" id="anSum" style="margin-top:4px"></div>`;
+    sum();
+  }
+  function sum() { const e = $('#anSum', ov); if (!e) return; const t = lineas.reduce((a, l) => a + (Number(String(l.monto).replace(/\D/g, '')) || 0), 0), d = keyDoc();
+    e.textContent = 'Total a anular: ' + clp(t) + (d && t > d.total ? ' · supera el total del folio' : ''); }
+  $('#anC', ov).addEventListener('input', e => { const b = e.target.closest('.adln'); if (!b) return; const l = lineas[Number(b.dataset.i)], k = e.target.dataset.k; if (!k) return;
+    l[k] = k === 'monto' ? e.target.value.replace(/\D/g, '') : e.target.value; sum(); });
+  $('#anC', ov).addEventListener('change', e => { if (e.target.dataset.k === 'codigo') { const b = e.target.closest('.adln'); lineas[Number(b.dataset.i)].codigo = e.target.value; pintarC(); } });
+  $('#anC', ov).onclick = e => { const b = e.target.closest('.adln'); if (e.target.closest('[data-q]') && b) { lineas.splice(Number(b.dataset.i), 1); pintarC(); }
+    if (e.target.closest('#anMas')) { lineas.push({ codigo: '', cantidad: '', monto: '' }); pintarC(); } };
+  $('#anF', ov).addEventListener('input', info);
+  $('#anT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; $$('#anT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); info(); } };
+  $('#anM', ov).onclick = e => { const b = e.target.closest('button'); if (b) { modo = b.dataset.m; $$('#anM button', ov).forEach(y => y.classList.toggle('on', y.dataset.m === modo)); pintarC(); } };
+  $('#anV', ov).onclick = e => { const b = e.target.closest('button'); if (b) { vuelve = b.dataset.v === '1'; $$('#anV button', ov).forEach(y => y.classList.toggle('on', (y.dataset.v === '1') === vuelve)); } };
+  const ESTADO = { PENDIENTE: ['Por aprobar', 'a'], APROBADA: ['Aprobada ✓', 'ok'], RECHAZADA: ['Rechazada', 'bad'] };
+  async function lista() {
+    let ls = []; try { ls = await api('listarAnulaciones', S.sess.token, S.fecha, vend); } catch (e) {}
+    $('#anL', ov).innerHTML = ls.length ? `<div class="muted" style="font-weight:700;margin-bottom:4px">Del día</div>` + ls.map(x => { const [t, c] = x.sinEnviar ? ['Guardado en el teléfono · se envía al volver internet', 'b'] : (ESTADO[x.estado] || [x.estado, '']);
+      return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}"><span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)} · ${x.modo === 'COMPLETO' ? 'completo' : 'por partes'}
+        ${(x.lineas || []).length ? `<div class="muted">${x.lineas.map(l => esc(l.producto || (prods.find(p => String(p.codigo) === String(l.codigo)) || {}).nombre || l.codigo) + ' ' + nk(l.cantidad)).join(' · ')}</div>` : ''}
+        <div class="dvst ${c}">${t}</div>${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}</span>${x.estado === 'PENDIENTE' ? '<button class="btn ghost sm" data-del type="button">Quitar</button>' : ''}</div>`; }).join('') : '';
+  }
+  $('#anL', ov).onclick = async e => { const b = e.target.closest('[data-del]'); if (!b) return; b.disabled = true;
+    try { await api('borrarAnulacion', S.sess.token, b.closest('.dfila').dataset.id); cambios = true; olvidarCache(false); await lista(); } finally { b.disabled = false; } };
+  $('#anS', ov).onclick = async () => {
+    const f = $('#anF', ov).value.trim(), d = keyDoc(); if (!f) return toast('Escribe el N° del folio.', true);
+    const motivo = $('#anMo', ov).value; if (!motivo) return toast('Elige el motivo.', true);
+    let ls = [], monto = '';
+    if (modo === 'COMPLETO') { monto = d ? String(d.total) : ($('#anTot', ov) ? $('#anTot', ov).value.replace(/\D/g, '') : ''); if (!soloDigitos(monto)) return toast('Escribe el monto total del folio.', true); }
+    else { for (let i = 0; i < lineas.length; i++) { const l = lineas[i], p = prods.find(x => String(x.codigo) === String(l.codigo));
+        if (!p) return toast('Elige el producto ' + (i + 1) + '.', true);
+        const c = Number(String(l.cantidad).replace(',', '.')) || 0; if (!(c > 0)) return toast('Falta ' + (p.unidad === 'UN' ? 'las unidades' : 'los kilos') + ' de ' + p.nombre + '.', true);
+        if (!soloDigitos(l.monto)) return toast('Falta el monto de ' + p.nombre + '.', true);
+        ls.push({ codigo: String(p.codigo), producto: p.nombre, unidad: p.unidad === 'UN' ? 'UN' : 'KG', cantidad: c, monto: soloDigitos(l.monto) }); }
+      monto = String(ls.reduce((a, l) => a + l.monto, 0)); if (d && Number(monto) > d.total) return toast('Lo que anulas supera el total del folio (' + clp(d.total) + ').', true); }
+    const b = $('#anS', ov); b.disabled = true;
+    try {
+      const r = await api('solicitarAnulacion', S.sess.token, S.fecha, tipo, f, modo, ls, monto, motivo, $('#anR', ov).value.trim(), vuelve, vend); cambios = true;
+      toast(r._pendiente ? 'Guardado en el teléfono. Se envía solo cuando vuelva internet.' : 'Enviado a supervisión para que lo apruebe.');
+      $('#anF', ov).value = ''; $('#anR', ov).value = ''; $('#anMo', ov).value = ''; lineas = [{ codigo: '', cantidad: '', monto: '' }]; olvidarCache(false); info(); await lista(); $('#anF', ov).focus();
+    } finally { b.disabled = false; }
+  };
+  $$('#anT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); $$('#anM button', ov).forEach(y => y.classList.toggle('on', y.dataset.m === modo)); $$('#anV button', ov).forEach(y => y.classList.toggle('on', y.dataset.v === '0'));
+  info(); lista(); setTimeout(() => $('#anF', ov).focus(), 250);
+}
+
 async function vFolios(m) {
   const esV = S.sess.rol === 'VENDEDOR';
   let docs = [], estadoDia = '', q = '';
@@ -880,6 +978,7 @@ async function vFolios(m) {
     ${esV ? '' : `<div class="row" style="margin-bottom:6px"><select class="in" style="width:auto" id="fv">${opcVend(S.vend, true)}</select></div>`}
     <div class="meter" id="meter"><div class="bar"><i></i></div><b></b></div>
     <div id="adl"></div>
+    <div id="anl"></div>
     <div id="acc"></div>
     <div class="row filtros"><div class="seg" id="seg"><button data-f="pend">Por detallar</button><button data-f="det">Detallados</button><button data-f="todos">Todos</button></div>
       ${docs.length > 8 || !esV ? `<div class="search grow" style="min-width:180px">${icon('search')}<input class="in" id="q" placeholder="Cliente o folio" type="search"></div>` : ''}</div>
@@ -897,6 +996,16 @@ async function vFolios(m) {
     $('#adlb', m).onclick = () => abrirAdelanto(vAdl, () => { olvidarCache(false); ir('folios', true); });
   }
   pintarAdl();
+  async function pintarAnl() {
+    if (!vAdl || !document.body.contains(m)) { $('#anl', m).innerHTML = ''; return; }
+    let ls = []; try { ls = await api('listarAnulaciones', S.sess.token, S.fecha, vAdl); } catch (e) {}
+    if (!document.body.contains(m)) return;
+    const pe = ls.filter(x => x.estado === 'PENDIENTE').length, ap = ls.filter(x => x.estado === 'APROBADA').length, re = ls.filter(x => x.estado === 'RECHAZADA').length;
+    $('#anl', m).innerHTML = `<div class="card adl anl"><span class="ic">${icon('receipt')}</span><div class="grow"><b>Anular folio o pedir nota de crédito</b><div class="muted">${pe || ap || re ? [pe ? pe + ' por aprobar' : '', ap ? ap + ' aprobada' + (ap > 1 ? 's' : '') : '', re ? '<span class="bad">' + re + ' rechazada' + (re > 1 ? 's' : '') + '</span>' : ''].filter(Boolean).join(' · ') : 'Si un folio salió mal: anúlalo completo o por partes (producto, kilos y monto).'}</div></div>
+      <button class="btn ghost sm" id="anlb" type="button">${pe || ap || re ? 'Ver / agregar' : 'Anular folio'}</button></div>`;
+    $('#anlb', m).onclick = () => abrirAnulacion(vAdl, docs, () => { olvidarCache(false); ir('folios', true); });
+  }
+  pintarAnl();
   $('#seg').onclick = e => { const b = e.target.closest('button'); if (b) { S.filtro = b.dataset.f; pintar(); } };
   if ($('#q')) $('#q').oninput = e => { q = norm(e.target.value); pintar(); };
 
@@ -953,7 +1062,9 @@ async function vFolios(m) {
 function chipsEstado(d) {
   let h = d.estado === 'DETALLADO' ? `<span class="chip ok">Detallado${d.detalladoPor ? ' por ' + esc(d.detalladoPor.split(' ')[0]) : ''}</span>` : '<span class="chip cu">Por detallar</span>';
   h += d.pagos.map(p => `<span class="chip">${FL[p.forma]}${p.banco ? ' ' + esc(p.banco) : ''}</span>`).join('');
-  d.descuentos.forEach(x => h += `<span class="chip ${x.estado === 'APROBADO' ? 'ok' : x.estado === 'RECHAZADO' ? 'bad' : 'warn'}">Desc. ${clp(x.monto)} ${x.estado.toLowerCase()}</span>`);
+  d.descuentos.forEach(x => h += x.nc ? `<span class="chip ok">${d.anulado ? 'Anulado' : 'Nota de crédito'} ${clp(x.monto)}</span>`
+    : `<span class="chip ${x.estado === 'APROBADO' ? 'ok' : x.estado === 'RECHAZADO' ? 'bad' : 'warn'}">Desc. ${clp(x.monto)} ${x.estado.toLowerCase()}</span>`);
+  (d.anulaciones || []).filter(x => x.estado === 'PENDIENTE').forEach(x => h += `<span class="chip warn">${x.modo === 'COMPLETO' ? 'Anulación' : 'Nota de crédito'} ${clp(x.monto)} por aprobar</span>`);
   return h;
 }
 
@@ -1356,7 +1467,8 @@ async function vDespacho(m) {
   function poner(modo) {
     S.dmod = modo; dt.className = 'dt dm-' + modo + (dt.classList.contains('todos') ? ' todos' : '');
     $$('#seg button', m).forEach(b => b.classList.toggle('on', b.dataset.m === modo));
-    $('#dvh', m).innerHTML = modo === 'salida' ? `Anota cuánto se lleva <b>${esc(nomDe(S.vend))}</b> hoy. Usa + y − o escribe el número.` : `Anota lo que <b>${esc(nomDe(S.vend))}</b> devuelve al volver. Sale lo que se llevó como referencia.`;
+    $('#dvh', m).innerHTML = modo === 'salida' ? `Anota cuánto se lleva <b>${esc(nomDe(S.vend))}</b> hoy. Usa + y − o escribe el número.` : `Anota lo que <b>${esc(nomDe(S.vend))}</b> devuelve al volver. Sale lo que se llevó como referencia.`
+      + ((r.vuelven || []).length && modo === 'retorno' ? `<br><span class="okt">Folios anulados con producto devuelto: ${r.vuelven.map(x => esc(x.producto) + ' ' + nk(x.cantidad) + (x.unidad === 'UN' ? ' un' : ' kg')).join(' · ')}. Inclúyelos en el retorno si ya llegaron.</span>` : '');
     $('#sgc', m).hidden = modo !== 'salida'; $('#dvg', m).hidden = modo !== 'salida';
     aplicarVis(); calc();
   }
@@ -2468,12 +2580,26 @@ async function vResumen(m) {
 /* ============ DESCUENTOS ============ */
 async function vDescuentos(m) {
   const ds = await api('descuentosPendientes', S.sess.token);
-  render(m, `<h2>Descuentos por autorizar</h2><p class="lead">Los vendedores los solicitan al detallar un folio.</p>` + (ds.length ? ds.map(d => `<div class="card" style="margin-bottom:10px"><div class="row">
+  let an = []; try { an = await api('anulacionesPendientes', S.sess.token); } catch (e) {}
+  const card = d => `<div class="card" style="margin-bottom:10px"><div class="row">
       <div class="grow"><b>${esc(d.cliente)}</b><div class="muted">${esc(d.folio_key)} · ${esc(d.vendedor)} · ${esc(d.fecha)}</div><div style="margin-top:4px">${esc(d.motivo)}</div></div>
       <div class="big" style="font-size:24px">${clp(d.monto)}</div></div>
-      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost sm" data-no="${d.id}">Rechazar</button><button class="btn cu sm" data-si="${d.id}">Autorizar</button></div></div>`).join('')
-    : '<div class="empty"><b>Nada pendiente</b>No hay descuentos esperando autorización.</div>'));
-  m.onclick = async e => { const si = e.target.dataset.si, no = e.target.dataset.no; if (!si && !no) return;
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost sm" data-no="${d.id}">Rechazar</button><button class="btn cu sm" data-si="${d.id}">Autorizar</button></div></div>`;
+  const cardAn = a => `<div class="card" style="margin-bottom:10px"><div class="row">
+      <div class="grow"><b>${esc(a.tipo)} ${esc(a.folio)}</b> · ${a.modo === 'COMPLETO' ? 'anulación completa' : 'por partes'}<div class="muted">${esc(a.cliente || 'Aún no llega de Mi DTE')} · ${esc(a.vendedorNombre || a.vendedor)} · ${esc(a.fecha)}${a.existe ? ' · folio de ' + clp(a.totalDoc) : ''}</div>
+        ${a.lineas.length ? `<div style="margin-top:4px">${a.lineas.map(l => `${esc(l.producto)}: ${nk(l.cantidad)} ${l.unidad === 'UN' ? 'un' : 'kg'} · ${clp(l.monto)}`).join('<br>')}</div>` : ''}
+        <div style="margin-top:4px">${esc(a.motivo)}${a.reemplazo ? ' · lo reemplaza el folio ' + esc(a.reemplazo) : ''} · <b>${a.vuelve ? 'el producto volvió a la bodega' : 'el producto no volvió'}</b></div></div>
+      <div class="big" style="font-size:24px">${clp(a.monto)}</div></div>
+      <label class="f" style="margin:10px 0 0">N° de la nota de crédito en Mi DTE (opcional, evita contarla dos veces)<input class="in n" data-nc="${esc(a.id)}" inputmode="numeric" autocomplete="off"></label>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost sm" data-ano="${esc(a.id)}">Rechazar</button><button class="btn cu sm" data-asi="${esc(a.id)}">Aprobar</button></div></div>`;
+  render(m, `<h2>Por autorizar</h2><p class="lead">Descuentos y anulaciones o notas de crédito que piden los vendedores.</p>`
+    + (an.length ? `<h3 style="margin:14px 0 6px">Anulaciones y notas de crédito (${an.length})</h3>` + an.map(cardAn).join('') : '')
+    + (ds.length ? `<h3 style="margin:14px 0 6px">Descuentos (${ds.length})</h3>` + ds.map(card).join('') : '')
+    + (!ds.length && !an.length ? '<div class="empty"><b>Nada pendiente</b>No hay descuentos ni anulaciones esperando autorización.</div>' : ''));
+  m.onclick = async e => { const si = e.target.dataset.si, no = e.target.dataset.no, asi = e.target.dataset.asi, ano = e.target.dataset.ano;
+    if (asi || ano) { const id = asi || ano, nc = $('[data-nc="' + id + '"]', m); e.target.disabled = true;
+      try { await api('resolverAnulacion', S.sess.token, id, !!asi, nc ? nc.value : '', ''); toast(asi ? 'Anulación aprobada' : 'Anulación rechazada'); olvidarCache(false); ir('descuentos'); } finally { e.target.disabled = false; } return; }
+    if (!si && !no) return;
     await api('resolverDescuento', S.sess.token, si || no, !!si); toast(si ? 'Descuento autorizado' : 'Descuento rechazado'); ir('descuentos'); };
 }
 
