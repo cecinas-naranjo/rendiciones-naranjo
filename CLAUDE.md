@@ -363,3 +363,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v66
 - Despacho: los pasos se llaman solo "Salida" y "Retorno" (sin "1 ·", "2 ·" ni "en la mañana/tarde").
+
+## v67 — Inventario más simple (solo frontend)
+- Cada producto: nombre, "Quedan" grande, resumen en una línea ("Empezó con X · salió Y · volvió Z"), solo dos campos a la vista (Entra de fábrica, Conteo físico) y "+ Otras salidas" como enlace que abre la hoja de siempre. "Con cuánto empezó" solo aparece cuando el inicial es editable. Buscador y filtro Todos / Con movimiento (`S.invQ`, `S.invF`); 2 columnas en PC; borde cobre en lo modificado. Cálculos y guardado no cambian.

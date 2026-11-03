@@ -1349,7 +1349,9 @@ async function vInventario(m) {
       <button class="btn ghost sm" id="plan">Planilla del día</button></div>
     <p class="muted">Lo de los vendedores llega solo desde Despacho. Aquí anota lo que entra de fábrica y lo que sale a otros lados.</p>
     <div class="seg secs" id="sec">${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
-    <div id="alertInv"></div><div id="lista"></div>
+    <div class="invbar"><input class="in grow" id="invq" type="search" placeholder="Buscar producto…" value="${esc(S.invQ || '')}" autocomplete="off">
+      <div class="seg" id="invf"><button type="button" data-f="todos">Todos</button><button type="button" data-f="mov">Con movimiento</button></div></div>
+    <div id="alertInv"></div><div id="lista" class="invl"></div>
     <div class="card" style="margin-top:12px"><b>¿Falta un producto?</b><div class="row" style="margin-top:8px">
       <input class="in grow" id="npN" placeholder="Nombre, como en la planilla"><select class="in" id="npU" style="width:auto"><option>KG</option><option>UN</option></select>
       <button class="btn ghost sm" id="npA">Agregar a esta sección</button></div></div>
@@ -1359,25 +1361,30 @@ async function vInventario(m) {
   function pintar() {
     $$('#sec button').forEach(b => b.classList.toggle('on', b.dataset.s === S.secInv));
     const cam = S.secInv === 'CAMARA';
-    const filas = inv.filas.filter(f => f.seccion === S.secInv);
+    const q = (S.invQ || '').trim().toLowerCase(), mov = S.invF === 'mov';
+    $$('#invf button').forEach(x => x.classList.toggle('on', x.dataset.f === (mov ? 'mov' : 'todos')));
+    const conMov = f => { const e = est[f.codigo]; return e.cambio || sum(f.salVend) + sum(f.retVend) + sum(e.desp) + sum(e.otras) > 0 || dec(e.ingreso) > 0 || e.conteo !== ''; };
+    const filas = inv.filas.filter(f => f.seccion === S.secInv && (!q || String(f.nombre).toLowerCase().indexOf(q) >= 0) && (!mov || conMov(f)));
     const negativos = inv.filas.filter(f => calc(est[f.codigo]).final < -0.001);
     $('#alertInv').innerHTML = negativos.length ? `<div class="alert"><b>${negativos.length} producto(s) con stock negativo:</b> ${negativos.slice(0, 6).map(f => esc(f.nombre)).join(', ')}${negativos.length > 6 ? '…' : ''}. Revisa ingresos o registra un conteo.</div>` : '';
     lista.innerHTML = filas.length ? filas.map(f => {
       const e = est[f.codigo], c = calc(e), u = f.unidad === 'UN' ? 'un.' : 'kg';
       const detalle = cam ? '' : [
-        sum(f.salVend) ? `Vendedores −${kg(sum(f.salVend))}` : '', sum(f.retVend) ? `Retorno +${kg(sum(f.retVend))}` : '',
-        sum(e.desp) ? `Supermercado/otros −${kg(sum(e.desp))}` : ''].filter(Boolean).join(' · ');
-      return `<div class="inv" data-c="${esc(f.codigo)}">
-        <div class="pn">${esc(f.nombre)}<small>${e.inicialEditable ? 'Inventario inicial' : 'Inicial ' + kg(f.inicial) + ' ' + u}${detalle ? ' · ' + detalle : ''}</small></div>
-        <div class="fin ${c.final < -0.001 ? 'neg' : ''}"><span>Final</span><b>${kg(c.final)}</b>${e.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${kg(c.ajuste)}</em>` : ''}</div>
+        sum(f.salVend) ? `salió ${kg(sum(f.salVend))}` : '', sum(f.retVend) ? `volvió ${kg(sum(f.retVend))}` : '',
+        sum(e.desp) ? `supermercado y otros ${kg(sum(e.desp))}` : ''].filter(Boolean).join(' · ');
+      const nOtras = Object.keys(e.otras).filter(k => e.otras[k]).length;
+      return `<div class="inv ${e.cambio ? 'mod' : ''}" data-c="${esc(f.codigo)}">
+        <div class="pn">${esc(f.nombre)}<small>${e.inicialEditable ? '' : 'Empezó con ' + kg(f.inicial) + ' ' + u}${detalle ? (e.inicialEditable ? '' : ' · ') + detalle : ''}</small></div>
+        <div class="fin ${c.final < -0.001 ? 'neg' : ''}"><span>Quedan</span><b>${kg(c.final)}</b>${e.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${kg(c.ajuste)}</em>` : ''}</div>
         <div class="campos">
-          ${e.inicialEditable ? `<label>Inicial<input class="in n" data-k="inicial" inputmode="decimal" value="${e.inicial}"></label>` : ''}
-          <label>${cam ? 'Ingreso producto' : 'Ingreso fábrica'}<input class="in n" data-k="ingreso" inputmode="decimal" value="${e.ingreso}"></label>
-          ${cam ? `<label>Salida fábrica<input class="in n" data-k="o:FABRICA" inputmode="decimal" value="${e.otras.FABRICA || ''}"></label>
-                   <label>Salida vendedores<input class="in n" data-k="o:VENDEDORES" inputmode="decimal" value="${e.otras.VENDEDORES || ''}"></label>`
-                : `<label>Otras salidas<button type="button" class="in otras" data-otras="1">${sum(e.otras) ? kg(sum(e.otras)) + ' · ' + Object.keys(e.otras).filter(k => e.otras[k]).length + ' destino(s)' : 'Agregar'}</button></label>`}
+          ${e.inicialEditable ? `<label>Con cuánto empezó<input class="in n" data-k="inicial" inputmode="decimal" value="${e.inicial}"></label>` : ''}
+          <label>${cam ? 'Entra producto' : 'Entra de fábrica'}<input class="in n" data-k="ingreso" inputmode="decimal" placeholder="0" value="${e.ingreso}"></label>
+          ${cam ? `<label>Sale a fábrica<input class="in n" data-k="o:FABRICA" inputmode="decimal" placeholder="0" value="${e.otras.FABRICA || ''}"></label>
+                   <label>Sale a vendedores<input class="in n" data-k="o:VENDEDORES" inputmode="decimal" placeholder="0" value="${e.otras.VENDEDORES || ''}"></label>` : ''}
           <label>Conteo físico<input class="in n" data-k="conteo" inputmode="decimal" placeholder="—" value="${e.conteo}"></label>
-        </div></div>`; }).join('') : '<div class="empty">No hay productos en esta sección.</div>';
+        </div>
+        ${cam ? '' : `<button type="button" class="ghostlink" data-otras="1">${nOtras ? `Otras salidas: ${kg(sum(e.otras))} ${u} · ${nOtras} destino(s) ›` : '+ Otras salidas (consumo, merma, distribuidor…)'}</button>`}
+      </div>`; }).join('') : '<div class="empty">No hay productos en esta sección.</div>';
     const n = Object.values(est).filter(e => e.cambio).length;
     $('#cambios').textContent = n ? n + ' producto(s) con cambios sin guardar' : 'Sin cambios';
   }
@@ -1385,10 +1392,10 @@ async function vInventario(m) {
     const box = e.target.closest('.inv'); const k = e.target.dataset.k; if (!box || !k) return;
     const st = est[box.dataset.c];
     if (k.startsWith('o:')) st.otras[k.slice(2)] = e.target.value; else st[k] = e.target.value;
-    st.cambio = true;
+    st.cambio = true; box.classList.add('mod');
     const c = calc(st), fin = $('.fin', box);
     fin.classList.toggle('neg', c.final < -0.001);
-    fin.innerHTML = `<span>Final</span><b>${kg(c.final)}</b>${st.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${kg(c.ajuste)}</em>` : ''}`;
+    fin.innerHTML = `<span>Quedan</span><b>${kg(c.final)}</b>${st.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${kg(c.ajuste)}</em>` : ''}`;
     const n = Object.values(est).filter(x => x.cambio).length;
     $('#cambios').textContent = n + ' producto(s) con cambios sin guardar';
   };
@@ -1418,6 +1425,8 @@ async function vInventario(m) {
       st.otras = o; st.cambio = true; cerrarHoja(ov); pintar();
     };
   }
+  $('#invq').oninput = e => { S.invQ = e.target.value; pintar(); };
+  $('#invf').onclick = e => { const b = e.target.closest('button'); if (b) { S.invF = b.dataset.f; pintar(); } };
   $('#sec').onclick = e => { const b = e.target.closest('button'); if (b) { S.secInv = b.dataset.s; pintar(); } };
   $('#gi').onclick = async () => {
     const cambiados = Object.values(est).filter(e => e.cambio);

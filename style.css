@@ -781,3 +781,16 @@ nav.sub button:active{transform:scale(.95)}
 #probar small{font-size:11px;opacity:.85;letter-spacing:.04em;text-transform:uppercase}
 #probar b{font-size:14.5px}
 body.has-bottom #probar{bottom:84px}
+/* v67 Inventario más simple */
+.invbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+.invbar .in{min-height:42px;min-width:180px}
+.invbar .seg{width:auto}
+.invl{display:grid;grid-template-columns:1fr;gap:8px}
+@media(min-width:900px){.invl{grid-template-columns:1fr 1fr}}
+.invl .inv{margin:0}
+.inv.mod{border-color:var(--cu);box-shadow:inset 3px 0 0 var(--cu)}
+.inv .campos{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.inv .ghostlink{grid-column:1/-1;text-align:left;background:none;border:0;padding:2px 0;color:var(--cu-2);font-weight:600;font-size:13.5px;cursor:pointer}
+.inv .ghostlink:hover{text-decoration:underline}
+.invbar .seg button{padding:10px 14px;min-height:0;line-height:1.2}
+.invl{padding-bottom:90px}
