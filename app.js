@@ -130,7 +130,7 @@ function enlazarCampoArchivos(id) {
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
 const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
-  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido']);
+  'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
   subirAdjunto: 'Subiendo archivo…', getResumen: 'Calculando la rendición…', getInventario: 'Calculando el inventario…', getSaldosClientes: 'Calculando saldos…',
@@ -777,6 +777,60 @@ async function vHoy(m) {
 }
 
 /* ============ FOLIOS ============ */
+/** Hoja para anotar folios por adelantado (tipo, N°, monto, forma de pago). La app los cruza con Mi DTE al importar. */
+function abrirAdelanto(vend, alCerrar) {
+  let tipo = 'Boleta', forma = '', banco = '';
+  try { tipo = localStorage.getItem('rn_adl_tipo') || tipo; } catch (e) {}
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anotar folio"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Anotar un folio</div>
+    <p class="muted" style="margin:2px 0 10px">Cuando el folio llegue de Mi DTE, queda detallado solo si el monto calza.</p>
+    <div class="seg" id="adT"><button type="button" data-t="Boleta">Boleta</button><button type="button" data-t="Factura">Factura</button></div>
+    <div class="grid g2" style="margin-top:10px"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off"></label>
+      <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off"></label></div>
+    <div class="muted" style="margin-top:10px;font-weight:700">¿Cómo pagó?</div>
+    <div class="seg" id="adP"><button type="button" data-f="EFECTIVO">Efectivo</button><button type="button" data-f="TRANSFERENCIA">Transferencia</button><button type="button" data-f="CREDITO">Crédito</button></div>
+    <div class="seg" id="adB" hidden style="margin-top:8px"><button type="button" data-b="BICE">BICE</button><button type="button" data-b="ESTADO">Estado</button><button type="button" data-b="SANTANDER">Santander</button></div>
+    <p class="muted" style="margin:8px 0 0;font-size:13px">Cheque o pago mixto: espera a que llegue el folio y detállalo normal.</p>
+    <div id="adL" style="margin-top:12px"></div></div>
+    <div class="foot"><button class="btn ghost" id="adX" type="button">Listo</button><span class="grow"></span><button class="btn cu" id="adS" type="button">Guardar y anotar otro</button></div></div>`;
+  document.body.appendChild(ov);
+  let cambios = false;
+  const cerrar = () => { cerrarHoja(ov); if (cambios && alCerrar) alCerrar(); };
+  $('#adX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  const marca = () => {
+    $$('#adT button', ov).forEach(b => b.classList.toggle('on', b.dataset.t === tipo));
+    $$('#adP button', ov).forEach(b => b.classList.toggle('on', b.dataset.f === forma));
+    $('#adB', ov).hidden = forma !== 'TRANSFERENCIA';
+    $$('#adB button', ov).forEach(b => b.classList.toggle('on', b.dataset.b === banco));
+  };
+  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; try { localStorage.setItem('rn_adl_tipo', tipo); } catch (x) {} marca(); } };
+  $('#adP', ov).onclick = e => { const b = e.target.closest('button'); if (b) { forma = b.dataset.f; marca(); } };
+  $('#adB', ov).onclick = e => { const b = e.target.closest('button'); if (b) { banco = b.dataset.b; marca(); } };
+  const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
+  async function lista() {
+    let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vend); } catch (e) {}
+    $('#adL', ov).innerHTML = ls.length ? `<div class="muted" style="font-weight:700;margin-bottom:4px">Anotados hoy</div>` + ls.map(x => { const [t, c] = ESTADO[x.estado] || [x.estado, '']; return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
+      <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)} · ${esc(x.forma === 'TRANSFERENCIA' ? 'Transf. ' + (x.banco || '') : x.forma === 'CREDITO' ? 'Crédito' : 'Efectivo')}
+      <div class="dvst ${c}">${t}</div>${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}</span>${x.estado === 'APLICADO' ? '' : '<button class="btn ghost sm" data-del type="button">Quitar</button>'}</div>`; }).join('') : '';
+  }
+  $('#adL', ov).onclick = async e => { const b = e.target.closest('[data-del]'); if (!b) return; const id = b.closest('.dfila').dataset.id; b.disabled = true;
+    try { await api('borrarAdelanto', S.sess.token, id); cambios = true; await lista(); } finally { b.disabled = false; } };
+  $('#adS', ov).onclick = async () => {
+    const f = $('#adF', ov).value.trim(), m = $('#adM', ov).value.replace(/\D/g, '');
+    if (!f) return toast('Escribe el N° de folio.', true);
+    if (!m) return toast('Escribe el monto.', true);
+    if (!forma) return toast('Elige cómo pagó.', true);
+    if (forma === 'TRANSFERENCIA' && !banco) return toast('Elige el banco.', true);
+    const b = $('#adS', ov); b.disabled = true;
+    try {
+      const r = await api('adelantarFolio', S.sess.token, S.fecha, tipo, f, m, forma, banco, vend); cambios = true;
+      toast(r.estado === 'APLICADO' ? 'Folio ' + f + ' detallado' : r.estado === 'REVISAR' ? r.nota : 'Anotado. Se detalla solo cuando llegue de Mi DTE.', r.estado === 'REVISAR');
+      $('#adF', ov).value = ''; $('#adM', ov).value = ''; forma = ''; banco = ''; marca(); await lista(); $('#adF', ov).focus();
+    } finally { b.disabled = false; }
+  };
+  marca(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
+}
 async function vFolios(m) {
   const esV = S.sess.rol === 'VENDEDOR';
   let docs = [], estadoDia = '', q = '';
@@ -785,11 +839,24 @@ async function vFolios(m) {
   render(m, `<h2>${esV ? 'Mis folios' : 'Detallar ventas'}</h2><p class="lead">${esV ? 'Toca un folio y marca cómo te pagó el cliente.' : fechaLarga(S.fecha) + ' · Puedes detallar los folios de cualquier vendedor; quedará registrado que lo hiciste tú.'}</p>
     ${esV ? '' : `<div class="row" style="margin-bottom:6px"><select class="in" style="width:auto" id="fv">${opcVend(S.vend, true)}</select></div>`}
     <div class="meter" id="meter"><div class="bar"><i></i></div><b></b></div>
+    <div id="adl"></div>
     <div id="acc"></div>
     <div class="row filtros"><div class="seg" id="seg"><button data-f="pend">Por detallar</button><button data-f="det">Detallados</button><button data-f="todos">Todos</button></div>
       ${docs.length > 8 || !esV ? `<div class="search grow" style="min-width:180px">${icon('search')}<input class="in" id="q" placeholder="Cliente o folio" type="search"></div>` : ''}</div>
     <div id="fl"></div>`);
   if (!esV) $('#fv').onchange = e => { S.vend = e.target.value; ir('folios'); };
+  // Folios adelantados: el vendedor anota folio + monto + forma de pago antes de que llegue Mi DTE; la app cruza sola al importar
+  const vAdl = esV ? S.sess.usuario : S.vend;
+  async function pintarAdl() {
+    if (!vAdl || !document.body.contains(m)) { $('#adl', m).innerHTML = ''; return; }
+    let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vAdl); } catch (e) {}
+    if (!document.body.contains(m)) return;
+    const esp = ls.filter(x => x.estado === 'ESPERANDO').length, rev = ls.filter(x => x.estado === 'REVISAR').length;
+    $('#adl', m).innerHTML = `<div class="card adl"><div class="grow"><b>Adelantar folios</b><div class="muted">${esp || rev ? [esp ? esp + ' esperando Mi DTE' : '', rev ? '<span class="bad">' + rev + ' para revisar</span>' : ''].filter(Boolean).join(' · ') : 'Anota el folio y cómo te pagó; se detalla solo cuando llegue.'}</div></div>
+      <button class="btn ${esp || rev ? 'ghost' : 'cu'} sm" id="adlb" type="button">Anotar folio</button></div>`;
+    $('#adlb', m).onclick = () => abrirAdelanto(vAdl, () => { olvidarCache(false); ir('folios', true); });
+  }
+  pintarAdl();
   $('#seg').onclick = e => { const b = e.target.closest('button'); if (b) { S.filtro = b.dataset.f; pintar(); } };
   if ($('#q')) $('#q').oninput = e => { q = norm(e.target.value); pintar(); };
 
@@ -2132,7 +2199,7 @@ async function vImportar(m) {
             continue;
           }
           const lotes = lotesDe(l);
-          const r = { corregidos: 0, corregidas: 0, importados: 0, repetidos: 0, sinVendedor: 0, guias: 0, lineas: 0, omitidas: 0, terminalesSinAsignar: [], fechas: [], productosNuevos: [], porVendedor: {} };
+          const r = { adApl: 0, adRev: 0, corregidos: 0, corregidas: 0, importados: 0, repetidos: 0, sinVendedor: 0, guias: 0, lineas: 0, omitidas: 0, terminalesSinAsignar: [], fechas: [], productosNuevos: [], porVendedor: {} };
           for (const [k, lote] of lotes.entries()) {
             if (lotes.length > 1) paso(i, 'run', `Parte ${k + 1} de ${lotes.length}`);
             barra(0.35);
@@ -2141,6 +2208,7 @@ async function vImportar(m) {
             ['importados', 'repetidos', 'sinVendedor', 'guias', 'lineas', 'omitidas', 'corregidos', 'corregidas'].forEach(c => r[c] += x[c] || 0);
             r.terminalesSinAsignar = r.terminalesSinAsignar.concat(x.terminalesSinAsignar || []); r.fechas = r.fechas.concat(x.fechas || []);
             r.productosNuevos = r.productosNuevos.concat(x.productosNuevos || []);
+            if (x.adelantos) { r.adApl += x.adelantos.aplicados || 0; r.adRev += x.adelantos.revisar || 0; }
             Object.keys(x.porVendedor || {}).forEach(v => r.porVendedor[v] = (r.porVendedor[v] || 0) + x.porVendedor[v]);
           }
           (r.terminalesSinAsignar || []).forEach(t => sinT.add(t)); fechas = fechas.concat(r.fechas);
@@ -2151,7 +2219,7 @@ async function vImportar(m) {
             : `Líneas nuevas: <b>${r.lineas}</b> de venta y ${r.guias} de guías. ${r.omitidas ? r.omitidas + ' líneas de documentos que ya estaban se dejaron como estaban. ' : ''}` +
               (r.productosNuevos.length ? `<br>Productos nuevos agregados como inactivos (revísalos en la hoja PRODUCTOS): ${esc(r.productosNuevos.join(', '))}.` : '')) + '</div>';
           paso(i, 'ok', 'Listo');
-          resumen.push(l.tipo === 'dte' ? { t: 'dte', n: r.importados, rep: r.repetidos, cor: r.corregidos } : { t: 'det', n: r.lineas, rep: r.omitidas, cor: r.corregidas });
+          resumen.push(l.tipo === 'dte' ? { t: 'dte', n: r.importados, rep: r.repetidos, cor: r.corregidos, ad: r.adApl, adr: r.adRev } : { t: 'det', n: r.lineas, rep: r.omitidas, cor: r.corregidas });
         } catch (e) { $('#res' + i).innerHTML = `<div class="alert" style="margin-bottom:0">${esc(e.message)}</div>`; paso(i, 'err', 'Con error'); errores.push(NOM[l.tipo] + ' (' + l.nombre + '): ' + e.message); }
       }
       b.remove(); S.impPendiente = false;
@@ -2162,12 +2230,14 @@ async function vImportar(m) {
       const f = [...new Set(fechas)];
       { const d = resumen.filter(x => x.t === 'dte'), k = resumen.filter(x => x.t === 'det'), sum = (a, c) => a.reduce((z, x) => z + x[c], 0);
         const nuevo = sum(d, 'n') + sum(k, 'n'), rep = sum(d, 'rep'), cor = sum(d, 'cor');
+        const ad = sum(d, 'ad'), adr = sum(d, 'adr');
         const caja = document.createElement('div');
         caja.className = 'alert ' + (errores.length ? '' : 'ok'); caja.style.marginTop = '12px';
         caja.innerHTML = errores.length
           ? `<b>La importación no terminó bien.</b> ${esc(errores.join(' · '))}<br>Lo que sí se guardó queda; puedes volver a subir los archivos y solo se agrega lo que falta.`
           : nuevo || cor ? `<b>Listo, se cargó.</b> ${sum(d, 'n')} documentos nuevos y ${sum(k, 'n')} líneas de kilos${rep ? `. ${rep} documentos ya estaban y no se tocaron` : ''}${cor ? `. ${cor} documentos ya cargados cambiaron de día` : ''}. Ya puedes verlos en cada día.`
           : `<b>No había nada nuevo.</b> Todo lo de estos archivos ya estaba cargado${rep ? ' (' + rep + ' documentos)' : ''}; no cambié nada.`;
+        if (!errores.length && (ad || adr)) caja.innerHTML += `<br>${ad ? `<b>${ad}</b> folio${ad > 1 ? 's' : ''} ya quedó${ad > 1 ? 'aron' : ''} detallado${ad > 1 ? 's' : ''} con lo que anotaron los vendedores. ` : ''}${adr ? `<b>${adr}</b> no calzó${adr > 1 ? 'aron' : ''} (monto o vendedor distinto): quedan por detallar normal y el vendedor ve el motivo.` : ''}`;
         pp.insertAdjacentElement('afterend', caja); }
       if (f.length === 1 && f[0] !== S.fecha) { S.fecha = f[0]; $('#fecha').value = S.fecha; toast('Mostrando el ' + fechaLarga(S.fecha)); }
       if (sinT.size) toast('Hay terminales sin vendedor: ' + [...sinT].join(', ') + '. Asígnalos abajo.', true);

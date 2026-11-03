@@ -794,3 +794,6 @@ body.has-bottom #probar{bottom:84px}
 .inv .ghostlink:hover{text-decoration:underline}
 .invbar .seg button{padding:10px 14px;min-height:0;line-height:1.2}
 .invl{padding-bottom:90px}
+/* v68 Folios adelantados */
+.card.adl{display:flex;align-items:center;gap:12px;margin:0 0 10px;padding:12px 14px}
+.card.adl .bad{color:var(--bad);font-weight:700}
