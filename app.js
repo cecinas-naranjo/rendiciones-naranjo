@@ -892,7 +892,7 @@ async function vFolios(m) {
     let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vAdl); } catch (e) {}
     if (!document.body.contains(m)) return;
     const esp = ls.filter(x => x.estado === 'ESPERANDO').length, rev = ls.filter(x => x.estado === 'REVISAR').length;
-    $('#adl', m).innerHTML = `<div class="card adl"><div class="grow"><b>Adelantar folios</b><div class="muted">${esp || rev ? [esp ? esp + ' esperando Mi DTE' : '', rev ? '<span class="bad">' + rev + ' para revisar</span>' : ''].filter(Boolean).join(' · ') : 'Anota el folio y cómo te pagó; se detalla solo cuando llegue.'}</div></div>
+    $('#adl', m).innerHTML = `<div class="card adl"><span class="ic">${icon('receipt')}</span><div class="grow"><b>Anotar folios por adelantado</b><div class="muted">${esp || rev ? [esp ? esp + ' esperando Mi DTE' : '', rev ? '<span class="bad">' + rev + ' para revisar</span>' : ''].filter(Boolean).join(' · ') : 'Anota el folio, el monto y cómo te pagó; se detalla solo cuando llegue de Mi DTE.'}</div></div>
       <button class="btn ${esp || rev ? 'ghost' : 'cu'} sm" id="adlb" type="button">Anotar folio</button></div>`;
     $('#adlb', m).onclick = () => abrirAdelanto(vAdl, () => { olvidarCache(false); ir('folios', true); });
   }
@@ -1319,7 +1319,7 @@ async function vDespacho(m) {
   render(m, `<h2>Despacho y retorno</h2><p class="lead">${fechaLarga(S.fecha)}</p>
     <div class="dvs" id="dvs">${vends.filter(v => v.pseudo !== 'dist').map(card).join('')}<button type="button" class="dvc ${esDist(S.vend) ? 'on' : ''}" data-u="${esc(esDist(S.vend) ? S.vend : 'DIST:' + dists[0])}" data-grp="1"><b>Distribuidores</b><span class="dvst"></span></button></div>
     ${esDist(S.vend) ? `<div class="dvs dsub" id="dsub">${dv.map(v => `<button type="button" class="dvc ${v.usuario === S.vend ? 'on' : ''}" data-u="${esc(v.usuario)}"><b>${esc(v.corto)}</b><span class="dvst" data-st="${esc(v.usuario)}"></span></button>`).join('')}</div>` : ''}
-    <div class="seg" id="seg" role="tablist"><button type="button" data-m="salida"><b>Salida</b></button><button type="button" data-m="retorno"><b>Retorno</b></button></div>
+    <div class="seg dseg" id="seg" role="tablist"><button type="button" data-m="salida"><b>Salida</b></button><button type="button" data-m="retorno"><b>Retorno</b></button></div>
     <p class="dvh" id="dvh"></p>${pseudo ? `<p class="muted dvn">${esc(NOTA[pseudo])}</p>` : ''}
     <div id="dvg"></div>
     <div id="sgc"></div>
