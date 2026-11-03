@@ -228,8 +228,9 @@ function errorApi(e) {
 }
 
 async function api(fn, ...args) {
+  if (fn === 'borrarAdelanto' && String(args[1]).indexOf('pend_') === 0) { const id = String(args[1]); PEND = PEND.filter(p => 'pend_' + p.op !== id); guardarPend(); return true; }
   if (S.sess && COLA_FN.has(fn)) return escribir(fn, args);
-  if ((fn === 'borrarMov' && String(args[2]).indexOf('pend_') === 0) || (fn === 'borrarDevolucion' && String(args[1]).indexOf('pend_') === 0)) {
+  if ((fn === 'borrarMov' && String(args[2]).indexOf('pend_') === 0) || ((fn === 'borrarDevolucion' || fn === 'borrarAdelanto') && String(args[1]).indexOf('pend_') === 0)) {
     const id = String(args[fn === 'borrarMov' ? 2 : 1]); PEND = PEND.filter(p => 'pend_' + p.op !== id); guardarPend(); return true;       // aún no se había enviado: solo se cancela
   }
   const lectura = LECTURA.has(fn), key = claveApi(fn, args);
@@ -242,6 +243,7 @@ async function api(fn, ...args) {
   const fin = trabajando(fn, !lectura);
   try { return superponer(fn, args, copia(await pedir(fn, args, key))); }
   catch (e) {
+    if (e.red && fn === 'listarAdelantos') return superponer(fn, args, []);
     if (e.red && lectura) { toast('Sin conexión: esta pantalla todavía no se había abierto con internet.', true); throw e; }
     errorApi(e); throw e; }
   finally { fin(); }
@@ -251,7 +253,7 @@ async function api(fn, ...args) {
    Lo que se guarda sin internet queda en el teléfono (cola persistente, sobrevive aunque se cierre la app) y se envía solo, en orden,
    cuando vuelve la conexión. Las pantallas ya vistas se muestran desde la memoria del teléfono con lo pendiente superpuesto.
    El servidor reconoce los reenvíos (`op`) para no duplicar registros. */
-const COLA_FN = new Set(['guardarDetalle', 'guardarVarios', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDevolucion', 'saveDespacho', 'guardarDeposito', 'guardarConteoEfectivo']);
+const COLA_FN = new Set(['guardarDetalle', 'guardarVarios', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDevolucion', 'saveDespacho', 'guardarDeposito', 'guardarConteoEfectivo', 'adelantarFolio', 'borrarAdelanto']);
 let EN_LINEA = navigator.onLine !== false, sincronizando = false;
 let PEND = []; try { PEND = JSON.parse(localStorage.getItem('rn_cola') || '[]'); } catch (e) {}
 const idOp = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -334,6 +336,15 @@ function superponer(fn, args, data) {
           vendedor: p.args[2].vendedor || (S.sess.rol === 'VENDEDOR' ? S.sess.usuario : '') }));
         if (p.fn === 'borrarMov' && p.args[0] === args[1]) data = data.filter(r => r.id !== p.args[1]);
       });
+    } else if (fn === 'listarAdelantos') {
+      ps.forEach(p => {
+        if (p.fn === 'adelantarFolio' && p.args[0] === args[1] && (S.sess.rol === 'VENDEDOR' || p.args[5] === args[2])) {
+          const pg = p.args[4] || [], fol = String(p.args[2]).replace(/\D/g, '').replace(/^0+/, '');
+          data = data.filter(x => !(String(x.folio) === fol && x.tipo === (/bol/i.test(p.args[1]) ? 'Boleta' : 'Factura')));
+          data.unshift({ id: 'pend_' + p.op, tipo: /bol/i.test(p.args[1]) ? 'Boleta' : 'Factura', folio: fol, monto: soloDigitos(p.args[3]), forma: pg.length > 1 ? 'MIXTO' : (pg[0] || {}).forma, banco: (pg[0] || {}).banco || '', estado: 'ESPERANDO', nota: '', sinEnviar: true });
+        }
+        if (p.fn === 'borrarAdelanto') data = data.filter(x => x.id !== p.args[0]);
+      });
     } else if (fn === 'listarDevoluciones') {
       ps.forEach(p => { if (p.fn === 'guardarDevolucion' && p.args[0] === args[1]) { const o = p.args[1], pr = (S.cat.productos || []).find(x => String(x.codigo) === String(o.codigo)) || {};
         data.push(Object.assign({}, o, { id: 'pend_' + p.op, fecha: p.args[0], cantidad: Number(o.cantidad) || 0, monto: soloDigitos(o.monto), producto: pr.nombre || o.codigo, unidad: pr.unidad || 'UN', adjuntos: [], sinEnviar: true })); } });
@@ -357,6 +368,8 @@ function descPend(x) {
     case 'guardarCobro': return 'Cobro a ' + a[1].cliente + ' · ' + clp(a[3].reduce((t, i) => t + soloDigitos(i.monto), 0));
     case 'guardarDevolucion': return 'Devolución (' + String(a[1].tipo || '').toLowerCase() + ') NC ' + a[1].nota_credito;
     case 'saveDespacho': return 'Despacho de ' + a[1];
+    case 'adelantarFolio': return 'Folio adelantado ' + a[2] + ' · ' + clp(soloDigitos(a[3]));
+    case 'borrarAdelanto': return 'Quitar un folio adelantado';
     case 'guardarDeposito': return 'Depósito ' + clp(soloDigitos(a[1].monto));
     case 'guardarConteoEfectivo': return 'Conteo de efectivo';
   }
@@ -777,59 +790,86 @@ async function vHoy(m) {
 }
 
 /* ============ FOLIOS ============ */
-/** Hoja para anotar folios por adelantado (tipo, N°, monto, forma de pago). La app los cruza con Mi DTE al importar. */
+/** Hoja para anotar folios por adelantado (tipo, N°, monto y cómo pagó: una forma o varias). Funciona sin conexión: queda en el teléfono y se envía sola. */
+const FORMAS_AD = [['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CREDITO', 'Crédito'], ['CHEQUE', 'Cheque']];
 function abrirAdelanto(vend, alCerrar) {
-  let tipo = 'Boleta', forma = '', banco = '';
+  let tipo = 'Boleta', lineas = [{ forma: '', banco: '', monto: '', ch: {} }];
   try { tipo = localStorage.getItem('rn_adl_tipo') || tipo; } catch (e) {}
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anotar folio"><div class="grip"></div><div class="body">
     <div style="font-weight:700;font-size:19px">Anotar un folio</div>
-    <p class="muted" style="margin:2px 0 10px">Cuando el folio llegue de Mi DTE, queda detallado solo si el monto calza.</p>
+    <p class="muted" style="margin:2px 0 10px">Cuando el folio llegue de Mi DTE, queda detallado solo si el monto calza. Sirve también sin internet.</p>
     <div class="seg" id="adT"><button type="button" data-t="Boleta">Boleta</button><button type="button" data-t="Factura">Factura</button></div>
     <div class="grid g2" style="margin-top:10px"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off"></label>
       <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off"></label></div>
     <div class="muted" style="margin-top:10px;font-weight:700">¿Cómo pagó?</div>
-    <div class="seg" id="adP"><button type="button" data-f="EFECTIVO">Efectivo</button><button type="button" data-f="TRANSFERENCIA">Transferencia</button><button type="button" data-f="CREDITO">Crédito</button></div>
-    <div class="seg" id="adB" hidden style="margin-top:8px"><button type="button" data-b="BICE">BICE</button><button type="button" data-b="ESTADO">Estado</button><button type="button" data-b="SANTANDER">Santander</button></div>
-    <p class="muted" style="margin:8px 0 0;font-size:13px">Cheque o pago mixto: espera a que llegue el folio y detállalo normal.</p>
+    <div id="adPg"></div>
+    <button type="button" class="ghostlink" id="adMas" style="display:block;margin-top:6px;background:none;border:0;padding:4px 0;color:var(--cu-2);font-weight:600;cursor:pointer">+ Pago mixto (agregar otra forma de pago)</button>
     <div id="adL" style="margin-top:12px"></div></div>
     <div class="foot"><button class="btn ghost" id="adX" type="button">Listo</button><span class="grow"></span><button class="btn cu" id="adS" type="button">Guardar y anotar otro</button></div></div>`;
   document.body.appendChild(ov);
   let cambios = false;
   const cerrar = () => { cerrarHoja(ov); if (cambios && alCerrar) alCerrar(); };
   $('#adX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
-  const marca = () => {
-    $$('#adT button', ov).forEach(b => b.classList.toggle('on', b.dataset.t === tipo));
-    $$('#adP button', ov).forEach(b => b.classList.toggle('on', b.dataset.f === forma));
-    $('#adB', ov).hidden = forma !== 'TRANSFERENCIA';
-    $$('#adB button', ov).forEach(b => b.classList.toggle('on', b.dataset.b === banco));
-  };
-  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; try { localStorage.setItem('rn_adl_tipo', tipo); } catch (x) {} marca(); } };
-  $('#adP', ov).onclick = e => { const b = e.target.closest('button'); if (b) { forma = b.dataset.f; marca(); } };
-  $('#adB', ov).onclick = e => { const b = e.target.closest('button'); if (b) { banco = b.dataset.b; marca(); } };
+  const total = () => Number($('#adM', ov).value.replace(/\D/g, '')) || 0;
+  const resto = () => { const e = $('#adRest', ov); if (!e) return; const r = total() - lineas.reduce((a, l) => a + (Number(String(l.monto).replace(/\D/g, '')) || 0), 0);
+    e.textContent = !total() ? 'Escribe primero el monto total.' : r === 0 ? 'Cuadra ✓' : r > 0 ? 'Faltan ' + clp(r) : 'Sobran ' + clp(-r); e.className = 'muted ' + (r === 0 && total() ? 'okt' : ''); };
+  function pintarPagos() {
+    const n = lineas.length;
+    $('#adPg', ov).innerHTML = lineas.map((l, i) => `<div class="adln" data-i="${i}">
+      ${n > 1 ? `<div class="row" style="margin:6px 0 2px"><b>Pago ${i + 1}</b><span class="grow"></span><button type="button" class="btn ghost sm" data-q>Quitar</button></div>` : ''}
+      <div class="seg wrap" data-fs>${FORMAS_AD.map(([f, nm]) => `<button type="button" data-f="${f}" class="${l.forma === f ? 'on' : ''}">${nm}</button>`).join('')}</div>
+      ${l.forma === 'TRANSFERENCIA' ? `<div class="seg" data-bs style="margin-top:8px">${['BICE', 'ESTADO', 'SANTANDER'].map(b => `<button type="button" data-b="${b}" class="${l.banco === b ? 'on' : ''}">${b.charAt(0) + b.slice(1).toLowerCase()}</button>`).join('')}</div>` : ''}
+      ${l.forma === 'CHEQUE' ? camposCheque(l.ch, 'ad' + i) : ''}
+      ${n > 1 ? `<label class="f" style="margin:8px 0 0">Monto de este pago $<input class="in n" data-m inputmode="numeric" value="${esc(l.monto)}"></label>` : ''}</div>`).join('') + (n > 1 ? '<div id="adRest"></div>' : '');
+    $$('.cheque', ov).forEach(avisoTipoCheque); resto();
+    $('#adMas', ov).hidden = n >= 4;
+  }
+  $('#adPg', ov).onclick = e => { const bx = e.target.closest('.adln'); if (!bx) return; const l = lineas[Number(bx.dataset.i)];
+    const f = e.target.closest('[data-f]'), b = e.target.closest('[data-b]');
+    if (e.target.closest('[data-q]')) { lineas.splice(Number(bx.dataset.i), 1); pintarPagos(); }
+    else if (f) { l.forma = f.dataset.f; if (l.forma !== 'TRANSFERENCIA') l.banco = ''; pintarPagos(); }
+    else if (b) { l.banco = b.dataset.b; pintarPagos(); } };
+  $('#adPg', ov).addEventListener('input', e => { const bx = e.target.closest('.adln'); if (!bx) return; const l = lineas[Number(bx.dataset.i)];
+    if (e.target.matches('[data-m]')) { l.monto = e.target.value.replace(/\D/g, ''); resto(); }
+    else if (e.target.dataset.c) l.ch[e.target.dataset.c] = e.target.value; });
+  $('#adPg', ov).addEventListener('change', e => { const bx = e.target.closest('.adln'); if (bx && e.target.dataset.c) lineas[Number(bx.dataset.i)].ch[e.target.dataset.c] = e.target.value; });
+  $('#adM', ov).addEventListener('input', resto);
+  $('#adMas', ov).onclick = () => { if (lineas.length === 1) { const t = total(); if (t && !lineas[0].monto) lineas[0].monto = String(t); } lineas.push({ forma: '', banco: '', monto: '', ch: {} }); pintarPagos(); };
+  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; try { localStorage.setItem('rn_adl_tipo', tipo); } catch (x) {} $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); } };
+  const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto' };
   const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
   async function lista() {
     let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vend); } catch (e) {}
-    $('#adL', ov).innerHTML = ls.length ? `<div class="muted" style="font-weight:700;margin-bottom:4px">Anotados hoy</div>` + ls.map(x => { const [t, c] = ESTADO[x.estado] || [x.estado, '']; return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
-      <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)} · ${esc(x.forma === 'TRANSFERENCIA' ? 'Transf. ' + (x.banco || '') : x.forma === 'CREDITO' ? 'Crédito' : 'Efectivo')}
+    $('#adL', ov).innerHTML = ls.length ? `<div class="muted" style="font-weight:700;margin-bottom:4px">Anotados hoy</div>` + ls.map(x => { const [t, c] = x.sinEnviar ? ['Guardado en el teléfono · se envía al volver internet', 'b'] : (ESTADO[x.estado] || [x.estado, '']); return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
+      <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)} · ${esc(FTXT[x.forma] || x.forma)}${x.forma === 'TRANSFERENCIA' && x.banco ? ' ' + esc(x.banco) : ''}
       <div class="dvst ${c}">${t}</div>${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}</span>${x.estado === 'APLICADO' ? '' : '<button class="btn ghost sm" data-del type="button">Quitar</button>'}</div>`; }).join('') : '';
   }
   $('#adL', ov).onclick = async e => { const b = e.target.closest('[data-del]'); if (!b) return; const id = b.closest('.dfila').dataset.id; b.disabled = true;
     try { await api('borrarAdelanto', S.sess.token, id); cambios = true; await lista(); } finally { b.disabled = false; } };
   $('#adS', ov).onclick = async () => {
-    const f = $('#adF', ov).value.trim(), m = $('#adM', ov).value.replace(/\D/g, '');
+    const f = $('#adF', ov).value.trim(), m = total();
     if (!f) return toast('Escribe el N° de folio.', true);
     if (!m) return toast('Escribe el monto.', true);
-    if (!forma) return toast('Elige cómo pagó.', true);
-    if (forma === 'TRANSFERENCIA' && !banco) return toast('Elige el banco.', true);
+    const pagos = [];
+    for (let i = 0; i < lineas.length; i++) { const l = lineas[i];
+      if (!l.forma) return toast(lineas.length > 1 ? 'Elige la forma del pago ' + (i + 1) + '.' : 'Elige cómo pagó.', true);
+      if (l.forma === 'TRANSFERENCIA' && !l.banco) return toast('Elige el banco de la transferencia.', true);
+      const monto = lineas.length === 1 ? m : Number(String(l.monto).replace(/\D/g, '')) || 0;
+      if (!monto) return toast('Falta el monto del pago ' + (i + 1) + '.', true);
+      let p = { forma: l.forma, banco: l.banco, monto };
+      if (l.forma === 'CHEQUE') { const r = leerCheque($('[data-cheque=ad' + i + ']', ov)); if (r.error) return toast(r.error, true); p = Object.assign(p, r.datos); }
+      pagos.push(p); }
+    if (pagos.reduce((a, p) => a + p.monto, 0) !== m) return toast('Los pagos no suman el monto del folio (' + clp(m) + ').', true);
     const b = $('#adS', ov); b.disabled = true;
     try {
-      const r = await api('adelantarFolio', S.sess.token, S.fecha, tipo, f, m, forma, banco, vend); cambios = true;
-      toast(r.estado === 'APLICADO' ? 'Folio ' + f + ' detallado' : r.estado === 'REVISAR' ? r.nota : 'Anotado. Se detalla solo cuando llegue de Mi DTE.', r.estado === 'REVISAR');
-      $('#adF', ov).value = ''; $('#adM', ov).value = ''; forma = ''; banco = ''; marca(); await lista(); $('#adF', ov).focus();
+      const r = await api('adelantarFolio', S.sess.token, S.fecha, tipo, f, String(m), pagos, vend); cambios = true;
+      toast(r._pendiente ? 'Guardado en el teléfono. Se envía solo cuando vuelva internet.' : r.estado === 'APLICADO' ? 'Folio ' + f + ' detallado' : r.estado === 'REVISAR' ? r.nota : 'Anotado. Se detalla solo cuando llegue de Mi DTE.', r.estado === 'REVISAR');
+      $('#adF', ov).value = ''; $('#adM', ov).value = ''; lineas = [{ forma: '', banco: '', monto: '', ch: {} }]; pintarPagos(); await lista(); $('#adF', ov).focus();
     } finally { b.disabled = false; }
   };
-  marca(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
+  $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo));
+  pintarPagos(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
 }
 async function vFolios(m) {
   const esV = S.sess.rol === 'VENDEDOR';

@@ -59,7 +59,7 @@ const SCHEMA = {
   CHEQUES_ESTADO: ['clave','estado','fecha','registrado_por','registrado','obs'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
-  ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto']
+  ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos']
 };
 
 // Formas de pago estructuradas (reemplazan el texto libre "ESTADO Y EF 20000", etc.)
@@ -828,21 +828,30 @@ function importarDTE(token, filas) {
 /* ============================ FOLIOS ADELANTADOS (v68) ============================ */
 // El vendedor anota en su celular el tipo, el N° de folio, el monto y cómo le pagaron, ANTES de que el folio llegue en Mi DTE.
 // Cuando la encargada importa Ventas Diarias, la app cruza por tipo+folio y deja el folio ya detallado (si el monto calza).
-// Estados: ESPERANDO (aún no llega de Mi DTE) · APLICADO (cruzado y detallado) · REVISAR (no calza; `nota` dice por qué; el folio queda por detallar normal).
-const FORMAS_ADELANTO_ = ['EFECTIVO', 'TRANSFERENCIA', 'CREDITO'];
+// Pago único o mixto (varias líneas, guardadas como JSON en `pagos`). Estados: ESPERANDO (aún no llega de Mi DTE) · APLICADO (cruzado y detallado) · REVISAR (no calza; `nota` dice por qué; el folio queda por detallar normal).
+const FORMAS_ADELANTO_ = ['EFECTIVO', 'TRANSFERENCIA', 'CREDITO', 'CHEQUE'];
 function asegurarAdelantos_() {
   const ss = SpreadsheetApp.getActive();
-  if (ss.getSheetByName('ADELANTOS')) return;
+  const ex = ss.getSheetByName('ADELANTOS');
+  if (ex) {   // hoja de v68 sin la columna `pagos`: se agrega al final
+    const h = ex.getRange(1, 1, 1, Math.max(ex.getLastColumn(), 1)).getValues()[0];
+    if (h.indexOf('pagos') < 0) { ex.getRange(1, SCHEMA.ADELANTOS.indexOf('pagos') + 1).setValue('pagos').setFontWeight('bold'); MEMO_.ADELANTOS = null; }
+    return;
+  }
   const sh = ss.insertSheet('ADELANTOS'), head = SCHEMA.ADELANTOS;
   sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
   MEMO_.ADELANTOS = null;
 }
 /** Detalla el documento d con una sola forma de pago (monto completo, menos descuento aprobado). Devuelve true si lo hizo. */
-function aplicarAdelanto_(a, d, u) {
-  const aprob = read_('DESCUENTOS').filter(x => x.folio_key === d.folio_key && x.estado === 'APROBADO').reduce((t, x) => t + num_(x.monto), 0);
+function lineasDe_(a) {
+  try { const l = JSON.parse(a.pagos || '[]'); if (l.length) return l; } catch (e) {}
+  return [{ forma: a.forma, banco: a.banco || '', monto: num_(a.monto) }];
+}
+function aplicarAdelanto_(a, d) {
   deleteRows_('PAGOS', read_('PAGOS').filter(x => x.folio_key === d.folio_key).map(x => x._row));
-  append_('PAGOS', [{ id: uid_(), folio_key: d.folio_key, fecha: d.fecha, vendedor: d.vendedor, forma: a.forma, banco: a.banco || '',
-    monto: num_(d.total) - aprob, referencia: '', registrado_por: a.vendedor, registrado: now_(), cheque_numero: '', cheque_fecha: '', cheque_titular: '' }]);
+  append_('PAGOS', lineasDe_(a).map(p => ({ id: uid_(), folio_key: d.folio_key, fecha: d.fecha, vendedor: d.vendedor, forma: p.forma, banco: p.banco || '',
+    monto: num_(p.monto), referencia: p.referencia || '', registrado_por: a.vendedor, registrado: now_(),
+    cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' })));
   d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d);
 }
 /** Compara los adelantos pendientes con los documentos ya importados y aplica los que calzan. Se llama dentro de un lock. */
@@ -858,7 +867,7 @@ function cruzarAdelantos_() {
     if (d.estado === 'DETALLADO') { estado = 'APLICADO'; nota = 'El folio ya estaba detallado.'; }
     else if (d.vendedor !== a.vendedor) { estado = 'REVISAR'; nota = 'Mi DTE lo asignó a otro terminal/vendedor.'; }
     else if (Math.round(num_(d.total)) !== Math.round(num_(a.monto))) { estado = 'REVISAR'; nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + '.'; }
-    else if (read_('DESCUENTOS').some(x => x.folio_key === d.folio_key && x.estado === 'PENDIENTE')) { estado = 'REVISAR'; nota = 'Tiene un descuento pendiente de autorizar.'; }
+    else if (read_('DESCUENTOS').some(x => x.folio_key === d.folio_key && (x.estado === 'PENDIENTE' || x.estado === 'APROBADO'))) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
     else { aplicarAdelanto_(a, d); estado = 'APLICADO'; aplicados++; }
     if (estado === 'REVISAR') revisar++;
     if (a.estado !== estado || a.nota !== nota) { a.estado = estado; a.nota = nota; a.resuelto = now_(); updateRow_('ADELANTOS', a._row, a); }
@@ -866,8 +875,9 @@ function cruzarAdelantos_() {
   return { aplicados, revisar };
 }
 /** El vendedor (o la oficina a nombre de uno) anota un folio por adelantado. tipo: 'Factura' | 'Boleta'. */
-function adelantarFolio(token, fecha, tipo, folio, monto, forma, banco, vendedor) {
+function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2) {
   const u = auth_(token);
+  if (typeof pagos === 'string') { pagos = [{ forma: pagos, banco: vendedor || '' }]; vendedor = vend2; }     // formato de v68 (forma, banco, vendedor)
   const v = u.rol === 'VENDEDOR' ? u.usuario : String(vendedor || '');
   if (!v) throw new Error('Indica el vendedor.');
   fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
@@ -875,16 +885,24 @@ function adelantarFolio(token, fecha, tipo, folio, monto, forma, banco, vendedor
   const t = /bol/i.test(String(tipo)) ? 'Boleta Electrónica' : 'Factura Electrónica', f = String(folio || '').replace(/\D/g, '').replace(/^0+/, '');
   if (!f) throw new Error('Escribe el número de folio.');
   const m = Number(String(monto == null ? '' : monto).replace(/\D/g, '')) || 0; if (!(m > 0)) throw new Error('Escribe el monto del folio.');
-  if (FORMAS_ADELANTO_.indexOf(forma) < 0) throw new Error('Elige efectivo, transferencia o crédito. Para cheque o pago mixto espera a que llegue el folio y detállalo normal.');
-  if (forma === 'TRANSFERENCIA' && !banco) throw new Error('Indica el banco de la transferencia.');
+  const ls = (pagos || []).map(p => {
+    if (FORMAS_ADELANTO_.indexOf(p.forma) < 0) throw new Error('Forma de pago no válida: ' + p.forma);
+    if (p.forma === 'TRANSFERENCIA' && !p.banco) throw new Error('Indica el banco de la transferencia.');
+    const mm = (pagos.length === 1 && !p.monto) ? m : Number(String(p.monto == null ? '' : p.monto).replace(/\D/g, '')) || 0;
+    if (!(mm > 0)) throw new Error('Falta el monto de uno de los pagos.');
+    const o = { forma: p.forma, banco: p.banco || '', monto: mm, referencia: '' };
+    return p.forma === 'CHEQUE' ? Object.assign(o, datosCheque_(p)) : o;
+  });
+  if (!ls.length) throw new Error('Indica cómo pagó.');
+  if (ls.reduce((a, p) => a + p.monto, 0) !== m) throw new Error('Los pagos no suman el monto del folio ($' + m + ').');
   return withLock_(() => {
     asegurarAdelantos_();
     const key = folioKey_(t, f), prev = read_('ADELANTOS').filter(a => a.folio_key === key);
-    if (prev.some(a => a.estado === 'APLICADO')) throw new Error('Ese folio ya está detallado.');
-    const reg = { id: uid_(), fecha, vendedor: v, tipo: t, folio: f, folio_key: key, monto: m, forma, banco: forma === 'TRANSFERENCIA' ? banco : '', estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '' };
+    if (prev.some(a => a.estado === 'APLICADO')) return { estado: 'APLICADO', nota: 'Ese folio ya estaba detallado.', id: prev[0].id };
+    const reg = { id: uid_(), fecha, vendedor: v, tipo: t, folio: f, folio_key: key, monto: m, forma: ls.length > 1 ? 'MIXTO' : ls[0].forma, banco: ls[0].banco || '',
+      estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(ls) };
     if (prev.length) { reg.id = prev[0].id; updateRow_('ADELANTOS', prev[0]._row, reg); } else append_('ADELANTOS', [reg]);
-    // si el folio ya llegó de Mi DTE, se cruza al tiro
-    const cr = cruzarAdelantos_();
+    cruzarAdelantos_();      // si el folio ya llegó de Mi DTE, se cruza al tiro
     const fin = read_('ADELANTOS').find(a => a.folio_key === key);
     return { estado: fin.estado, nota: fin.nota, id: fin.id };
   });
