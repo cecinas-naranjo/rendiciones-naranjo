@@ -357,3 +357,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v64 — Sugerido discreto
 - Despacho ya no muestra la barra azul "Carga sugerida…" ni el botón "Usar como salida". El sugerido queda solo como la línea "Sugerido X" en cada producto (y esos productos siguen apareciendo en la lista de Salida).
+
+## v65
+- El "Sugerido X" de cada producto queda visible aunque el bodeguero ya haya escrito la salida (antes se ocultaba al digitar).
