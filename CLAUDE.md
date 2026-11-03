@@ -351,3 +351,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v62 — Carga sugerida con el método de la planilla
 - `sugerido_`: últimos 8 mismos días de la semana en que el vendedor facturó (`CFG.SUG_DIAS`); por producto se descarta el día más bajo (los días sin venta cuentan 0), se promedia el resto y se suma 20 % (`CFG.SUG_COLCHON`). Con menos de 3 días no se descarta ninguno. Si ese día tiene <2 ventas, usa sus últimos 8 días de venta. Reemplaza el promedio ponderado 0,6 de v53. Textos "¿Cómo se calcula?" actualizados.
+
+## v63 — "Ver como…" (solo ADMIN)
+- Botón morado flotante `#probar` ("Ver como…") visible solo para ADMIN: lista los usuarios activos por rol y entra como esa persona sin pedir clave (`entrarComo` en APPS_SCRIPT.js, exige rol ADMIN, queda en Logger). Al estar viendo como otro, el botón muestra "Viendo como X"; para volver se elige el propio usuario ADMIN. `S_ADMIN` guarda la sesión original (`rn_admin`). Lo que se registre queda a nombre del usuario visto. Sin interruptor MODO_PRUEBA: es permanente y solo para ADMIN.

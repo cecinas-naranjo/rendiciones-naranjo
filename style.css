@@ -775,3 +775,9 @@ nav.sub button:active{transform:scale(.95)}
 #dvg[hidden],#sgc[hidden],.vac[hidden],#mas[hidden]{display:none!important}
 /* v61: distribuidores, consumo y venta en bodega en Despacho */
 .dsub{margin-top:-4px}.dsub .dvc{min-width:0;padding:8px 12px}.dvn{margin:0 0 8px}
+
+/* Ver como (admin) */
+#probar{position:fixed;right:12px;bottom:16px;z-index:60;display:flex;flex-direction:column;align-items:flex-start;gap:0;background:#6B2FD0;color:#fff;border:0;border-radius:14px;padding:8px 14px;box-shadow:0 6px 20px rgba(0,0,0,.35);text-align:left}
+#probar small{font-size:11px;opacity:.85;letter-spacing:.04em;text-transform:uppercase}
+#probar b{font-size:14.5px}
+body.has-bottom #probar{bottom:84px}

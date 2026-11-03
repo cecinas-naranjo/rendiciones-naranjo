@@ -222,7 +222,7 @@ function setup() {
 const API = {
   batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -629,6 +629,16 @@ function sesionDe_(u, fecha) {
     sesion.lote = lote;
   } catch (e) { /* si algo falla, la app pide cada cosa por separado como siempre */ }
   return sesion;
+}
+
+/** El ADMIN entra como otro usuario para ver su pantalla (botón "Ver como…"). Solo ADMIN; queda en el registro de ejecuciones. */
+function entrarComo(token, usuario, fecha) {
+  const adm = auth_(token, ['ADMIN']);
+  if (adm.rol !== 'ADMIN') throw new Error('Solo la administración puede ver la app como otro usuario.');
+  const u = read_('USUARIOS').find(x => x.usuario === String(usuario));
+  if (!u || !activo_(u)) throw new Error('Ese usuario no existe o está desactivado.');
+  Logger.log('VER COMO: ' + adm.usuario + ' entró como ' + u.usuario);
+  return sesionDe_(u, fecha);
 }
 
 function logout(token) {
