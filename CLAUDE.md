@@ -354,3 +354,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v63 — "Ver como…" (solo ADMIN)
 - Botón morado flotante `#probar` ("Ver como…") visible solo para ADMIN: lista los usuarios activos por rol y entra como esa persona sin pedir clave (`entrarComo` en APPS_SCRIPT.js, exige rol ADMIN, queda en Logger). Al estar viendo como otro, el botón muestra "Viendo como X"; para volver se elige el propio usuario ADMIN. `S_ADMIN` guarda la sesión original (`rn_admin`). Lo que se registre queda a nombre del usuario visto. Sin interruptor MODO_PRUEBA: es permanente y solo para ADMIN.
+
+## v64 — Sugerido discreto
+- Despacho ya no muestra la barra azul "Carga sugerida…" ni el botón "Usar como salida". El sugerido queda solo como la línea "Sugerido X" en cada producto (y esos productos siguen apareciendo en la lista de Salida).

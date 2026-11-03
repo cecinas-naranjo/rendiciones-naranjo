@@ -1301,16 +1301,10 @@ async function vDespacho(m) {
   if (S.vend && !pseudo) api('getSugerido', S.sess.token, S.fecha, S.vend).then(sg => {
     if (!document.body.contains(m) || $('#sgc', m) === null) return;
     const nom = nomDe(S.vend);
-    if (sg.sinHistoria) { $('#sgc', m).innerHTML = `<div class="sgc"><div><b>Carga sugerida</b><p class="muted">Todavía no hay ventas anteriores de ${esc(nom)} para calcularla.</p></div></div>`; return; }
+    if (sg.sinHistoria) return;
     filas.forEach(el => { const it = sg.items[el.dataset.c]; if (!it) return;
       el.dataset.sgt = it.kgUn ? `${it.un} un (≈ ${kg(it.kg)} kg)` : it.un ? `${it.un} un` : `${kg(it.kg)} kg`;
       el.dataset.sg = it.un && !it.kgUn ? it.un : it.kg; });
-    $('#sgc', m).innerHTML = `<div class="sgc"><div><b>Carga sugerida para ${esc(nom)}: ${sg.totalUn} unidades (≈ ${kg(sg.totalKg)} kg)</b>
-        <details class="sgd"><summary>¿Cómo se calcula?</summary><p class="muted">${sg.base === 'dia' ? `Según lo que vendió los últimos ${sg.nDias} ${esc(pluralDia(sg.diaNombre))}: se saca el promedio sin el día más bajo y se le suma un 20 %. Se ajusta sola con cada venta.` : `Aún no tiene suficientes ${esc(pluralDia(sg.diaNombre))}: se usan sus últimos días de venta: promedio sin el más bajo + 20 %.`}</p></details></div>
-      <button class="btn cu sm" id="sgu" type="button">Usar como salida</button></div>`;
-    $('#sgu', m).onclick = () => { let c = 0;
-      filas.forEach(el => { const i = inp(el, 'salida'); if (el.dataset.sg !== undefined && i.value === '') { i.value = el.dataset.sg; c++; } });
-      if (c) sucio = true; aplicarVis(); calc(); toast(c ? `Salida cargada con lo sugerido en ${c} productos. Revisa y guarda.` : 'Los productos sugeridos ya tienen salida anotada.'); };
     aplicarVis(); calc();
   }).catch(() => {});
   // estado de cada vendedor (una sola llamada para todos)
