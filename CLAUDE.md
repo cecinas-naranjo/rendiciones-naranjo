@@ -191,7 +191,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## Acceso y claves (hoja USUARIOS)
 - Columnas nuevas: `rut, correo, clave_hash, sal, cambiar_clave, intentos, bloqueado_hasta`. La clave se guarda con sal y SHA-256 repetido 1000 veces; nunca en texto. La columna `pin` queda vacía.
 - Se entra con RUT o correo (también acepta el código interno) + clave. No hay lista de usuarios en el login (`listaUsuarios` ya no existe). El rol lo asigna solo ADMIN; la persona no lo elige.
-- Clave temporal (usuario nuevo o restablecida): `login` devuelve `{cambiarClave:true}` y la app pide crear la clave personal (`cambiarClaveInicial`, mínimo 6 caracteres, rechaza claves triviales). Restablecer o desactivar cierra todas sus sesiones (`cerrarSesionesDe_`). "Clave" en la cabecera → `cambiarMiClave`.
+- Clave temporal (usuario nuevo o restablecida): `login` devuelve `{cambiarClave:true}` y la app pide crear la clave personal (`cambiarClaveInicial`, mínimo 4 caracteres, rechaza claves triviales). Restablecer o desactivar cierra todas sus sesiones (`cerrarSesionesDe_`). "Clave" en la cabecera → `cambiarMiClave`.
 - 5 intentos fallidos bloquean la cuenta 15 minutos; además hay un tope por identificador en CacheService.
 - Pantalla Usuarios (solo ADMIN): crear/editar (nombre, rol, RUT con dígito verificador, correo, terminales si es vendedor, activo), restablecer clave (muestra la temporal una vez). No permite quitarse el rol de ADMIN ni dejar el sistema sin administrador activo. APIs `listarUsuariosAdmin`, `guardarUsuario`, `restablecerClave`.
 - Migración: `migrarUsuarios()` (la llama `setup`) da una clave temporal a quien no tenga y las escribe en el registro de ejecución del editor de Apps Script (Logger). Mientras NADIE tenga clave todavía, el login acepta el PIN antiguo (solo para no dejar la app bloqueada antes de migrar).
@@ -393,3 +393,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - NC de Mi DTE: si al aprobar se escribe el N° de la nota de crédito (`nc_folio`), esa NC se oculta de los folios del día para no contarla dos veces. Si no se escribe, la NC importada sigue su camino de siempre.
 - Cliente: tarjeta "Anular folio o pedir nota de crédito" en Mis folios (`abrirAnulacion`); aprobación en la pestaña "Por autorizar" (antes "Descuentos por autorizar", `vDescuentos`). Un adelanto de folio con anulación queda REVISAR.
 - No hay anulación para vendedores de otro vendedor; la oficina puede registrarla a nombre del vendedor elegido.
+
+## v73 — Clave de 4 dígitos
+- `CLAVE_MIN` = 4 (servidor) y el cliente pide mínimo 4 caracteres. Se rechazan repetidas (1111) y fáciles (1234, 4321, 0123, 2580, 1212, 2020, 2026…). El bloqueo de 5 intentos/15 min sigue protegiendo. Requiere pegar APPS_SCRIPT.js COMPLETO.

@@ -496,7 +496,7 @@ const SESION_DIAS = 30; // la sesión dura 30 días en el celular: nadie tiene q
    Cada persona entra con su RUT (o correo) y su clave personal; el rol lo asigna la administración. La clave se guarda con sal y
    SHA-256 repetido (nunca en texto). Una clave nueva o restablecida es temporal: la persona debe cambiarla al entrar.
    5 intentos fallidos bloquean la cuenta 15 minutos. */
-const CLAVE_MIN = 6, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR'];
+const CLAVE_MIN = 4, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR'];
 function hashClave_(clave, sal) {
   const D = Utilities.DigestAlgorithm.SHA_256;
   let h = Utilities.computeDigest(D, String(sal) + '|' + String(clave), Utilities.Charset.UTF_8);
@@ -526,7 +526,7 @@ function buscarUsuario_(ident) {
 function claveNuevaValida_(clave, u, actual) {
   clave = String(clave || '');
   if (clave.length < CLAVE_MIN) throw new Error('La clave debe tener al menos ' + CLAVE_MIN + ' caracteres.');
-  if (/^(.)\1+$/.test(clave) || /^(0123456|123456|1234567|12345678|654321|abcdef|abc123|password|clave123)/i.test(clave)) throw new Error('Esa clave es muy fácil de adivinar. Elige otra.');
+  if (/^(.)\1+$/.test(clave) || /^(1234|4321|0123|2580|1212|2020|2026|123456|654321|abcdef|abc123|password|clave123)/i.test(clave)) throw new Error('Esa clave es muy fácil de adivinar. Elige otra.');
   if (u && (rutNorm_(u.rut) === clave.toUpperCase().replace(/[^0-9K]/g, '') && rutNorm_(u.rut))) throw new Error('La clave no puede ser tu RUT.');
   if (actual && String(actual) === clave) throw new Error('La clave nueva debe ser distinta de la actual.');
 }
