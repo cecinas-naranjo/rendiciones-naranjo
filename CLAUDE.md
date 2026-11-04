@@ -419,3 +419,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v78 — Avance de vendedores en el Resumen del día (requiere pegar APPS_SCRIPT.js COMPLETO)
 - API `getAvance(token, fecha)` (lectura en `LECTURAS_`; RENDICION/SUPERVISOR/GERENCIA/ADMIN): por vendedor, folios detallados / por detallar, adelantos (esperando / aplicados / por revisar), cantidad de cobranza, gastos y depósitos, y `ultima` = hora en que el SERVIDOR recibió el último registro hecho por el propio vendedor (PAGOS, COBRANZA, GASTOS, DEPOSITOS, ADELANTOS; lo detallado por la oficina no cuenta). Si anotó sin internet, es la hora en que recuperó la señal. No hay "última conexión" real (no se guarda).
 - Cliente: tarjeta "Avance de vendedores" (`#avc`) sobre "Por vendedor" en `vResumen`; chip "hace N min · HH:MM" (ámbar si pasaron >2 h hoy), "Sin actividad" si no hay registros. Se pide aparte para no demorar el Resumen.
+
+## v79 — Avance de vendedores plegable (solo frontend)
+- La tarjeta del Resumen es un `details.avd` cerrado por defecto con resumen "N de M con actividad hoy"; recuerda si se abrió (`localStorage rn_avc`).

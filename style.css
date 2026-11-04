@@ -828,3 +828,10 @@ body.solo-leer .ordenar, body.solo-leer .pasos button { pointer-events: none; }
 .avs{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
 .av{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .av .muted{font-size:13px}
+
+.avd{margin:18px 0 8px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:4px 14px}
+.avd>summary{display:flex;align-items:center;gap:10px;padding:10px 0;cursor:pointer;list-style:none;min-height:44px}
+.avd>summary::-webkit-details-marker{display:none}
+.avd>summary b{font-size:17px}.avd>summary .muted{margin-left:auto;font-size:13.5px}
+.avd>summary::after{content:'▾';color:var(--mut);transition:transform .2s}.avd[open]>summary::after{transform:rotate(180deg)}
+.avd .avs{padding-bottom:12px}.avd .av{background:#FAF9F7}

@@ -2556,11 +2556,14 @@ async function vResumen(m) {
     const ahora = Date.parse(new Date().toLocaleString('sv-SE', { timeZone: 'America/Santiago' }).replace(' ', 'T')), esHoy = S.fecha === hoyCL();
     const cuando = u => { if (!u) return ['Sin actividad', 'mut']; const min = Math.round((ahora - Date.parse(u.replace(' ', 'T'))) / 60000), hh = u.slice(11, 16);
       return [(esHoy ? (min < 2 ? 'hace un momento' : min < 60 ? 'hace ' + min + ' min' : 'hace ' + Math.floor(min / 60) + ' h') + ' · ' : '') + hh, esHoy && min > 120 ? 'warn' : 'ok']; };
-    box.innerHTML = `<h3 style="margin:18px 0 8px">Avance de vendedores</h3><p class="muted" style="margin:0 0 8px">Lo que cada vendedor ya envió. Si anotó sin internet, aparece cuando recupere la señal.</p>
+    const act = av.vendedores.filter(v => v.ultima).length, abierto = (() => { try { return localStorage.getItem('rn_avc') === '1'; } catch (e) { return false; } })();
+    box.innerHTML = `<details class="avd" ${abierto ? 'open' : ''}><summary><b>Avance de vendedores</b><span class="muted">${act} de ${av.vendedores.length} con actividad hoy</span></summary>
+      <p class="muted" style="margin:8px 0">Lo que cada vendedor ya envió. Si anotó sin internet, aparece cuando recupere la señal.</p>
       <div class="avs">${av.vendedores.map(v => { const a = v.adelantos, ad = a.esperando + a.aplicado + a.revisar, [t, c] = cuando(v.ultima), p = v.documentos ? Math.round(v.detallados / v.documentos * 100) : 0;
         return `<div class="av"><div class="row"><b class="grow">${esc(v.nombre)}</b><span class="chip ${c === 'warn' ? 'warn' : c === 'ok' ? 'ok' : ''}" title="Última vez que el servidor recibió algo de este vendedor">${esc(t)}</span></div>
           <div class="meter" style="margin:8px 0 4px"><div class="bar"><i style="width:${p}%"></i></div><b>${v.documentos ? v.detallados + ' de ' + v.documentos : 'Sin folios'}</b></div>
-          <div class="muted">${ad ? `Adelantos: ${[a.esperando ? a.esperando + ' esperando Mi DTE' : '', a.aplicado ? a.aplicado + ' aplicados' : '', a.revisar ? a.revisar + ' por revisar' : ''].filter(Boolean).join(' · ')}` : 'Sin folios adelantados'}${v.cobranza || v.gastos || v.depositos ? ` · ${[v.cobranza ? v.cobranza + ' cobranza' : '', v.gastos ? v.gastos + ' gastos' : '', v.depositos ? v.depositos + ' depósito' + (v.depositos > 1 ? 's' : '') : ''].filter(Boolean).join(', ')}` : ''}</div></div>`; }).join('')}</div>`;
+          <div class="muted">${ad ? `Adelantos: ${[a.esperando ? a.esperando + ' esperando Mi DTE' : '', a.aplicado ? a.aplicado + ' aplicados' : '', a.revisar ? a.revisar + ' por revisar' : ''].filter(Boolean).join(' · ')}` : 'Sin folios adelantados'}${v.cobranza || v.gastos || v.depositos ? ` · ${[v.cobranza ? v.cobranza + ' cobranza' : '', v.gastos ? v.gastos + ' gastos' : '', v.depositos ? v.depositos + ' depósito' + (v.depositos > 1 ? 's' : '') : ''].filter(Boolean).join(', ')}` : ''}</div></div>`; }).join('')}</div></details>`;
+    $('.avd', box).ontoggle = e => { try { localStorage.setItem('rn_avc', e.target.open ? '1' : '0'); } catch (x) {} };
   }).catch(() => {});
   $$('[data-detallar]', m).forEach(b => b.onclick = e => { e.stopPropagation(); S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
   $$('[data-ver]', m).forEach(c => {
