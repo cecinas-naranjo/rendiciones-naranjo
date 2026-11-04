@@ -256,7 +256,7 @@ function setup() {
 
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
-  batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
+  getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
   listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
@@ -298,7 +298,7 @@ function registrarOp_(op, fn) {
 function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { ping: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
+const LECTURAS_ = { ping: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, getSugerido: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -953,6 +953,27 @@ function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2
     return { estado: fin.estado, nota: fin.nota, id: fin.id };
   });
 }
+/** Avance de cada vendedor en el día (v78): folios detallados / por detallar, adelantos anotados y la hora del último envío al servidor.
+    La "última actividad" es la hora en que el servidor recibió el último registro del vendedor (si anotó sin internet, es cuando recuperó la señal). */
+function getAvance(token, fecha) {
+  auth_(token, ['RENDICION', 'SUPERVISOR', 'GERENCIA']);
+  fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
+  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS']);
+  asegurarAdelantos_();
+  const vend = vendedores_().filter(v => !CFG.DESTINO_DE_VENDEDOR[v.usuario]), por = {};
+  vend.forEach(v => por[v.usuario] = { usuario: v.usuario, nombre: v.nombre, documentos: 0, detallados: 0, pendientes: 0, adelantos: { esperando: 0, aplicado: 0, revisar: 0 }, cobranza: 0, gastos: 0, depositos: 0, ultima: '' });
+  const ult = (o, t) => { if (t && String(t) > o.ultima) o.ultima = String(t); };
+  byFecha_('DOCUMENTOS', fecha).forEach(d => { const o = por[d.vendedor]; if (!o || /nota de cr/i.test(d.tipo)) return; o.documentos++; if (d.estado === 'DETALLADO') o.detallados++; else o.pendientes++; });
+  // solo lo que hizo el propio vendedor cuenta como su actividad (no lo que detalló la oficina por él)
+  byFecha_('PAGOS', fecha).forEach(x => { const o = por[x.vendedor]; if (o && x.registrado_por === x.vendedor) ult(o, x.registrado); });
+  byFecha_('COBRANZA', fecha).forEach(x => { const o = por[x.vendedor]; if (!o) return; o.cobranza++; if (x.registrado_por === x.vendedor) ult(o, x.registrado); });
+  byFecha_('GASTOS', fecha).forEach(x => { const o = por[x.responsable]; if (!o) return; o.gastos++; if (x.registrado_por === x.responsable) ult(o, x.registrado); });
+  byFecha_('DEPOSITOS', fecha).forEach(x => { const o = por[x.vendedor]; if (!o) return; o.depositos++; if (x.registrado_por === x.vendedor) ult(o, x.registrado); });
+  read_('ADELANTOS').filter(a => a.fecha === fecha).forEach(a => { const o = por[a.vendedor]; if (!o) return;
+    const k = a.estado === 'APLICADO' ? 'aplicado' : a.estado === 'REVISAR' ? 'revisar' : 'esperando'; o.adelantos[k]++; ult(o, a.registrado); });
+  return { fecha, vendedores: Object.keys(por).map(k => por[k]).sort((a, b) => a.nombre.localeCompare(b.nombre)) };
+}
+
 function listarAdelantos(token, fecha, vendedor) {
   const u = auth_(token);
   fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();

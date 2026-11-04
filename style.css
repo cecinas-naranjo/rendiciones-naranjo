@@ -823,3 +823,8 @@ body.solo-leer .ordenar, body.solo-leer .pasos button { pointer-events: none; }
 .pr .pul{font-weight:700;font-size:14.5px}.pr .pul small{display:block;font-weight:400;color:var(--mut);font-size:12px}
 .pr .pu .nin input.in{font-size:19px;min-height:46px}
 .inv .fin small.un{font-size:13px;font-weight:400;color:var(--ink-2)}
+
+/* Avance de vendedores (v78) */
+.avs{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.av{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.av .muted{font-size:13px}

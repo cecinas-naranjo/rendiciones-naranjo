@@ -130,7 +130,7 @@ function enlazarCampoArchivos(id) {
    Velocidad: las consultas (no los guardados) se guardan en el teléfono. Al volver a una pantalla se muestra
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
-const LECTURA = new Set(['listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
+const LECTURA = new Set(['getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
   'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos', 'listarAnulaciones', 'anulacionesPendientes']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
@@ -2524,6 +2524,7 @@ async function vResumen(m) {
       <div class="cash"><span>Efectivo a recibir</span><b>${clp(t.efectivo)}</b></div></div>
     ${r.alertas.length ? `<div class="alert" id="avisos"><b>Antes de cerrar</b><ul>${r.alertas.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`
       : r.porVendedor.length ? '<div class="alert ok">Todo cuadra. Puedes cerrar la rendición.</div>' : ''}
+    <div id="avc"></div>
     ${r.porVendedor.length ? '' : '<h3>Por vendedor</h3>'}
     ${r.porVendedor.length ? `<div class="row" style="margin:18px 0 8px"><h3 class="grow" style="margin:0">Por vendedor</h3>
       <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
@@ -2549,6 +2550,18 @@ async function vResumen(m) {
       ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
         : '<button class="btn ghost" id="pv">Ver cómo quedaría</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
     <div id="lnk"></div>`);
+  // Avance de vendedores (v78): detallado, adelantos y última vez que el servidor recibió algo de cada uno
+  api('getAvance', S.sess.token, S.fecha).then(av => {
+    const box = $('#avc', m); if (!box || !document.body.contains(m) || !av.vendedores.length) return;
+    const ahora = Date.parse(new Date().toLocaleString('sv-SE', { timeZone: 'America/Santiago' }).replace(' ', 'T')), esHoy = S.fecha === hoyCL();
+    const cuando = u => { if (!u) return ['Sin actividad', 'mut']; const min = Math.round((ahora - Date.parse(u.replace(' ', 'T'))) / 60000), hh = u.slice(11, 16);
+      return [(esHoy ? (min < 2 ? 'hace un momento' : min < 60 ? 'hace ' + min + ' min' : 'hace ' + Math.floor(min / 60) + ' h') + ' · ' : '') + hh, esHoy && min > 120 ? 'warn' : 'ok']; };
+    box.innerHTML = `<h3 style="margin:18px 0 8px">Avance de vendedores</h3><p class="muted" style="margin:0 0 8px">Lo que cada vendedor ya envió. Si anotó sin internet, aparece cuando recupere la señal.</p>
+      <div class="avs">${av.vendedores.map(v => { const a = v.adelantos, ad = a.esperando + a.aplicado + a.revisar, [t, c] = cuando(v.ultima), p = v.documentos ? Math.round(v.detallados / v.documentos * 100) : 0;
+        return `<div class="av"><div class="row"><b class="grow">${esc(v.nombre)}</b><span class="chip ${c === 'warn' ? 'warn' : c === 'ok' ? 'ok' : ''}" title="Última vez que el servidor recibió algo de este vendedor">${esc(t)}</span></div>
+          <div class="meter" style="margin:8px 0 4px"><div class="bar"><i style="width:${p}%"></i></div><b>${v.documentos ? v.detallados + ' de ' + v.documentos : 'Sin folios'}</b></div>
+          <div class="muted">${ad ? `Adelantos: ${[a.esperando ? a.esperando + ' esperando Mi DTE' : '', a.aplicado ? a.aplicado + ' aplicados' : '', a.revisar ? a.revisar + ' por revisar' : ''].filter(Boolean).join(' · ')}` : 'Sin folios adelantados'}${v.cobranza || v.gastos || v.depositos ? ` · ${[v.cobranza ? v.cobranza + ' cobranza' : '', v.gastos ? v.gastos + ' gastos' : '', v.depositos ? v.depositos + ' depósito' + (v.depositos > 1 ? 's' : '') : ''].filter(Boolean).join(', ')}` : ''}</div></div>`; }).join('')}</div>`;
+  }).catch(() => {});
   $$('[data-detallar]', m).forEach(b => b.onclick = e => { e.stopPropagation(); S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
   $$('[data-ver]', m).forEach(c => {
     c.onclick = () => abrirVendedor(c.dataset.ver);
