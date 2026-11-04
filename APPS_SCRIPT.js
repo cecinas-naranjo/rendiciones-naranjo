@@ -526,8 +526,6 @@ function buscarUsuario_(ident) {
 function claveNuevaValida_(clave, u, actual) {
   clave = String(clave || '');
   if (clave.length < CLAVE_MIN) throw new Error('La clave debe tener al menos ' + CLAVE_MIN + ' caracteres.');
-  if (/^(.)\1+$/.test(clave) || /^(1234|4321|0123|2580|1212|2020|2026|123456|654321|abcdef|abc123|password|clave123)/i.test(clave)) throw new Error('Esa clave es muy fácil de adivinar. Elige otra.');
-  if (u && (rutNorm_(u.rut) === clave.toUpperCase().replace(/[^0-9K]/g, '') && rutNorm_(u.rut))) throw new Error('La clave no puede ser tu RUT.');
   if (actual && String(actual) === clave) throw new Error('La clave nueva debe ser distinta de la actual.');
 }
 /** Comprueba la clave de una persona con control de intentos. Devuelve el usuario o lanza el error. */

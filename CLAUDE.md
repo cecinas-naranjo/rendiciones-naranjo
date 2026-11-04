@@ -395,4 +395,4 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - No hay anulación para vendedores de otro vendedor; la oficina puede registrarla a nombre del vendedor elegido.
 
 ## v73 — Clave de 4 dígitos
-- `CLAVE_MIN` = 4 (servidor) y el cliente pide mínimo 4 caracteres. Se rechazan repetidas (1111) y fáciles (1234, 4321, 0123, 2580, 1212, 2020, 2026…). El bloqueo de 5 intentos/15 min sigue protegiendo. Requiere pegar APPS_SCRIPT.js COMPLETO.
+- `CLAVE_MIN` = 4 (servidor) y el cliente pide mínimo 4 caracteres. No se rechaza ninguna clave por ser fácil (1111, 1234, el RUT…): solo el largo mínimo y que sea distinta de la actual. El bloqueo de 5 intentos/15 min sigue protegiendo. Requiere pegar APPS_SCRIPT.js COMPLETO.
