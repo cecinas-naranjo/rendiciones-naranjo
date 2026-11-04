@@ -17,7 +17,7 @@ const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate
 const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const FL = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', DEP_EFECTIVO: 'Depósito en efectivo', CHEQUE: 'Cheque', CREDITO: 'Crédito', NOTA_CREDITO: 'Nota de crédito' };
 const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 'Congelados', LACTEOS: 'Lácteos', LAMINADOS: 'Laminados, quesos y verduras', REVISAR: 'Por clasificar' };
-const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor' };
+const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor', GERENCIA: 'Gerencia' };
 
 const IC = {
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
@@ -478,6 +478,7 @@ const TABS = {
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
+TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['inventario', 'Inventario', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques'], 'cash'],
@@ -487,7 +488,7 @@ const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 /* ===== VER COMO (solo ADMIN): saltar entre usuarios para ver cómo ven la app los demás ===== */
 try { S_ADMIN = JSON.parse(localStorage.getItem('rn_admin') || 'null'); } catch (e) { S_ADMIN = null; }
 var S_ADMIN;
-const ROL_TXT = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Encargada de rendición', VENDEDOR: 'Vendedores', BODEGA: 'Bodega' };
+const ROL_TXT = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Encargada de rendición', GERENCIA: 'Gerencia', VENDEDOR: 'Vendedores', BODEGA: 'Bodega' };
 function montarProbar() {
   const v = $('#probar'); if (v) v.remove();
   if (!S.sess || !(S_ADMIN || S.sess.rol === 'ADMIN')) return;
@@ -503,7 +504,7 @@ async function abrirProbar() {
   document.body.appendChild(ov);
   $('#pcx', ov).onclick = () => cerrarHoja(ov); ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
   let us; try { us = await api('listarUsuariosAdmin', adm.token); } catch (e) { cerrarHoja(ov); return; }
-  const orden = ['ADMIN', 'SUPERVISOR', 'RENDICION', 'VENDEDOR', 'BODEGA'];
+  const orden = ['ADMIN', 'SUPERVISOR', 'RENDICION', 'GERENCIA', 'VENDEDOR', 'BODEGA'];
   us = us.filter(u => u.activo).sort((x, y) => orden.indexOf(x.rol) - orden.indexOf(y.rol) || x.nombre.localeCompare(y.nombre));
   $('#pul', ov).innerHTML = orden.map(r => { const g = us.filter(u => u.rol === r); return g.length ? `<div class="sg" style="margin:10px 0 4px;color:var(--ink-2)">${ROL_TXT[r]}</div>` +
     g.map(u => `<button class="urow ${S.sess.usuario === u.usuario ? 'on' : ''}" data-u="${esc(u.usuario)}"><span class="grow"><b>${esc(u.nombre)}</b><small>${esc(u.usuario)}${u.terminales ? ' · ' + esc(u.terminales) : ''}</small></span>${S.sess.usuario === u.usuario ? '<span class="chip ok">Actual</span>' : '<span class="go">›</span>'}</button>`).join('') : ''; }).join('');
@@ -630,6 +631,7 @@ async function iniciar() {
   const abajo = !unica && (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA' || tabs.length <= 4);
   const grupos = !unica && !abajo ? GRUPOS.map(g => [g[0], g[1], g[2].filter(t => tabs.some(x => x[0] === t)), g[3]]).filter(g => g[2].length) : null;
   S.grupos = grupos; S.ultimoDeGrupo = S.ultimoDeGrupo || {};
+  document.body.classList.toggle('solo-leer', S.sess.rol === 'GERENCIA');
   document.body.classList.toggle('has-bottom', abajo || !!grupos);
   document.body.classList.toggle('oficina', !!grupos);
   const dia = `<div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha"><button id="next" aria-label="Día siguiente">›</button></div>`;
@@ -1726,7 +1728,7 @@ async function vUsuarios(m) {
     const ov = document.createElement('div'); ov.className = 'ov'; const nuevo = !u; u = u || { nombre: '', rol: 'VENDEDOR', rut: '', correo: '', terminales: '', activo: true, usuario: '' };
     ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div><div class="body"><div style="font-weight:700;font-size:19px">${nuevo ? 'Nuevo usuario' : 'Editar a ' + esc(u.nombre)}</div>
       <label class="f" for="u1">Nombre</label><input class="in" id="u1" value="${esc(u.nombre)}" autocomplete="off">
-      <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
+      <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'GERENCIA', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
       <label class="f" for="u3" style="margin-top:10px">RUT</label><input class="in" id="u3" value="${esc(u.rut)}" placeholder="12.345.678-5" autocomplete="off">
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
       <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
@@ -2642,7 +2644,7 @@ async function vDepositos(m) {
       <button class="btn cu block" id="dg" style="margin-top:6px">Registrar depósito</button></div>`}
     <h3>Depósitos registrados</h3>
     ${r.depositos.length ? r.depositos.map(d => `<div class="card" style="margin-bottom:8px"><div class="row">
-      <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}
+      <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}${d.por ? `<div class="muted">Registró ${esc(d.por)}</div>` : ''}
         ${d.folios.length || d.cobranzas.length ? `<div class="muted">Registrado con ${d.folios.length + d.cobranzas.length} folio(s) asociados</div>` : ''}
         <div style="margin-top:6px">${chipsAdj(d.adjuntos, 'DEPOSITOS', d.id, !cerrada || !esV)}</div></div>
       <div class="big" style="font-size:22px">${clp(d.monto)}</div>${cerrada ? '' : `<button class="x" style="width:42px" data-del="${d.id}" aria-label="Borrar depósito">×</button>`}</div></div>`).join('')
@@ -2796,11 +2798,12 @@ async function vMov(m, tabla) {
     <div id="ml" style="margin-top:16px"></div>`);
   function lista(rows) {
     const cols = campos.map(c => c[0]);
-    $('#ml').innerHTML = rows.length ? `<div class="tw"><table><thead><tr>${campos.map(c => `<th class="${c[2] === 'n' ? 'r' : ''}">${c[1]}</th>`).join('')}${conAdj ? '<th>Respaldo</th>' : ''}<th></th></tr></thead><tbody>
+    $('#ml').innerHTML = rows.length ? `<div class="tw"><table><thead><tr>${campos.map(c => `<th class="${c[2] === 'n' ? 'r' : ''}">${c[1]}</th>`).join('')}${conAdj ? '<th>Respaldo</th>' : ''}<th>Registró</th><th></th></tr></thead><tbody>
       ${rows.map(r => `<tr>${cols.map(k => `<td class="${k === 'monto' ? 'r' : ''}">${k === 'monto' ? clp(r[k]) : k === 'forma' ? (FL[r[k]] || esc(r[k])) : esc(r[k])}</td>`).join('')}
         ${conAdj ? `<td>${chipsAdj(r.adjuntos, tabla, r.id, true)}</td>` : ''}
+        <td class="muted">${esc(r.por || '')}</td>
         <td><button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></td></tr>`).join('')}
-      </tbody><tfoot><tr>${cols.map(k => `<td class="r">${k === 'monto' ? clp(rows.reduce((a, r) => a + r.monto, 0)) : ''}</td>`).join('')}${conAdj ? '<td></td>' : ''}<td></td></tr></tfoot></table></div>`
+      </tbody><tfoot><tr>${cols.map(k => `<td class="r">${k === 'monto' ? clp(rows.reduce((a, r) => a + r.monto, 0)) : ''}</td>`).join('')}${conAdj ? '<td></td>' : ''}<td></td><td></td></tr></tfoot></table></div>`
       : '<div class="empty">Sin registros para este día.</div>';
   }
   lista(rows);

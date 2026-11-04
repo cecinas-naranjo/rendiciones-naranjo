@@ -191,7 +191,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## Acceso y claves (hoja USUARIOS)
 - Columnas nuevas: `rut, correo, clave_hash, sal, cambiar_clave, intentos, bloqueado_hasta`. La clave se guarda con sal y SHA-256 repetido 1000 veces; nunca en texto. La columna `pin` queda vacía.
 - Se entra con RUT o correo (también acepta el código interno) + clave. No hay lista de usuarios en el login (`listaUsuarios` ya no existe). El rol lo asigna solo ADMIN; la persona no lo elige.
-- Clave temporal (usuario nuevo o restablecida): `login` devuelve `{cambiarClave:true}` y la app pide crear la clave personal (`cambiarClaveInicial`, mínimo 4 caracteres, rechaza claves triviales). Restablecer o desactivar cierra todas sus sesiones (`cerrarSesionesDe_`). "Clave" en la cabecera → `cambiarMiClave`.
+- Clave temporal (usuario nuevo o restablecida): `login` devuelve `{cambiarClave:true}` y la app pide crear la clave personal (`cambiarClaveInicial`, mínimo 4 caracteres,). Restablecer o desactivar cierra todas sus sesiones (`cerrarSesionesDe_`). "Clave" en la cabecera → `cambiarMiClave`.
 - 5 intentos fallidos bloquean la cuenta 15 minutos; además hay un tope por identificador en CacheService.
 - Pantalla Usuarios (solo ADMIN): crear/editar (nombre, rol, RUT con dígito verificador, correo, terminales si es vendedor, activo), restablecer clave (muestra la temporal una vez). No permite quitarse el rol de ADMIN ni dejar el sistema sin administrador activo. APIs `listarUsuariosAdmin`, `guardarUsuario`, `restablecerClave`.
 - Migración: `migrarUsuarios()` (la llama `setup`) da una clave temporal a quien no tenga y las escribe en el registro de ejecución del editor de Apps Script (Logger). Mientras NADIE tenga clave todavía, el login acepta el PIN antiguo (solo para no dejar la app bloqueada antes de migrar).
@@ -402,3 +402,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v75 — Limpiar solo la lista de créditos (requiere pegar APPS_SCRIPT.js COMPLETO)
 - Desde el editor (no está en `API`): `vistaPreviaLimpiezaCreditos()` cuenta; `limpiarCreditos()` (CONFIRMO = true y luego false) borra CREDITOS_CARGA y los cheques `P|…` de CHEQUES_ESTADO, y suelta la planilla única (`PLANILLA_CREDITOS_ID`; el archivo viejo queda en Drive). No toca ventas, pagos, cobranza, clientes ni usuarios. Motivo: `cargarCreditos` actualiza por folio pero no borra los créditos de cargas anteriores que ya no vienen en la planilla, y las cargas de prueba dejaban deudas que no calzaban. Después se vuelve a subir la planilla en Importar Mi DTE.
+
+## v76 — Rol GERENCIA (solo lectura) y "Registró" visible (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Rol `GERENCIA` (se crea en Usuarios; en `ROLES_VALIDOS`). Ve: Indicadores de gestión (`getKpis` ahora ADMIN + GERENCIA), Resumen del día, Saldos de clientes, Cheques en cartera, Inventario, Historial (más `getInspeccion`). Toda otra función lo rechaza ("No tienes permiso"), así que no puede escribir. Cliente: `TABS.GERENCIA` y `body.solo-leer` (CSS al final de style.css) oculta botones de escritura (cerrar, reabrir, detallar, marcar cheques, guardar inventario, planilla).
+- "Registró": `listarMov` devuelve `por` (nombre de `registrado_por`) y las tablas de Cobranza/Gastos/Proveedores/Consumo tienen columna "Registró"; los depósitos muestran "Registró <nombre>". Despacho sigue sin guardar quién anota.
+- `limpiarTodo_` también suelta `PLANILLA_CREDITOS_ID`/`PLANILLA_SUCIA`.
+- Nota Acceso: desde v73 no se rechazan claves triviales (solo largo mínimo 4 y distinta de la actual).

@@ -529,7 +529,7 @@ const SESION_DIAS = 30; // la sesión dura 30 días en el celular: nadie tiene q
    Cada persona entra con su RUT (o correo) y su clave personal; el rol lo asigna la administración. La clave se guarda con sal y
    SHA-256 repetido (nunca en texto). Una clave nueva o restablecida es temporal: la persona debe cambiarla al entrar.
    5 intentos fallidos bloquean la cuenta 15 minutos. */
-const CLAVE_MIN = 4, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR'];
+const CLAVE_MIN = 4, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR','GERENCIA'];
 function hashClave_(clave, sal) {
   const D = Utilities.DigestAlgorithm.SHA_256;
   let h = Utilities.computeDigest(D, String(sal) + '|' + String(clave), Utilities.Charset.UTF_8);
@@ -1402,7 +1402,8 @@ function listarMov(token, tabla, fecha) {
   const u = auth_(token, MOV_ROLES[tabla]);
   let rows = byFecha_(tabla, fecha);
   if (u.rol === 'VENDEDOR') rows = rows.filter(r => r.registrado_por === u.usuario);
-  return rows.map(r => { delete r._row; if (r.monto !== undefined) r.monto = num_(r.monto); r.adjuntos = adjuntosDe_(r); return r; });
+  const nom = {}; read_('USUARIOS').forEach(x => nom[x.usuario] = x.nombre);
+  return rows.map(r => { delete r._row; if (r.monto !== undefined) r.monto = num_(r.monto); r.adjuntos = adjuntosDe_(r); r.por = nom[r.registrado_por] || r.registrado_por || ''; return r; });
 }
 
 function guardarMov(token, tabla, fecha, obj) {
@@ -1633,7 +1634,7 @@ function inventarioDia_(fecha) {
 }
 
 function getInventario(token, fecha) {
-  auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
+  auth_(token, ['BODEGA','RENDICION','SUPERVISOR','GERENCIA']);
   return conCache_('inv|' + fecha, ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(fecha));
 }
 
@@ -1868,7 +1869,7 @@ function cargarSaldoDesdePlanilla(idPlanilla, nombreHoja, fechaInicio) {
 // Todo pago nuevo lleva folio y se descuenta de esa factura (el folio es obligatorio). Solo los registros antiguos sin folio, o el sobrante, se aplican a las facturas más antiguas del cliente.
 // Lo que no se puede asociar a ninguna factura queda como "abono sin factura" del cliente.
 function getSaldosClientes(token) {
-  auth_(token, ['RENDICION','SUPERVISOR']);
+  auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
   return conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_());
 }
 function saldosClientes_() {
@@ -2304,7 +2305,7 @@ function chequesTodos_() {
   return out;
 }
 function listarCheques(token) {
-  auth_(token, ['RENDICION','SUPERVISOR']);
+  auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
   return conCache_('cheques', ['PAGOS', 'COBRANZA', 'CREDITOS_CARGA', 'DOCUMENTOS', 'CLIENTES', 'CHEQUES_ESTADO', 'USUARIOS'], () => {
     const hoy = hoy_(), desde = sumarDias_(hoy, -45);
     // los cobrados se muestran solo los últimos 45 días
@@ -2354,9 +2355,10 @@ function efectivoParaDepositar(token, fecha, vendedor) {
   const efV = folios.reduce((a, x) => a + x.efectivo, 0), efC = cobranzas.reduce((a, x) => a + x.efectivo, 0), depositado = deps.reduce((a, d) => a + num_(d.monto), 0);
   return { vendedor: v, estadoDia: estadoDia_(fecha), folios, cobranzas,
     resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, disponible: efV + efC - gastos, depositado, saldo: efV + efC - gastos - depositado },
-    depositos: deps.map(d => ({ id: d.id, banco: d.banco, monto: num_(d.monto), referencia: d.referencia,
+    depositos: deps.map(d => ({ id: d.id, por: nomUsuario_(d.registrado_por), banco: d.banco, monto: num_(d.monto), referencia: d.referencia,
       folios: lista_(d.folios), cobranzas: lista_(d.cobranzas), incluido: incluidoDep_(d, folios, cobranzas), adjuntos: adjuntosDe_(d) })) };
 }
+function nomUsuario_(u) { const x = read_('USUARIOS').find(y => y.usuario === u); return x ? x.nombre : (u || ''); }
 function incluidoDep_(d, folios, cobranzas) {
   const f = lista_(d.folios), c = lista_(d.cobranzas);
   return folios.filter(x => f.indexOf(x.key) >= 0).reduce((a, x) => a + x.efectivo, 0) +
@@ -2574,7 +2576,7 @@ function resumen_(fecha) {
 }
 
 function getResumen(token, fecha) {
-  auth_(token, ['RENDICION','SUPERVISOR']);
+  auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
   return resumen_(fecha);
 }
 
@@ -2583,7 +2585,7 @@ function getResumen(token, fecha) {
  * Mismas cuentas que la hoja del vendedor en el archivo de rendición. vendedor = '' → todos los que tuvieron movimiento.
  */
 function getInspeccion(token, fecha, vendedor) {
-  auth_(token, ['RENDICION','SUPERVISOR']);
+  auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
   cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO', 'VENTAS_DETALLE']);
   const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
   const unidadP = {}; read_('PRODUCTOS').forEach(p => unidadP[codeKey_(p.codigo)] = p.unidad);
@@ -2957,7 +2959,7 @@ function sub_(folder, name) {
 }
 
 function historial(token) {
-  auth_(token, ['RENDICION','SUPERVISOR']);
+  auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
   return read_('RENDICIONES').map(x => ({ fecha: x.fecha, estado: x.estado, cerrado_por: x.cerrado_por, url: x.archivo_url }))
     .sort((a, b) => a.fecha < b.fecha ? 1 : -1).slice(0, 60);
 }
@@ -2969,7 +2971,7 @@ const diasEntre_ = (a, b) => Math.round((new Date(String(b) + 'T12:00:00') - new
 const TABLAS_KPI_ = ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'DESCUENTOS', 'VENTAS_DETALLE', 'DESPACHO', 'DEVOLUCIONES', 'PRODUCTOS', 'USUARIOS', 'CREDITOS_CARGA',
   'CLIENTES', 'CHEQUES_ESTADO', 'RENDICIONES', 'GASTOS', 'CONTEO_EFECTIVO', 'DEPOSITOS'];
 function getKpis(token, desde, hasta) {
-  auth_(token, ['ADMIN']);
+  auth_(token, ['ADMIN','GERENCIA']);
   const iso = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
   hasta = iso(hasta) ? String(hasta) : hoy_();
   desde = iso(desde) ? String(desde) : sumarDias_(hasta, -29);
