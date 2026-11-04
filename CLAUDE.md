@@ -425,3 +425,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v80 — Tamaño de letra (solo frontend)
 - Toda la UI está en px, así que el tamaño se cambia con `zoom` en `<html>` (`LETRAS`: Normal 1, Grande 1.15, Muy grande 1.3; `aplicarLetra`/`cambiarLetra`, `localStorage rn_letra`). En tablets (táctil y lado menor ≥ 600 px) el valor por defecto es "Grande"; en PC y celular, "Normal". Botón "Aa" en la cabecera de oficina y "Tamaño de letra" en el menú ⋯ del vendedor/bodeguero; cada toque cambia al siguiente tamaño.
+
+## v81 — Trazabilidad de folios adelantados (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Problema: de 23 folios anotados solo ~18 se aplicaban y los demás quedaban "Esperando" sin explicación. Causas cubiertas: folio de Mi DTE con ceros o ".0" (ahora `keyNorm_` compara sin ceros), tipo equivocado (Boleta/Factura: avisa "Mi DTE lo trae como Factura"), monto/vendedor distinto (ya existía), y folio que nunca llegó.
+- `cruzarAdelantos_`: si se importó Mi DTE de ese día DESPUÉS de anotarlo y el folio no aparece → REVISAR con el motivo; si aún no hay importación posterior → ESPERANDO. Devuelve `{aplicados, revisar, sinLlegar}`. Nueva API `reintentarAdelantos(token)` (botón "Volver a cruzar con Mi DTE").
+- `listarAdelantos` devuelve `anotado`, `resuelto`, `llego`, `docCliente`, `docTotal`: cada folio muestra su línea ① Anotado hh:mm · ② Llegó/Aún no llega de Mi DTE · ③ Detallado ✓/No se pudo/Pendiente. Cabecera "Anotados: N · detallados · esperando · para revisar" (suma siempre N) y la tarjeta de Mis folios usa lo mismo.

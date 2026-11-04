@@ -258,7 +258,7 @@ function setup() {
 const API = {
   getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -900,25 +900,42 @@ function aplicarAdelanto_(a, d) {
   d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d);
 }
 /** Compara los adelantos pendientes con los documentos ya importados y aplica los que calzan. Se llama dentro de un lock. */
+/** Clave del folio sin ceros a la izquierda ni ".0" (Excel a veces trae 00123 o 123.0): así el folio anotado y el de Mi DTE calzan igual. */
+function keyNorm_(k) { const m = String(k || '').match(/^([A-Z]*)-(.*)$/); if (!m) return String(k || ''); return m[1] + '-' + m[2].trim().replace(/\.0+$/, '').replace(/^0+(?=\d)/, ''); }
+/** Cruza los folios adelantados con los documentos de Mi DTE. Cada adelanto queda con un estado y un motivo claro:
+    APLICADO (el folio quedó detallado), REVISAR (llegó pero algo no calza, o ya hay importación de ese día y no apareció), ESPERANDO (aún no hay Mi DTE de ese día). */
 function cruzarAdelantos_() {
   asegurarAdelantos_();
   const pend = read_('ADELANTOS').filter(a => a.estado === 'ESPERANDO' || a.estado === 'REVISAR');
-  if (!pend.length) return { aplicados: 0, revisar: 0 };
-  const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
-  let aplicados = 0, revisar = 0;
+  if (!pend.length) return { aplicados: 0, revisar: 0, sinLlegar: 0 };
+  const docs = {}, porFolio = {}, fechasConDocs = {};
+  read_('DOCUMENTOS').forEach(d => { docs[keyNorm_(d.folio_key)] = d; const n = keyNorm_(d.folio_key).split('-').slice(1).join('-'); (porFolio[n] = porFolio[n] || []).push(d); if (String(d.importado || '') > (fechasConDocs[d.fecha] || '')) fechasConDocs[d.fecha] = String(d.importado || ' '); });
+  const desc = read_('DESCUENTOS');
+  let aplicados = 0, revisar = 0, sinLlegar = 0;
   pend.forEach(a => {
-    const d = docs[a.folio_key]; if (!d) return;
+    let d = docs[keyNorm_(a.folio_key)];
     let estado, nota = '';
-    if (d.estado === 'DETALLADO') { estado = 'APLICADO'; nota = 'El folio ya estaba detallado.'; }
+    if (!d) {
+      const otro = (porFolio[String(a.folio).replace(/^0+(?=\d)/, '')] || []).find(x => x.vendedor === a.vendedor && Math.round(num_(x.total)) === Math.round(num_(a.monto)));
+      if (otro) { estado = 'REVISAR'; nota = 'En Mi DTE ese folio es ' + (/bol/i.test(otro.tipo) ? 'una Boleta' : 'una Factura') + ' y tú anotaste ' + (/bol/i.test(a.tipo) ? 'Boleta' : 'Factura') + '. Quítalo y anótalo con el tipo correcto.'; }
+      else if (fechasConDocs[a.fecha] && String(a.registrado || '') <= fechasConDocs[a.fecha]) { estado = 'REVISAR'; nota = 'Se importó Mi DTE después de que lo anotaste y el folio ' + a.folio + ' no aparece. Revisa el número o espera la próxima carga.'; sinLlegar++; }
+      else { estado = 'ESPERANDO'; nota = ''; }
+    }
+    else if (d.estado === 'DETALLADO') { estado = 'APLICADO'; nota = 'El folio ya estaba detallado.'; }
     else if (d.vendedor !== a.vendedor) { estado = 'REVISAR'; nota = 'Mi DTE lo asignó a otro terminal/vendedor.'; }
     else if (Math.round(num_(d.total)) !== Math.round(num_(a.monto))) { estado = 'REVISAR'; nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + '.'; }
-    else if (read_('DESCUENTOS').some(x => x.folio_key === d.folio_key && (x.estado === 'PENDIENTE' || x.estado === 'APROBADO'))) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
+    else if (desc.some(x => x.folio_key === d.folio_key && (x.estado === 'PENDIENTE' || x.estado === 'APROBADO'))) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
     else if (anulacionesDe_(d.fecha).some(x => x.folio_key === d.folio_key && x.estado !== 'RECHAZADA')) { estado = 'REVISAR'; nota = 'Tiene una anulación o nota de crédito: detállalo normal.'; }
     else { aplicarAdelanto_(a, d); estado = 'APLICADO'; aplicados++; }
     if (estado === 'REVISAR') revisar++;
     if (a.estado !== estado || a.nota !== nota) { a.estado = estado; a.nota = nota; a.resuelto = now_(); updateRow_('ADELANTOS', a._row, a); }
   });
-  return { aplicados, revisar };
+  return { aplicados, revisar, sinLlegar };
+}
+/** Vuelve a cruzar los adelantos a mano (por si Mi DTE se cargó antes o se corrigió algo). */
+function reintentarAdelantos(token) {
+  auth_(token);
+  return withLock_(() => cruzarAdelantos_());
 }
 /** El vendedor (o la oficina a nombre de uno) anota un folio por adelantado. tipo: 'Factura' | 'Boleta'. */
 function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2) {
@@ -979,8 +996,11 @@ function listarAdelantos(token, fecha, vendedor) {
   fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
   asegurarAdelantos_();
   const v = u.rol === 'VENDEDOR' ? u.usuario : String(vendedor || '');
+  const docs = {}; read_('DOCUMENTOS').forEach(d => docs[keyNorm_(d.folio_key)] = d);
   return read_('ADELANTOS').filter(a => a.fecha === fecha && (!v || a.vendedor === v))
-    .map(a => ({ id: a.id, tipo: /bol/i.test(a.tipo) ? 'Boleta' : 'Factura', folio: a.folio, monto: num_(a.monto), forma: a.forma, banco: a.banco, estado: a.estado, nota: a.nota, vendedor: a.vendedor }))
+    .map(a => { const d = docs[keyNorm_(a.folio_key)];
+      return { id: a.id, tipo: /bol/i.test(a.tipo) ? 'Boleta' : 'Factura', folio: a.folio, monto: num_(a.monto), forma: a.forma, banco: a.banco, estado: a.estado, nota: a.nota, vendedor: a.vendedor,
+        anotado: a.registrado, resuelto: a.resuelto, llego: !!d, docCliente: d ? d.cliente : '', docTotal: d ? num_(d.total) : 0, docEstado: d ? d.estado : '' }; })
     .reverse();
 }
 function borrarAdelanto(token, id) {

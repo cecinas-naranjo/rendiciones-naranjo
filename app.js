@@ -862,13 +862,21 @@ function abrirAdelanto(vend, alCerrar) {
   $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; try { localStorage.setItem('rn_adl_tipo', tipo); } catch (x) {} $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); } };
   const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto' };
   const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
+  const hh = t => { const m = String(t || '').match(/(\d{2}:\d{2})/); return m ? m[1] : ''; };
   async function lista() {
     let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vend); } catch (e) {}
-    $('#adL', ov).innerHTML = ls.length ? `<div class="muted" style="font-weight:700;margin-bottom:4px">Anotados hoy</div>` + ls.map(x => { const [t, c] = x.sinEnviar ? ['Guardado en el teléfono · se envía al volver internet', 'b'] : (ESTADO[x.estado] || [x.estado, '']); return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
+    const n = { A: 0, E: 0, R: 0 }; ls.forEach(x => { if (!x.sinEnviar) n[x.estado === 'APLICADO' ? 'A' : x.estado === 'REVISAR' ? 'R' : 'E']++; });
+    const sinE = ls.filter(x => x.sinEnviar).length;
+    const cab = ls.length ? `<div class="muted" style="font-weight:700;margin-bottom:4px">Anotados hoy: ${ls.length} · <span class="ok">${n.A} detallados</span>${n.E ? ' · ' + n.E + ' esperando Mi DTE' : ''}${n.R ? ' · <span class="bad">' + n.R + ' para revisar</span>' : ''}${sinE ? ' · ' + sinE + ' sin enviar' : ''}</div>
+      ${n.E || n.R ? '<button class="btn ghost sm" id="adRe" type="button" style="margin-bottom:6px">Volver a cruzar con Mi DTE</button>' : ''}` : '';
+    $('#adL', ov).innerHTML = cab + ls.map(x => { const [t, c] = x.sinEnviar ? ['Guardado en el teléfono · se envía al volver internet', 'b'] : (ESTADO[x.estado] || [x.estado, '']);
+      const pasos = x.sinEnviar ? '' : `<div class="muted" style="font-size:.85em">① Anotado${hh(x.anotado) ? ' ' + hh(x.anotado) : ''} · ${x.llego ? '② Llegó en Mi DTE' + (x.docCliente ? ' (' + esc(x.docCliente) + ', ' + clp(x.docTotal) + ')' : '') : '② Aún no llega de Mi DTE'} · ${x.estado === 'APLICADO' ? '③ Detallado ✓' + (hh(x.resuelto) ? ' ' + hh(x.resuelto) : '') : x.estado === 'REVISAR' ? '③ No se pudo detallar' : '③ Pendiente'}</div>`;
+      return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
       <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)} · ${esc(FTXT[x.forma] || x.forma)}${x.forma === 'TRANSFERENCIA' && x.banco ? ' ' + esc(x.banco) : ''}
-      <div class="dvst ${c}">${t}</div>${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}</span>${x.estado === 'APLICADO' ? '' : '<button class="btn ghost sm" data-del type="button">Quitar</button>'}</div>`; }).join('') : '';
+      <div class="dvst ${c}">${t}</div>${pasos}${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}</span>${x.estado === 'APLICADO' ? '' : '<button class="btn ghost sm" data-del type="button">Quitar</button>'}</div>`; }).join('');
   }
-  $('#adL', ov).onclick = async e => { const b = e.target.closest('[data-del]'); if (!b) return; const id = b.closest('.dfila').dataset.id; b.disabled = true;
+  $('#adL', ov).onclick = async e => { const re = e.target.closest('#adRe'); if (re) { re.disabled = true; try { const r = await api('reintentarAdelantos', S.sess.token); cambios = true; toast(r.aplicados ? r.aplicados + ' folio' + (r.aplicados > 1 ? 's' : '') + ' detallado' + (r.aplicados > 1 ? 's' : '') : 'Nada nuevo para cruzar.'); await lista(); } catch (x) { toast(x.message || 'No se pudo', true); } finally { re.disabled = false; } return; }
+    const b = e.target.closest('[data-del]'); if (!b) return; const id = b.closest('.dfila').dataset.id; b.disabled = true;
     try { await api('borrarAdelanto', S.sess.token, id); cambios = true; await lista(); } finally { b.disabled = false; } };
   $('#adS', ov).onclick = async () => {
     const f = $('#adF', ov).value.trim(), m = total();
@@ -1003,8 +1011,8 @@ async function vFolios(m) {
     if (!vAdl || !document.body.contains(m)) { $('#adl', m).innerHTML = ''; return; }
     let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vAdl); } catch (e) {}
     if (!document.body.contains(m)) return;
-    const esp = ls.filter(x => x.estado === 'ESPERANDO').length, rev = ls.filter(x => x.estado === 'REVISAR').length;
-    $('#adl', m).innerHTML = `<div class="card adl"><span class="ic">${icon('receipt')}</span><div class="grow"><b>Anotar folios por adelantado</b><div class="muted">${esp || rev ? [esp ? esp + ' esperando Mi DTE' : '', rev ? '<span class="bad">' + rev + ' para revisar</span>' : ''].filter(Boolean).join(' · ') : 'Anota el folio, el monto y cómo te pagó; se detalla solo cuando llegue de Mi DTE.'}</div></div>
+    const esp = ls.filter(x => x.estado === 'ESPERANDO').length, rev = ls.filter(x => x.estado === 'REVISAR').length, apl = ls.filter(x => x.estado === 'APLICADO').length;
+    $('#adl', m).innerHTML = `<div class="card adl"><span class="ic">${icon('receipt')}</span><div class="grow"><b>Anotar folios por adelantado</b><div class="muted">${esp || rev || apl ? [ls.length + ' anotados', apl ? apl + ' detallados' : '', esp ? esp + ' esperando Mi DTE' : '', rev ? '<span class="bad">' + rev + ' para revisar</span>' : ''].filter(Boolean).join(' · ') : 'Anota el folio, el monto y cómo te pagó; se detalla solo cuando llegue de Mi DTE.'}</div></div>
       <button class="btn ${esp || rev ? 'ghost' : 'cu'} sm" id="adlb" type="button">Anotar folio</button></div>`;
     $('#adlb', m).onclick = () => abrirAdelanto(vAdl, () => { olvidarCache(false); ir('folios', true); });
   }
@@ -2410,7 +2418,7 @@ async function vImportar(m) {
           ? `<b>La importación no terminó bien.</b> ${esc(errores.join(' · '))}<br>Lo que sí se guardó queda; puedes volver a subir los archivos y solo se agrega lo que falta.`
           : nuevo || cor ? `<b>Listo, se cargó.</b> ${sum(d, 'n')} documentos nuevos y ${sum(k, 'n')} líneas de kilos${rep ? `. ${rep} documentos ya estaban y no se tocaron` : ''}${cor ? `. ${cor} documentos ya cargados cambiaron de día` : ''}. Ya puedes verlos en cada día.`
           : `<b>No había nada nuevo.</b> Todo lo de estos archivos ya estaba cargado${rep ? ' (' + rep + ' documentos)' : ''}; no cambié nada.`;
-        if (!errores.length && (ad || adr)) caja.innerHTML += `<br>${ad ? `<b>${ad}</b> folio${ad > 1 ? 's' : ''} ya quedó${ad > 1 ? 'aron' : ''} detallado${ad > 1 ? 's' : ''} con lo que anotaron los vendedores. ` : ''}${adr ? `<b>${adr}</b> no calzó${adr > 1 ? 'aron' : ''} (monto o vendedor distinto): quedan por detallar normal y el vendedor ve el motivo.` : ''}`;
+        if (!errores.length && (ad || adr)) caja.innerHTML += `<br>${ad ? `<b>${ad}</b> folio${ad > 1 ? 's' : ''} ya quedó${ad > 1 ? 'aron' : ''} detallado${ad > 1 ? 's' : ''} con lo que anotaron los vendedores. ` : ''}${adr ? `<b>${adr}</b> no calzó${adr > 1 ? 'aron' : ''} (no aparece el folio, tipo, monto o vendedor distinto): el vendedor ve el motivo de cada uno en Anotar folio.` : ''}`;
         pp.insertAdjacentElement('afterend', caja); }
       if (f.length === 1 && f[0] !== S.fecha) { S.fecha = f[0]; $('#fecha').value = S.fecha; toast('Mostrando el ' + fechaLarga(S.fecha)); }
       if (sinT.size) toast('Hay terminales sin vendedor: ' + [...sinT].join(', ') + '. Asígnalos abajo.', true);
