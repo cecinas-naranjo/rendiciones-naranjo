@@ -396,3 +396,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v73 — Clave de 4 dígitos
 - `CLAVE_MIN` = 4 (servidor) y el cliente pide mínimo 4 caracteres. No se rechaza ninguna clave por ser fácil (1111, 1234, el RUT…): solo el largo mínimo y que sea distinta de la actual. El bloqueo de 5 intentos/15 min sigue protegiendo. Requiere pegar APPS_SCRIPT.js COMPLETO.
+
+## v74 — Cobranza: la forma de pago va primero
+- En "Cobrar a un cliente" (`cobrarDesdeLista`) el selector "¿Cómo pagó?" (con banco o datos del cheque) ahora está ARRIBA de la lista de facturas (paso 1) y luego se marcan las facturas (paso 2). Antes estaba al final y no se veía sin bajar. Solo frontend.

@@ -2721,16 +2721,17 @@ async function cobrarDesdeLista(box, alTerminar) {
     res.innerHTML = '';
     pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')}${c.condicion ? ' · crédito a ' + c.condicion + ' días' : ''}</div></div>
         <button type="button" class="btn ghost sm" id="cvolver">Otro cliente</button></div>
-      <div class="muted" style="margin:8px 0 4px">Marca las facturas que paga hoy:</div>
+      <div class="cforma" style="margin:10px 0 4px"><div class="muted" style="font-weight:700;margin-bottom:4px">1. ¿Cómo pagó?</div>
+        <div class="grid g2"><div><select class="in" id="cforma" aria-label="Forma de pago"><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option></select></div>
+          <div id="cbancow" hidden><select class="in" id="cbanco" aria-label="Banco al que transfirió">${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div></div>
+        <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div></div>
+      <div class="muted" style="margin:10px 0 4px;font-weight:700">2. Marca las facturas que paga hoy:</div>
       ${c.facturas.map((f, i) => `<div class="cfac"><label class="row" style="gap:10px"><input type="checkbox" class="cchk" data-i="${i}">
           <span class="grow">${esc(f.tipo.replace(' Electrónica', ''))} N° ${esc(f.folio)} <span class="muted">· ${fcorta(f.fecha)}${f.vendedor ? ' · ' + esc(f.vendedor) : ''}</span>
           <div>${f.cheque ? '<span class="chip warn">Cheque en cartera</span> ' : ''}<span class="chip ${edad(f.dias)}">${f.dias} días</span>${f.venc && f.venc < r.hoy ? ' <span class="chip bad">Vencida</span>' : ''}</div>${plazoPolitica(netoDe(f.total)) ? `<div class="muted">Neto ${clp(netoDe(f.total))} · política: ${plazoPolitica(netoDe(f.total))} días</div>` : ''}</span>
           <span style="text-align:right"><b>${clp(f.saldo)}</b><div class="muted">de ${clp(f.total)}</div></span></label>
         <div class="cmonto" hidden><label class="f">Monto que paga</label><input class="in n" inputmode="numeric" data-m="${i}" value="${f.saldo}"></div></div>`).join('')}
       <div class="row" style="margin:8px 0"><button type="button" class="btn ghost sm" id="ctodas">Marcar todas</button><span class="grow"></span><span class="muted">Total a cobrar <b id="ctot" style="color:var(--ink);font-size:18px">$0</b></span></div>
-      <div class="grid g2"><div><label class="f" for="cforma">Forma de pago</label><select class="in" id="cforma"><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option></select></div>
-        <div id="cbancow" hidden><label class="f" for="cbanco">Banco al que transfirió</label><select class="in" id="cbanco">${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div></div>
-      <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="cok">Registrar cobro</button></div></div>`;
     if (folioBuscado && folioBuscado.length >= 2) c.facturas.forEach((f, i) => { if (String(f.folio).indexOf(folioBuscado) >= 0) { const ck = $('.cchk[data-i="' + i + '"]', pan); if (ck) { ck.checked = true; $('.cmonto', ck.closest('.cfac')).hidden = false; ck.closest('.cfac').classList.add('buscada'); } } });
     const sel = () => $$('.cchk', pan).filter(x => x.checked);
