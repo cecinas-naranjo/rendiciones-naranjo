@@ -422,3 +422,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v79 — Avance de vendedores plegable (solo frontend)
 - La tarjeta del Resumen es un `details.avd` cerrado por defecto con resumen "N de M con actividad hoy"; recuerda si se abrió (`localStorage rn_avc`).
+
+## v80 — Tamaño de letra (solo frontend)
+- Toda la UI está en px, así que el tamaño se cambia con `zoom` en `<html>` (`LETRAS`: Normal 1, Grande 1.15, Muy grande 1.3; `aplicarLetra`/`cambiarLetra`, `localStorage rn_letra`). En tablets (táctil y lado menor ≥ 600 px) el valor por defecto es "Grande"; en PC y celular, "Normal". Botón "Aa" en la cabecera de oficina y "Tamaño de letra" en el menú ⋯ del vendedor/bodeguero; cada toque cambia al siguiente tamaño.

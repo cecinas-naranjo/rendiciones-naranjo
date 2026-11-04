@@ -463,6 +463,16 @@ function precargar(tabs) {
 }
 let PRECARGANDO = false;
 
+/* ---------- tamaño de letra (v80) ---------- */
+// Toda la interfaz está en píxeles, por eso el tamaño se cambia con zoom. En tablets arranca en "Grande" (se ve de más lejos y al aire libre).
+const LETRAS = [['Normal', 1], ['Grande', 1.15], ['Muy grande', 1.3]];
+const letraIdx = () => { let v = null; try { v = localStorage.getItem('rn_letra'); } catch (e) {}
+  if (v !== null && LETRAS[Number(v)]) return Number(v);
+  const tablet = Math.min(screen.width, screen.height) >= 600 && matchMedia('(pointer:coarse)').matches; return tablet ? 1 : 0; };
+function aplicarLetra() { document.documentElement.style.zoom = LETRAS[letraIdx()][1] === 1 ? '' : String(LETRAS[letraIdx()][1]); const b = $('#letra'); if (b) b.title = 'Tamaño de letra: ' + LETRAS[letraIdx()][0]; const t = $('#letraT'); if (t) t.textContent = LETRAS[letraIdx()][0]; }
+function cambiarLetra() { const i = (letraIdx() + 1) % LETRAS.length; try { localStorage.setItem('rn_letra', String(i)); } catch (e) {} aplicarLetra(); toast('Letra: ' + LETRAS[i][0]); }
+try { aplicarLetra(); } catch (e) {}
+
 /* ---------- estado ---------- */
 const S = { sess: null, cat: null, fecha: null, tab: null, vend: '', filtro: 'pend', vistaId: 0, tocado: false, silencio: false };
 const hoyCL = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' });
@@ -637,7 +647,7 @@ async function iniciar() {
   const dia = `<div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha"><button id="next" aria-label="Día siguiente">›</button></div>`;
   const txtDia = f => f === hoyCL() ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
   const diaC = `<div class="hday"><button id="prev" aria-label="Día anterior">‹</button><label class="dl">${icon('cal')}<span id="dtxt">${txtDia(S.fecha)}</span><input type="date" id="fecha" value="${S.fecha}" aria-label="Elegir fecha"></label><button id="next" aria-label="Día siguiente">›</button></div>`;
-  const cuenta = `<button class="icon-btn" id="refr" aria-label="Actualizar la información">${icon('refresh')}<span>Actualizar</span></button><button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
+  const cuenta = `<button class="icon-btn" id="refr" aria-label="Actualizar la información">${icon('refresh')}<span>Actualizar</span></button><button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="letra" aria-label="Tamaño de letra"><b style="font-size:17px;line-height:1">Aa</b><span id="letraT"></span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
   const ref = t => tabs.find(x => x[0] === t) || [];
   if (grupos) {
     app.innerHTML = `<div class="shell">
@@ -654,7 +664,7 @@ async function iniciar() {
     app.innerHTML = `<header>
       <div class="hbar"><div class="brand"><img src="logo-96.png" alt="" width="42" height="42"><div><small>Naranjo</small><b>${esc((S.sess.nombre || '').split(' ')[0])}</b></div></div>
         ${diaC}<button class="icon-btn only" id="refr" aria-label="Actualizar la información">${icon('refresh')}</button><button class="icon-btn only" id="menub" aria-label="Menú" aria-haspopup="true" aria-expanded="false">${icon('dots')}</button></div>
-      <div class="menu" id="menu" hidden><button id="mclv">${icon('key')}Cambiar mi clave</button><button id="out">${icon('out')}Salir</button></div>
+      <div class="menu" id="menu" hidden><button id="letra"><b style="font-size:17px;width:22px;display:inline-block">Aa</b>Tamaño de letra: <span id="letraT"></span></button><button id="mclv">${icon('key')}Cambiar mi clave</button><button id="out">${icon('out')}Salir</button></div>
       <div id="redbar" class="redbar" role="status" hidden></div>
       <div class="progress" aria-hidden="true"><i id="prog"></i></div>
       <div class="otrodia" id="otrodia" hidden><span></span><button type="button" id="hoyBtn">Volver a hoy</button></div>
@@ -663,6 +673,7 @@ async function iniciar() {
     ${abajo ? `<nav class="bottom" id="nav">${tabs.map(t => `<button data-t="${t[0]}">${icon(t[2])}${t[1]}</button>`).join('')}</nav>` : ''}`;
   }
   $('#refr').onclick = () => actualizarTodo();
+  $('#letra').onclick = cambiarLetra; aplicarLetra();
   $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
   let tFecha = 0;
   const cambiarFecha = f => {       // la fecha y la pantalla cambian juntas: al instante se ve "cargando" y las respuestas del día anterior se descartan
