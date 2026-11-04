@@ -162,6 +162,38 @@ function limpiarTodo_() {
   return resumen;
 }
 
+/* ===== Limpiar SOLO la lista de créditos cargada (desde el editor de Apps Script; no está en API) =====
+   Sirve cuando la deuda de Saldos no calza porque quedaron créditos de cargas anteriores (la carga actualiza por folio, pero no borra los que ya no vienen en la planilla).
+   Borra CREDITOS_CARGA y los cheques en cartera que venían de esa planilla, y suelta la "planilla única" para que se cree una nueva con la próxima carga.
+   NO toca ventas, pagos de la app, cobranza, clientes ni usuarios. Después hay que volver a subir la planilla de créditos desde Importar Mi DTE. */
+function vistaPreviaLimpiezaCreditos() {
+  const ss = SpreadsheetApp.getActive(), n = h => { const sh = ss.getSheetByName(h); return sh ? Math.max(sh.getLastRow() - 1, 0) : 0; };
+  Logger.log('SE BORRARÍAN: CREDITOS_CARGA ' + n('CREDITOS_CARGA') + ' filas (y los cheques de CHEQUES_ESTADO con clave P|…).\nNo se toca nada más.');
+}
+function limpiarCreditos() {
+  const CONFIRMO = false;           // <- cambiar a true para borrar de verdad (y volver a dejarlo en false)
+  if (!CONFIRMO) throw new Error('Seguridad: cambia CONFIRMO a true dentro de limpiarCreditos y vuelve a ejecutarla.');
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    const ss = SpreadsheetApp.getActive(), res = [];
+    const sh = ss.getSheetByName('CREDITOS_CARGA');
+    if (sh && sh.getLastRow() > 1) { const f = sh.getLastRow() - 1; sh.getRange(2, 1, f, Math.max(sh.getLastColumn(), 1)).clearContent(); res.push('CREDITOS_CARGA: ' + f + ' filas borradas'); }
+    const ce = ss.getSheetByName('CHEQUES_ESTADO');
+    if (ce && ce.getLastRow() > 1) {
+      const vals = ce.getRange(2, 1, ce.getLastRow() - 1, Math.max(ce.getLastColumn(), 1)).getValues(), keep = vals.filter(r => String(r[0]).indexOf('P|') !== 0);
+      ce.getRange(2, 1, vals.length, Math.max(ce.getLastColumn(), 1)).clearContent();
+      if (keep.length) ce.getRange(2, 1, keep.length, keep[0].length).setValues(keep);
+      res.push('CHEQUES_ESTADO: ' + (vals.length - keep.length) + ' filas de la planilla borradas');
+    }
+    const pr = PropertiesService.getScriptProperties();
+    if (pr.getProperty('PLANILLA_CREDITOS_ID')) { pr.deleteProperty('PLANILLA_CREDITOS_ID'); res.push('Planilla única soltada (el archivo viejo queda en Drive; bórralo a mano)'); }
+    pr.deleteProperty('PLANILLA_SUCIA');
+    Object.keys(CACHEADAS_).forEach(limpiarCache_); invalidarTodo_();
+    Logger.log('LISTA\n' + res.join('\n') + '\n\nAhora sube la planilla de créditos en Importar Mi DTE. Vuelve a dejar CONFIRMO en false.');
+    return res;
+  } finally { lock.releaseLock(); }
+}
+
 /** Crea o actualiza las hojas. Se puede ejecutar de nuevo sin perder datos. */
 function setup() {
   Object.keys(CACHEADAS_).forEach(limpiarCache_);

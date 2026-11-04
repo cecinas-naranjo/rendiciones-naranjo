@@ -399,3 +399,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v74 — Cobranza: la forma de pago va primero
 - En "Cobrar a un cliente" (`cobrarDesdeLista`) el selector "¿Cómo pagó?" (con banco o datos del cheque) ahora está ARRIBA de la lista de facturas (paso 1) y luego se marcan las facturas (paso 2). Antes estaba al final y no se veía sin bajar. Solo frontend.
+
+## v75 — Limpiar solo la lista de créditos (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Desde el editor (no está en `API`): `vistaPreviaLimpiezaCreditos()` cuenta; `limpiarCreditos()` (CONFIRMO = true y luego false) borra CREDITOS_CARGA y los cheques `P|…` de CHEQUES_ESTADO, y suelta la planilla única (`PLANILLA_CREDITOS_ID`; el archivo viejo queda en Drive). No toca ventas, pagos, cobranza, clientes ni usuarios. Motivo: `cargarCreditos` actualiza por folio pero no borra los créditos de cargas anteriores que ya no vienen en la planilla, y las cargas de prueba dejaban deudas que no calzaban. Después se vuelve a subir la planilla en Importar Mi DTE.
