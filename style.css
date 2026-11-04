@@ -817,3 +817,9 @@ body.solo-leer #pv, body.solo-leer #cl, body.solo-leer #re, body.solo-leer #dDet
 body.solo-leer #plan, body.solo-leer .sticky-foot:has(#gi), body.solo-leer #npN, body.solo-leer #npU, body.solo-leer #npA, body.solo-leer [data-otras], body.solo-leer select[data-fk], body.solo-leer .ordenar { display: none !important; }
 body.solo-leer .invl input, body.solo-leer .invl select { pointer-events: none; background: transparent; border-color: transparent; }
 body.solo-leer .ordenar, body.solo-leer .pasos button { pointer-events: none; }
+
+/* Despacho: unidades para el inventario (v77) */
+.pr .pu{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px dashed var(--line)}
+.pr .pul{font-weight:700;font-size:14.5px}.pr .pul small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.pr .pu .nin input.in{font-size:19px;min-height:46px}
+.inv .fin small.un{font-size:13px;font-weight:400;color:var(--ink-2)}

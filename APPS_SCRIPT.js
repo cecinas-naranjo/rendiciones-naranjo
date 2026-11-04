@@ -23,6 +23,7 @@ const CFG = {
   KG_POR_UNIDAD: { porDefecto: 3, porCodigo: { '7': 1.8 } },   // 7 = salchichón cervecero
   // Se sugieren por kilo, no por unidad (patés y longanizas)
   SOLO_KILOS: ['1', '1.1', '3'],
+  INV_EN_KILOS: ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'COSTILLAR', 'LONGANIZA', 'PATE DE CERDO', 'COSTILLAR DE CERDO AHUMADO ENV.'],   // nombre en la planilla de inventario o nombre de venta   // productos terminados que el inventario lleva en kilos; el resto de terminados va en unidades
   // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
   INFORMES_FOLDER_ID: '',
   // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
@@ -41,7 +42,7 @@ const SCHEMA = {
   USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo','rut','correo','clave_hash','sal','cambiar_clave','intentos','bloqueado_hasta','emite_antes'],
   PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo','seccion','nombre_inv'],
   INVENTARIO_MOV: ['key','fecha','codigo','tipo','destino','cantidad','obs','registrado_por','registrado'],
-  DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado'],
+  DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado','salida_un','retorno_un'],
   DOCUMENTOS:  ['folio_key','fecha','tipo','folio','rut','cliente','total','condicion_dte','terminal','vendedor','estado','importado'],
   VENTAS_DETALLE: ['linea_key','fecha','folio_key','tipo','folio','codigo','producto','cantidad','precio','total','neto','terminal','vendedor','categoria','pago','es_guia','importado'],
   PAGOS:       ['id','folio_key','fecha','vendedor','forma','banco','monto','referencia','registrado_por','registrado','cheque_numero','cheque_fecha','cheque_titular'],
@@ -750,7 +751,7 @@ function catalogo(token) {
     hoy: hoy_(), distribuidores: CFG.DISTRIBUIDORES,
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA')
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
-      .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio) })),
+      .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p) })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, emiteAntes: esSi_(v.emite_antes) })),
     formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
   };
@@ -780,7 +781,7 @@ function getDespacho(token, fecha, vendedor) {
   return {
     vuelven: anulVuelve_(fecha).filter(x => x.vendedor === vendedor),
     filas: byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor)
-      .map(r => ({ codigo: codeKey_(r.codigo), salida: r.salida, retorno: r.retorno, obs: r.obs })),
+      .map(r => ({ codigo: codeKey_(r.codigo), salida: r.salida, retorno: r.retorno, salidaUn: r.salida_un === undefined ? '' : r.salida_un, retornoUn: r.retorno_un === undefined ? '' : r.retorno_un, obs: r.obs })),
     facturado, hayDetalle: det.length > 0,
     guias: Object.keys(guias).map(f => ({ folio: f, lineas: guias[f] }))
   };
@@ -788,10 +789,18 @@ function getDespacho(token, fecha, vendedor) {
 function esSi_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
 function esGuiaFlag_(v) { return v === true || String(v).toUpperCase() === 'TRUE'; }
 
+/** Hojas DESPACHO de antes de v77 no tienen las columnas de unidades: se agregan al final. */
+function asegurarColsDespacho_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('DESPACHO'); if (!sh) return;
+  const h = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]; let n = h.filter(String).length, hecho = false;
+  ['salida_un', 'retorno_un'].forEach(c => { if (h.indexOf(c) < 0) { sh.getRange(1, ++n).setValue(c).setFontWeight('bold'); hecho = true; } });
+  if (hecho) { MEMO_.DESPACHO = null; SLICE_ = {}; }
+}
 function saveDespacho(token, fecha, vendedor, filas) {
   const u = auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
   assertAbierta_(fecha);
   return withLock_(() => {
+    asegurarColsDespacho_();
     const prods = {}; read_('PRODUCTOS').forEach(p => prods[codeKey_(p.codigo)] = p);
     const exist = byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor);
     const map = {}; exist.forEach(r => map[codeKey_(r.codigo)] = r);
@@ -800,14 +809,16 @@ function saveDespacho(token, fecha, vendedor, filas) {
       const salida = f.salida === '' ? '' : num_(f.salida);
       const retorno = f.retorno === '' ? '' : num_(f.retorno);
       const e = map[f.codigo];
+      const un = (nuevo, previo) => nuevo === undefined ? (previo === undefined ? '' : previo) : (nuevo === '' || nuevo === null ? '' : num_(nuevo));   // unidades (v77): si el cliente no las manda, se conserva lo guardado
+      const salida_un = un(f.salidaUn, e && e.salida_un), retorno_un = un(f.retornoUn, e && e.retorno_un);
       if (e) {
-        if (salida === '' && retorno === '') return;
-        Object.assign(e, { salida, retorno, obs: f.obs || '', actualizado_por: u.usuario, actualizado: now_() });
+        if (salida === '' && retorno === '' && salida_un === '' && retorno_un === '') return;
+        Object.assign(e, { salida, retorno, salida_un, retorno_un, obs: f.obs || '', actualizado_por: u.usuario, actualizado: now_() });
         updateRow_('DESPACHO', e._row, e);
-      } else if (salida !== '' || retorno !== '') {
+      } else if (salida !== '' || retorno !== '' || salida_un !== '' || retorno_un !== '') {
         const p = prods[f.codigo] || {};
         nuevos.push({ id: uid_(), fecha, vendedor, codigo: f.codigo, producto: p.nombre, unidad: p.unidad,
-          salida, retorno, obs: f.obs || '', actualizado_por: u.usuario, actualizado: now_() });
+          salida, retorno, salida_un, retorno_un, obs: f.obs || '', actualizado_por: u.usuario, actualizado: now_() });
       }
     });
     append_('DESPACHO', nuevos);
@@ -1575,10 +1586,15 @@ function prepararProductosInventario_() {
   append_('PRODUCTOS', nuevos);
 }
 
+/** Unidad en que el inventario lleva el producto (como la planilla): terminados en unidades salvo longanizas, paté y costillar (kilos). */
+function unidadInv_(p) {
+  if (p.seccion === 'TERMINADOS') return CFG.INV_EN_KILOS.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre)) ? 'KG' : 'UN';
+  return (SECCIONES_INV.find(x => x[0] === p.seccion) || [])[2] || p.unidad || 'UN';
+}
 function productosInv_() {
   const orden = {}; INV_ITEMS.forEach((x, i) => orden[x[0] + '|' + claveInv_(x[1])] = i);
   return read_('PRODUCTOS').filter(p => p.seccion && String(p.activo).toUpperCase() !== 'FALSE')
-    .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre_inv || p.nombre, seccion: p.seccion, unidad: p.unidad,
+    .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre_inv || p.nombre, seccion: p.seccion, unidad: unidadInv_(p), unidadVenta: p.unidad, kgUn: kgUnidad_(p),
       orden: orden[p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre)] !== undefined ? orden[p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre)] : 500 + num_(p.orden) }))
     .sort((a, b) => a.orden - b.orden);
 }
@@ -1606,11 +1622,16 @@ function inventarioDia_(fecha) {
     else if (m.tipo === 'INGRESO') x.ingreso += q;
     else if (m.tipo === 'SALIDA') { x.otras[m.destino] = (x.otras[m.destino] || 0) + q; x.otrasMan[m.destino] = (x.otrasMan[m.destino] || 0) + q; }
     else if (m.tipo === 'CONTEO') x.conteo = q; });
+  const pm = {}; prods.forEach(p => pm[p.codigo] = p);
   desp.forEach(d => { const c = codeKey_(d.codigo), x = D(c, d.fecha); fechas[d.fecha] = 1;
+    let sal = num_(d.salida), ret = num_(d.retorno); const pr = pm[c];
+    if (pr && pr.unidad === 'UN' && pr.unidadVenta !== 'UN') {      // el inventario cuenta unidades y el despacho se pesa en kilos: se usan las unidades anotadas (si no hay, se estiman con el peso por unidad)
+      const est = (un, kg) => un !== undefined && un !== '' && un !== null ? num_(un) : (pr.kgUn ? r3_(kg / pr.kgUn) : kg);
+      sal = est(d.salida_un, sal); ret = est(d.retorno_un, ret); }
     const dest = destinoDesp_(d.vendedor);
-    if (dest) { x.otras[dest] = (x.otras[dest] || 0) + num_(d.salida) - num_(d.retorno); return; }
-    x.salVend[d.vendedor] = (x.salVend[d.vendedor] || 0) + num_(d.salida);
-    x.retVend[d.vendedor] = (x.retVend[d.vendedor] || 0) + num_(d.retorno); });
+    if (dest) { x.otras[dest] = (x.otras[dest] || 0) + sal - ret; return; }
+    x.salVend[d.vendedor] = (x.salVend[d.vendedor] || 0) + sal;
+    x.retVend[d.vendedor] = (x.retVend[d.vendedor] || 0) + ret; });
   const orden = Object.keys(fechas).filter(f => f < fecha).sort();
   const sum = o => Object.keys(o).reduce((a, k) => a + o[k], 0);
   const cierre = x => { // devuelve [teórico, final] de un día dado su inicial

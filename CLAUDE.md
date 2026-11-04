@@ -408,3 +408,10 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - "Registró": `listarMov` devuelve `por` (nombre de `registrado_por`) y las tablas de Cobranza/Gastos/Proveedores/Consumo tienen columna "Registró"; los depósitos muestran "Registró <nombre>". Despacho sigue sin guardar quién anota.
 - `limpiarTodo_` también suelta `PLANILLA_CREDITOS_ID`/`PLANILLA_SUCIA`.
 - Nota Acceso: desde v73 no se rechazan claves triviales (solo largo mínimo 4 y distinta de la actual).
+
+## v77 — Unidades en Despacho e inventario en kilos o unidades según el producto (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Problema: el bodeguero cuenta el inventario por unidad (o bandeja) porque pesar todo de vuelta es lento, pero Despacho solo guardaba kilos. Ahora, en productos que se pesan (unidad KG) pero que el inventario lleva en unidades, Despacho agrega una segunda fila "Unidades · para el inventario" con salida y retorno en unidades (los kilos se siguen pesando y alimentan la comparación de kilos vs facturado, sin cambios).
+- DESPACHO tiene columnas nuevas `salida_un`, `retorno_un` (`asegurarColsDespacho_()` las agrega sola al guardar; setup las crea en hojas nuevas). `saveDespacho` acepta `salidaUn`/`retornoUn` (si el cliente no las manda, conserva lo guardado). `getDespacho.filas` las devuelve.
+- Unidad del inventario por producto: `unidadInv_(p)` — terminados en UNIDADES salvo `CFG.INV_EN_KILOS` (longaniza corta/larga, paté de cerdo, costillar; se puede agregar nombres), cámara en KG, congelados/laminados en UN. `catalogo().productos[].inv` y `kgUn`; `productosInv_` devuelve `unidad` (la del inventario) y `unidadVenta`.
+- `inventarioDia_`: para productos con inventario en UN y despacho en KG usa `salida_un`/`retorno_un`; si no se anotaron, estima kilos ÷ `kgUnidad_` (3 kg, cervecero 1,8). Distribuidores/consumo/sala usan la misma regla. La pantalla Inventario muestra "un."/"kg" en Quedan, resumen y campos.
+- Pendiente: confirmar con el bodeguero si hay más productos que se cuenten en kilos (agregarlos a `CFG.INV_EN_KILOS`) y el peso por bandeja si se quisiera convertir.

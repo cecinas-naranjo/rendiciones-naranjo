@@ -1427,8 +1427,10 @@ async function vDespacho(m) {
   const cats = {};
   S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
   const orden = Object.keys(cats).sort((a, b) => (Object.keys(CATS).indexOf(a) + 99) % 99 - (Object.keys(CATS).indexOf(b) + 99) % 99);
-  const nin = (k, p, v) => `<div class="nin" data-w="${k}"><button type="button" class="mn" tabindex="-1" aria-label="Menos">−</button>
-      <input class="in n" data-k="${k}" inputmode="decimal" aria-label="${k === 'salida' ? 'Salida' : 'Retorno'} ${esc(p.nombre)}" placeholder="0" value="${val(v)}"><button type="button" class="pl" tabindex="-1" aria-label="Más">+</button></div>`;
+  const nin = (k, p, v) => { const w = k.replace('Un', ''), un = k !== w; return `<div class="nin" data-w="${w}"><button type="button" class="mn" tabindex="-1" aria-label="Menos">−</button>
+      <input class="in n" data-k="${k}" inputmode="decimal" aria-label="${w === 'salida' ? 'Salida' : 'Retorno'}${un ? ' en unidades' : ''} ${esc(p.nombre)}" placeholder="0" value="${val(v)}"><button type="button" class="pl" tabindex="-1" aria-label="Más">+</button></div>`; };
+  // Productos que se pesan (kilos) pero el inventario cuenta por unidad: además de los kilos se anotan las unidades
+  const conUn = p => p.unidad !== 'UN' && p.inv === 'UN';
   render(m, `<h2>Despacho y retorno</h2><p class="lead">${fechaLarga(S.fecha)}</p>
     <div class="dvs" id="dvs">${vends.filter(v => v.pseudo !== 'dist').map(card).join('')}<button type="button" class="dvc ${esDist(S.vend) ? 'on' : ''}" data-u="${esc(esDist(S.vend) ? S.vend : 'DIST:' + dists[0])}" data-grp="1"><b>Distribuidores</b><span class="dvst"></span></button></div>
     ${esDist(S.vend) ? `<div class="dvs dsub" id="dsub">${dv.map(v => `<button type="button" class="dvc ${v.usuario === S.vend ? 'on' : ''}" data-u="${esc(v.usuario)}"><b>${esc(v.corto)}</b><span class="dvst" data-st="${esc(v.usuario)}"></span></button>`).join('')}</div>` : ''}
@@ -1441,6 +1443,7 @@ async function vDespacho(m) {
       return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
         <div class="pn">${esc(p.nombre)}<small>${p.unidad === 'UN' ? 'se anota en unidades' : 'se anota en kilos'}</small></div>
         ${nin('salida', p, f.salida)}${nin('retorno', p, f.retorno)}
+        ${conUn(p) ? `<div class="pu"><span class="pul">Unidades <small>para el inventario</small></span>${nin('salidaUn', p, f.salidaUn)}${nin('retornoUn', p, f.retornoUn)}</div>` : ''}
         <div class="st"></div></div>`; }).join('')).join('')}</div>
     <button type="button" class="btn ghost sm" id="mas" hidden></button>
     <div class="sticky-foot"><div class="card dvf"><div class="dvfi"><div class="muted" id="fl"></div><b id="tv"></b></div>
@@ -1480,7 +1483,10 @@ async function vDespacho(m) {
       const c = el.dataset.c, s = S0(el), rt = R0(el), st = $('.st', el), esKg = el.dataset.u !== 'UN';
       const fac = r.facturado[c] || 0, vend = dec(s) - dec(rt); let h = '';
       if (S.dmod === 'retorno') {
-        if (s !== '') h += `<span>Salió <b>${esKg ? kg(dec(s)) + ' kg' : dec(s) + ' un'}</b></span>`;
+        const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn');
+        if (s !== '') h += `<span>Salió <b>${esKg ? kg(dec(s)) + ' kg' : dec(s) + ' un'}${su && su.value !== '' ? ' · ' + dec(su.value) + ' un' : ''}</b></span>`;
+        else if (su && su.value !== '') h += `<span>Salió <b>${dec(su.value)} un</b></span>`;
+        if (su && ru && ru.value !== '' && dec(ru.value) > dec(su.value)) h += `<span class="bad">Las unidades que vuelven son más de las que salieron</span>`;
         if (rt !== '' && dec(rt) > dec(s)) h += `<span class="bad">Es más de lo que salió</span>`;
         else if (r.hayDetalle && s !== '' && rt !== '') {
           const dif = Math.round((vend - fac) * 10) / 10;
@@ -1506,7 +1512,7 @@ async function vDespacho(m) {
   $('#seg', m).onclick = e => { const b = e.target.closest('button'); if (b) poner(b.dataset.m); };
   dt.oninput = () => { sucio = true; calc(); };
   dt.onclick = e => { const b = e.target.closest('.mn,.pl'); if (!b) return;
-    const el = b.closest('.pr'), i = $('input', b.parentNode), paso = el.dataset.u === 'UN' ? 1 : 0.5;
+    const el = b.closest('.pr'), i = $('input', b.parentNode), paso = el.dataset.u === 'UN' || /Un$/.test(i.dataset.k) ? 1 : 0.5;
     const v = Math.max(0, Math.round((dec(i.value) + (b.classList.contains('pl') ? paso : -paso)) * 1000) / 1000);
     i.value = v === 0 && i.value === '' ? '' : String(v); sucio = true; calc(); };
   dt.addEventListener('focusin', e => { if (e.target.matches('input')) setTimeout(() => e.target.select && e.target.select(), 0); });
@@ -1538,7 +1544,8 @@ async function vDespacho(m) {
     } catch (e) {}
   })();
   const guardar = async sigue => {
-    const datos = filas.map(el => ({ codigo: el.dataset.c, salida: S0(el).replace(',', '.'), retorno: R0(el).replace(',', '.') }));
+    const datos = filas.map(el => { const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn'), o = { codigo: el.dataset.c, salida: S0(el).replace(',', '.'), retorno: R0(el).replace(',', '.') };
+      if (su) { o.salidaUn = su.value.replace(',', '.'); o.retornoUn = ru.value.replace(',', '.'); } return o; });
     await api('saveDespacho', S.sess.token, S.fecha, S.vend, datos); sucio = false;
     if (sigue && sig) { toast('Guardado. Ahora ' + sig.nombre); S.vend = sig.usuario; ir('despacho'); } else toast('Despacho de ' + nomDe(S.vend) + ' guardado');
   };
@@ -1589,22 +1596,22 @@ async function vInventario(m) {
     const negativos = inv.filas.filter(f => calc(est[f.codigo]).final < -0.001);
     $('#alertInv').innerHTML = negativos.length ? `<div class="alert"><b>${negativos.length} producto(s) con stock negativo:</b> ${negativos.slice(0, 6).map(f => esc(f.nombre)).join(', ')}${negativos.length > 6 ? '…' : ''}. Revisa ingresos o registra un conteo.</div>` : '';
     lista.innerHTML = filas.length ? filas.map(f => {
-      const e = est[f.codigo], c = calc(e), u = f.unidad === 'UN' ? 'un.' : 'kg';
+      const e = est[f.codigo], c = calc(e), un = f.unidad === 'UN', u = un ? 'un.' : 'kg', fq = v => un ? nk(v) : kg(v);   // el inventario cuenta unidades o kilos según el producto
       const detalle = cam ? '' : [
-        sum(f.salVend) ? `salió ${kg(sum(f.salVend))}` : '', sum(f.retVend) ? `volvió ${kg(sum(f.retVend))}` : '',
-        sum(e.desp) ? `supermercado y otros ${kg(sum(e.desp))}` : ''].filter(Boolean).join(' · ');
+        sum(f.salVend) ? `salió ${fq(sum(f.salVend))}` : '', sum(f.retVend) ? `volvió ${fq(sum(f.retVend))}` : '',
+        sum(e.desp) ? `supermercado y otros ${fq(sum(e.desp))}` : ''].filter(Boolean).join(' · ');
       const nOtras = Object.keys(e.otras).filter(k => e.otras[k]).length;
       return `<div class="inv ${e.cambio ? 'mod' : ''}" data-c="${esc(f.codigo)}">
-        <div class="pn">${esc(f.nombre)}<small>${e.inicialEditable ? '' : 'Empezó con ' + kg(f.inicial) + ' ' + u}${detalle ? (e.inicialEditable ? '' : ' · ') + detalle : ''}</small></div>
-        <div class="fin ${c.final < -0.001 ? 'neg' : ''}"><span>Quedan</span><b>${kg(c.final)}</b>${e.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${kg(c.ajuste)}</em>` : ''}</div>
+        <div class="pn">${esc(f.nombre)}<small>${e.inicialEditable ? '' : 'Empezó con ' + fq(f.inicial) + ' ' + u}${detalle ? (e.inicialEditable ? '' : ' · ') + detalle : ''}</small></div>
+        <div class="fin ${c.final < -0.001 ? 'neg' : ''}"><span>Quedan</span><b>${fq(c.final)} <small class="un">${u}</small></b>${e.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<em>ajuste ${c.ajuste > 0 ? '+' : ''}${fq(c.ajuste)}</em>` : ''}</div>
         <div class="campos">
           ${e.inicialEditable ? `<label>Con cuánto empezó<input class="in n" data-k="inicial" inputmode="decimal" value="${e.inicial}"></label>` : ''}
-          <label>${cam ? 'Entra producto' : 'Entra de fábrica'}<input class="in n" data-k="ingreso" inputmode="decimal" placeholder="0" value="${e.ingreso}"></label>
+          <label>${cam ? 'Entra producto' : 'Entra de fábrica'} (${u})<input class="in n" data-k="ingreso" inputmode="decimal" placeholder="0" value="${e.ingreso}"></label>
           ${cam ? `<label>Sale a fábrica<input class="in n" data-k="o:FABRICA" inputmode="decimal" placeholder="0" value="${e.otras.FABRICA || ''}"></label>
                    <label>Sale a vendedores<input class="in n" data-k="o:VENDEDORES" inputmode="decimal" placeholder="0" value="${e.otras.VENDEDORES || ''}"></label>` : ''}
-          <label>Conteo físico<input class="in n" data-k="conteo" inputmode="decimal" placeholder="—" value="${e.conteo}"></label>
+          <label>Conteo físico (${u})<input class="in n" data-k="conteo" inputmode="decimal" placeholder="—" value="${e.conteo}"></label>
         </div>
-        ${cam ? '' : `<button type="button" class="ghostlink" data-otras="1">${nOtras ? `Otras salidas: ${kg(sum(e.otras))} ${u} · ${nOtras} destino(s) ›` : '+ Otras salidas (consumo, merma, distribuidor…)'}</button>`}
+        ${cam ? '' : `<button type="button" class="ghostlink" data-otras="1">${nOtras ? `Otras salidas: ${fq(sum(e.otras))} ${u} · ${nOtras} destino(s) ›` : '+ Otras salidas (consumo, merma, distribuidor…)'}</button>`}
       </div>`; }).join('') : '<div class="empty">No hay productos en esta sección.</div>';
     const n = Object.values(est).filter(e => e.cambio).length;
     $('#cambios').textContent = n ? n + ' producto(s) con cambios sin guardar' : 'Sin cambios';
