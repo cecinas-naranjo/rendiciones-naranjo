@@ -156,6 +156,7 @@ function limpiarTodo_() {
       if (filas > 0) { sh.getRange(2, 1, filas, Math.max(sh.getLastColumn(), 1)).clearContent(); }
       resumen.push(n + ': ' + Math.max(filas, 0) + ' filas borradas');
     });
+    try { const pr = PropertiesService.getScriptProperties(); pr.deleteProperty('PLANILLA_CREDITOS_ID'); pr.deleteProperty('PLANILLA_SUCIA'); resumen.push('Planilla única de créditos soltada (el archivo viejo queda en Drive)'); } catch (e) {}
     Object.keys(CACHEADAS_).forEach(limpiarCache_);
     invalidarTodo_();
   } finally { lock.releaseLock(); }
