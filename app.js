@@ -2758,12 +2758,13 @@ async function vDepositos(m) {
   const sinMov = !q.efectivoVentas && !q.efectivoCobranza && !q.depositado && !r.depositos.length;
   render(m, `<h2>Depósito</h2>
     ${esV ? '' : `<div class="row" style="margin-bottom:12px"><select class="in" style="width:auto" id="dv">${opcVend(S.vend)}</select></div>`}
-    <div class="card dsaldo ${q.saldo > 0 ? '' : 'listo'}"><small>${q.saldo < 0 ? 'Depositaste de más' : q.saldo === 0 && q.depositado ? 'Todo depositado' : 'Te falta depositar'}</small><b>${clp(Math.abs(q.saldo))}</b>
-      <div class="dl2"><span>Efectivo del día ${clp(q.disponible)}</span><span>Depositado ${clp(q.depositado)}</span></div></div>
+    ${esV ? '<p class="muted" style="margin:-4px 2px 10px">Solo si depositaste efectivo antes de rendir. Si no, no necesitas hacer nada aquí.</p>' : ''}
+    <div class="card dsaldo ${esV || q.saldo <= 0 ? 'listo' : ''}"><small>${esV ? 'Depositado ' + (S.fecha === hoyCL() ? 'hoy' : 'este día') : q.saldo < 0 ? 'Depositaron de más' : q.saldo === 0 && q.depositado ? 'Todo depositado' : 'Sin depositar'}</small><b>${clp(esV ? q.depositado : Math.abs(q.saldo))}</b>
+      <div class="dl2"><span>Efectivo del día ${clp(q.disponible)}</span>${esV ? '' : `<span>Depositado ${clp(q.depositado)}</span>`}</div></div>
     ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : `<div class="card">
       <label class="f">¿En qué banco?</label>
       <div class="b3" id="dbs">${S.cat.bancos.map(b => `<button type="button" data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div><input type="hidden" id="db" value="">
-      <label class="f" for="dm">Monto depositado</label><input class="in n gmon" id="dm" inputmode="numeric" value="${q.saldo > 0 ? q.saldo : ''}" placeholder="$ 0">
+      <label class="f" for="dm">Monto depositado</label><input class="in n gmon" id="dm" inputmode="numeric" value="${!esV && q.saldo > 0 ? q.saldo : ''}" placeholder="$ 0">
       <label class="f" for="dr" style="margin-top:6px">N° de operación <span class="muted">(opcional)</span></label><input class="in" id="dr" inputmode="numeric" placeholder="Ej. 48213390">
       <div id="dsal"></div>
       <button class="btn cu block" id="dg" style="margin-top:8px">Registrar depósito</button></div>`}
@@ -2786,7 +2787,7 @@ async function vDepositos(m) {
   $('#dbs').onclick = e => { const b = e.target.closest('[data-b]'); if (!b) return; $('#db').value = b.dataset.b; $$('#dbs button').forEach(x => x.classList.toggle('on', x === b)); };
   const aviso = () => {
     const mon = soloDigitos(dm.value), resta = q.saldo - mon;
-    $('#dsal').innerHTML = mon ? `<div class="saldo ${resta >= 0 ? 'ok' : 'no'}"><span>Después de este depósito</span><span>${resta > 0 ? 'Faltarían ' + clp(resta) : resta < 0 ? 'Más que el efectivo: ' + clp(-resta) : 'Queda todo depositado'}</span></div>` : '';
+    $('#dsal').innerHTML = mon && !esV ? `<div class="saldo ${resta >= 0 ? 'ok' : 'no'}"><span>Después de este depósito</span><span>${resta > 0 ? 'Faltarían ' + clp(resta) : resta < 0 ? 'Más que el efectivo: ' + clp(-resta) : 'Queda todo depositado'}</span></div>` : '';
   };
   dm.oninput = aviso; aviso();
   $('#dg').onclick = async () => {
@@ -2802,10 +2803,10 @@ async function vDepositos(m) {
         if (q2.disponible !== q.disponible) { toast('El efectivo del día cambió (se detallaron más pagos). Revisa el monto antes de depositar.', true); ir('depositos'); return; }
         saldo = q2.saldo;
       }
-      if (mon > saldo && !confirm(`Vas a registrar ${clp(mon)} y solo quedan ${clp(Math.max(saldo, 0))} por depositar. ¿Registrar igual?`)) return;
+      if (!esV && mon > saldo && !confirm(`Vas a registrar ${clp(mon)} y solo quedan ${clp(Math.max(saldo, 0))} por depositar. ¿Registrar igual?`)) return;
       const nuevo = await api('guardarDeposito', S.sess.token, S.fecha, { vendedor: esV ? '' : S.vend, banco: $('#db').value, monto: mon, referencia: $('#dr').value, folios: [], cobranzas: [] });
       const resta = saldo - mon;
-      toast((nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado') + (resta > 0 ? `. Faltan ${clp(resta)} por depositar` : resta < 0 ? `. Depositaste ${clp(-resta)} más que el efectivo` : '. Queda todo depositado'));
+      toast((nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado') + (esV ? '' : resta > 0 ? `. Faltan ${clp(resta)} por depositar` : resta < 0 ? `. Depositaste ${clp(-resta)} más que el efectivo` : '. Queda todo depositado'));
       ir('depositos');
     } finally { b.disabled = false; }
   };

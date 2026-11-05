@@ -508,3 +508,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v103 — Sin aviso de «guardar contraseña» de Chrome (solo frontend)
 - Los campos de clave (login, clave inicial, cambiar mi clave) ya no son `type="password"`: son `type="text"` con clase `.pw` (`-webkit-text-security:disc`), `autocomplete="off"` y nombres propios. Chrome solo ofrece guardar/autocompletar cuando ve un campo password, así que no sale la ventana ni el aviso de filtración. «Ver/Ocultar» alterna `.pw.ver`. Si algún día se quiere volver al gestor de claves, restaurar `type="password"` + `autocomplete="current-password"/"new-password"`.
+
+## v104 — Depósito opcional para el vendedor (solo frontend)
+- Pocos vendedores depositan: la pantalla ya no dice «Te falta depositar». Para VENDEDOR: texto «Solo si depositaste efectivo antes de rendir», tarjeta «Depositado hoy $X» (con «Efectivo del día» como dato), monto SIN rellenar, sin aviso «Faltarían», sin confirmación de exceso ni «Faltan $X» al guardar. La oficina conserva el saldo (rotulado «Sin depositar»).
