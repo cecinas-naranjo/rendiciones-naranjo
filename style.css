@@ -1015,3 +1015,24 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .cselc{display:flex;align-items:center;gap:10px;margin:10px 0 4px;background:var(--cu-soft);border:2px solid var(--cu);border-radius:var(--r-sm);padding:12px 14px}
 .cselc b:first-child{font-size:17px;color:#712B13}
 .cselc small{display:block;color:#7a4a2e;font-size:13px;margin-top:1px}
+
+/* v97: cobranza más liviana: bordes finos, sin sombras, menos naranja a la vez */
+.cli{border:1px solid var(--line);border-bottom-width:1px;box-shadow:none;padding:11px 12px;min-height:56px;margin-bottom:8px}
+.cli b{font-size:15.5px}
+.cli:hover{border-color:var(--cu);background:#fff}
+.bt{box-shadow:none;padding:9px 14px;min-width:70px;font-size:14.5px;font-weight:600;border-radius:999px}
+.cli:active .bt,.cfh:active .bt{transform:none}
+.cli.sel{border-width:1px;background:var(--cu-soft)}
+.volver{min-height:42px;border:0;background:transparent;color:var(--cu-2);padding:0 2px;font-size:15px;font-weight:600;width:auto}
+.volver:hover{background:transparent;text-decoration:underline}.volver:active{background:transparent}
+.cselc{border:0;background:var(--cu-soft);margin:4px 0 12px;padding:12px 14px}
+.cselc b:first-child{font-size:16px}
+#cfacs{margin-left:14px;padding-left:12px;border-left:2px solid var(--line)}
+#cfacs .cfac{border:1px solid var(--line);border-bottom-width:1px;box-shadow:none;margin-bottom:8px}
+#cfacs .cfac:hover{border-color:var(--cu)}
+#cfacs .cfh{min-height:58px}
+#cfacs .cfh b:first-child{font-size:15.5px}
+#cfacs .cfac.abierta{background:#fff;border-color:var(--cu)}
+#cfacs .cfac.abierta .bt{background:transparent;color:var(--cu-2);box-shadow:inset 0 0 0 1px var(--cu)}
+.chips2 button{font-size:14px;padding:7px 13px;min-height:38px}
+.chips2 button.on{background:var(--cu-soft);border-color:var(--cu);color:#712B13}

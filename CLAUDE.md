@@ -482,3 +482,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v96 — Cobranza: transición al elegir cliente (solo frontend)
 - Al tocar "Elegir" el cliente queda marcado (`.cli.sel`) y los demás se desvanecen 200 ms (`.apag`) antes de mostrar sus facturas con fundido (`.enter2`). Arriba de las facturas: botón grande "‹ Ver otros clientes" (`.volver`) y una tarjeta con el cliente elegido (`.cselc`). Solo opacidad (v83).
+
+## v97 — Cobranza menos cargada (solo CSS)
+- Pedido del dueño: "se ve muy cargado". Bordes de 1 px grises (naranja solo al pasar el cursor o en la factura abierta), sin sombras, botones `.bt` en píldora más chicos y sin sombra, "‹ Ver otros clientes" como enlace de texto, tarjeta del cliente elegido sin borde, línea guía gris (no naranja) en las facturas, chips de forma de pago seleccionados en cobre claro (no sólidos). Mantiene la idea de v95/v96 con menos peso visual.
