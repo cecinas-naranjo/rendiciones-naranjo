@@ -457,5 +457,5 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v88 — Hoy del vendedor en botones y Depósito opcional (requiere pegar APPS_SCRIPT.js COMPLETO)
 - `vHoy`: botón grande "Anotar folio" (con "N anotados hoy") y cuadrícula de botones Mis folios / Cobranza / Gastos / Depósito con un globito corto (por detallar en ámbar, "Listo"/cantidad en verde). Sin frases explicativas; desaparece la tarjeta "Folios que ya subió la encargada" (Mis folios la reemplaza). Debajo "Vendido hoy" y "Ver desglose" (solo con folios detallados). No son pasos obligatorios.
-- **Depósito es opcional por vendedor**: columna USUARIOS `deposita` (se agrega sola con `asegurarColUsuarios_`), casilla "Deposita el efectivo" en Usuarios. `catalogo().vendedores[].deposita` = casilla marcada o ya registró algún depósito antes. `tabsRol()`/`vendDeposita()`: sin eso no aparece el botón Depósito en Hoy ni en la barra inferior del vendedor.
+- Depósito: se probó hacerlo opcional por vendedor, pero el dueño pidió que lo tengan TODOS (por emergencia). v89 lo deja siempre visible; la columna `deposita` de USUARIOS y su soporte en el servidor quedan sin uso (inofensivos).
 - Pendiente: mismo estilo de menos texto en Mis folios, Cobranza, Gastos y Depósito.

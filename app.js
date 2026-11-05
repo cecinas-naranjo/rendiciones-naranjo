@@ -19,16 +19,9 @@ const FL = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', DEP_EFECTIVO:
 const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 'Congelados', LACTEOS: 'Lácteos', LAMINADOS: 'Laminados, quesos y verduras', REVISAR: 'Por clasificar' };
 const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor', GERENCIA: 'Gerencia' };
 
-/** Pestañas del rol; el vendedor solo ve Depósitos si deposita su efectivo (casilla en Usuarios o ya lo ha hecho antes). */
-function tabsRol() {
-  const t = TABS[S.sess.rol] || [];
-  if (S.sess.rol !== 'VENDEDOR') return t;
-  return t.filter(x => x[0] !== 'depositos' || vendDeposita());
-}
-function vendDeposita() {
-  const v = ((S.cat && S.cat.vendedores) || []).find(x => x.usuario === S.sess.usuario);
-  return !!(v && v.deposita);
-}
+/** Pestañas del rol (todos los vendedores tienen Depósito, por si hace falta). */
+const tabsRol = () => TABS[S.sess.rol] || [];
+const vendDeposita = () => true;
 const IC = {
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
@@ -1801,14 +1794,13 @@ async function vUsuarios(m) {
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
       <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
       </div>
-      <label class="muted" id="u7w" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u7" ${u.deposita ? 'checked' : ''}> Deposita el efectivo (le sale el botón Depósito)</label>
       <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u6" ${u.activo ? 'checked' : ''}> Activo (si lo desactivas, no puede ingresar)</label></div>
       <div class="foot"><button class="btn ghost" id="ux">Cancelar</button><span class="grow"></span><button class="btn cu" id="ug">Guardar</button></div></div>`;
     document.body.appendChild(ov);
-    const rolCh = () => { $('#u5w', ov).hidden = $('#u7w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
+    const rolCh = () => { $('#u5w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
     $('#ux', ov).onclick = () => cerrarHoja(ov);
     $('#ug', ov).onclick = async () => {
-      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: false, deposita: $('#u7', ov).checked };
+      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: false };
       if (!o.nombre) return toast('Escribe el nombre.', true);
       if (!o.rut && !o.correo) return toast('Indica el RUT o el correo.', true);
       const r = await api('guardarUsuario', S.sess.token, o); cerrarHoja(ov);
