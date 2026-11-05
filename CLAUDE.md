@@ -476,3 +476,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v94 — Clientes y facturas de Cobranza se ven tocables (solo frontend)
 - `.cli` (lista de clientes) con borde marcado, sombra inferior fija, flecha › cobre y hover/active; cada factura de `#cfacs` es una tarjeta con borde y flecha (gira al abrirse, queda en cobre claro).
+
+## v95 — Cobranza: botón naranjo en cada fila y facturas con sangría (solo frontend)
+- Opción A elegida por el dueño: cada cliente lleva el botón "Elegir" y cada factura el botón "Cobrar" (pasa a "Cerrar" cuando está abierta). Las facturas van sangradas 22 px con una línea naranja a la izquierda para notar que pertenecen al cliente abierto. `.bt` es el botón; la flecha › queda solo en el selector de cliente del registro a mano (`.cpl`).

@@ -2789,7 +2789,7 @@ async function cobrarDesdeLista(box, alTerminar) {
     const porFolio = c => fq.length >= 2 ? c.facturas.filter(f => String(f.folio).indexOf(fq) >= 0) : [];
     const xs = (n ? clientes.filter(c => normBus(c.cliente).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0 || porFolio(c).length) : clientes.slice().sort((a, b) => b.deuda - a.deuda)).slice(0, 8);
     res.innerHTML = xs.length ? xs.map(c => { const pf = porFolio(c);
-      return `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}${pf.length ? ' · <b style="color:var(--cu-2)">Folio ' + pf.map(f => esc(f.folio)).slice(0, 3).join(', ') + '</b>' : ''}</small></span><b>${clp(c.deuda)}</b></button>`; }).join('')
+      return `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}${pf.length ? ' · <b style="color:var(--cu-2)">Folio ' + pf.map(f => esc(f.folio)).slice(0, 3).join(', ') + '</b>' : ''}</small></span><b>${clp(c.deuda)}</b><span class="bt">Elegir</span></button>`; }).join('')
       : '<div class="muted">Ningún cliente con deuda coincide.</div>';
   };
   lista('');
@@ -2801,15 +2801,15 @@ async function cobrarDesdeLista(box, alTerminar) {
     pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b><div class="muted">Toca la factura que pagó</div></div>
         <button type="button" class="btn ghost sm" id="cvolver">Cambiar</button></div>
       <div id="cfacs" style="margin-top:8px">${c.facturas.map((f, i) => `<div class="cfac" data-i="${i}"><button type="button" class="cfh" data-i="${i}"><span class="grow"><b>${esc(f.tipo.replace(' Electrónica', ''))} ${esc(f.folio)}</b>${f.cheque ? ' <span class="chip warn">Cheque en cartera</span>' : ''}
-          <small>Hace ${f.dias} días${f.venc && f.venc < r.hoy ? ' · <b class="bad">Vencida</b>' : ''}</small></span><b>${clp(f.saldo)}</b><span class="go">›</span></button>
+          <small>Hace ${f.dias} días${f.venc && f.venc < r.hoy ? ' · <b class="bad">Vencida</b>' : ''}</small></span><b>${clp(f.saldo)}</b><span class="bt">Cobrar</span></button>
         <div class="cform" hidden></div></div>`).join('')}</div></div>`;
     $('#cvolver', pan).onclick = () => { pan.innerHTML = ''; lista($('#cq', box).value); };
-    const cerrar = () => $$('.cfac.abierta', pan).forEach(d => { d.classList.remove('abierta'); const f = $('.cform', d); f.hidden = true; f.innerHTML = ''; });
+    const cerrar = () => $$('.cfac.abierta', pan).forEach(d => { d.classList.remove('abierta'); const f = $('.cform', d); f.hidden = true; f.innerHTML = ''; $('.bt', d).textContent = 'Cobrar'; });
     function abrir(i) {
       const f = c.facturas[i], d = $('.cfac[data-i="' + i + '"]', pan), fm = $('.cform', d);
       if (d.classList.contains('abierta')) { cerrar(); return; }
       cerrar(); forma.value = 'EFECTIVO'; bancoSel.value = S.cat.bancos[0];
-      d.classList.add('abierta'); fm.hidden = false;
+      d.classList.add('abierta'); fm.hidden = false; $('.bt', d).textContent = 'Cerrar';
       fm.innerHTML = `<div class="csec" style="margin-top:4px">¿Cómo pagó?</div>
         <div class="chips2" id="cforma">${[['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CHEQUE', 'Cheque']].map(([v, t], k) => `<button type="button" data-v="${v}" class="${k ? '' : 'on'}">${t}</button>`).join('')}</div>
         <div id="cbancow" hidden style="margin-top:10px"><label class="f" for="cbanco">Banco</label><select class="in" id="cbanco">${S.cat.bancos.map(b => `<option value="${esc(b)}">${esc(b.charAt(0) + b.slice(1).toLowerCase())}</option>`).join('')}</select></div>
