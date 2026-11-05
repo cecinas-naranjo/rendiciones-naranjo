@@ -40,7 +40,7 @@ const CFG = {
 };
 
 const SCHEMA = {
-  USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo','rut','correo','clave_hash','sal','cambiar_clave','intentos','bloqueado_hasta','emite_antes'],
+  USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo','rut','correo','clave_hash','sal','cambiar_clave','intentos','bloqueado_hasta','emite_antes','deposita'],
   PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo','seccion','nombre_inv'],
   INVENTARIO_MOV: ['key','fecha','codigo','tipo','destino','cantidad','obs','registrado_por','registrado'],
   DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado','salida_un','retorno_un'],
@@ -700,9 +700,15 @@ function auth_(token, roles) {
 }
 
 /* ---------- administración de usuarios (solo ADMIN) ---------- */
+/** Agrega el encabezado de una columna nueva de USUARIOS si la hoja es anterior (en su posición del SCHEMA). */
+function asegurarColUsuarios_(col) {
+  const sh = SpreadsheetApp.getActive().getSheetByName('USUARIOS'); if (!sh) return;
+  const pos = SCHEMA.USUARIOS.indexOf(col) + 1; if (pos < 1) return;
+  if (String(sh.getRange(1, pos).getValue() || '') !== col) sh.getRange(1, pos).setValue(col).setFontWeight('bold');
+}
 function listarUsuariosAdmin(token) {
   auth_(token, ['ADMIN']);
-  return read_('USUARIOS').map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol, rut: u.rut ? rutFmt_(u.rut) : '', correo: u.correo || '', terminales: u.terminales || '', emiteAntes: esSi_(u.emite_antes),
+  return read_('USUARIOS').map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol, rut: u.rut ? rutFmt_(u.rut) : '', correo: u.correo || '', terminales: u.terminales || '', emiteAntes: esSi_(u.emite_antes), deposita: esSi_(u.deposita),
     activo: activo_(u), tieneClave: !!String(u.clave_hash || ''), debeCambiar: String(u.cambiar_clave).toUpperCase() === 'TRUE',
     bloqueado: !!(u.bloqueado_hasta && new Date(u.bloqueado_hasta) > new Date()) }));
 }
@@ -728,7 +734,9 @@ function guardarUsuario(token, o) {
     if (ex && ex.rol === 'ADMIN' && (rol !== 'ADMIN' || !activo) && !us.some(u => u.usuario !== ex.usuario && u.rol === 'ADMIN' && activo_(u))) throw new Error('Debe quedar al menos un administrador activo.');
     const fila = Object.assign({}, ex || { usuario: codigo, pin: '', clave_hash: '', sal: '', cambiar_clave: 'TRUE', intentos: 0, bloqueado_hasta: '' },
       { nombre, rol, rut: rut ? rutFmt_(rut) : '', correo, terminales: rol === 'VENDEDOR' ? String(o.terminales || '').trim() : (ex ? ex.terminales : ''), activo,
-        emite_antes: rol === 'VENDEDOR' && (o.emiteAntes === true || String(o.emiteAntes).toUpperCase() === 'TRUE') ? 'TRUE' : '' });
+        emite_antes: rol === 'VENDEDOR' && (o.emiteAntes === true || String(o.emiteAntes).toUpperCase() === 'TRUE') ? 'TRUE' : '',
+        deposita: rol === 'VENDEDOR' && (o.deposita === true || String(o.deposita).toUpperCase() === 'TRUE') ? 'TRUE' : '' });
+    asegurarColUsuarios_('deposita');
     let temporal = '';
     if (ex) { updateRow_('USUARIOS', ex._row, fila); if (!activo) cerrarSesionesDe_(ex.usuario); }
     else { append_('USUARIOS', [fila]); }
@@ -749,12 +757,13 @@ function vendedores_() {
 
 function catalogo(token) {
   auth_(token);
+  const conDeposito = {}; read_('DEPOSITOS').forEach(d => conDeposito[d.vendedor] = 1);   // quien ya depositó antes sigue viendo el botón
   return {
     hoy: hoy_(), distribuidores: CFG.DISTRIBUIDORES,
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA')
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
       .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p) })),
-    vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, emiteAntes: esSi_(v.emite_antes) })),
+    vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, emiteAntes: esSi_(v.emite_antes), deposita: esSi_(v.deposita) || conDeposito[v.usuario] === 1 })),
     formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
   };
 }

@@ -19,6 +19,16 @@ const FL = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', DEP_EFECTIVO:
 const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 'Congelados', LACTEOS: 'Lácteos', LAMINADOS: 'Laminados, quesos y verduras', REVISAR: 'Por clasificar' };
 const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor', GERENCIA: 'Gerencia' };
 
+/** Pestañas del rol; el vendedor solo ve Depósitos si deposita su efectivo (casilla en Usuarios o ya lo ha hecho antes). */
+function tabsRol() {
+  const t = TABS[S.sess.rol] || [];
+  if (S.sess.rol !== 'VENDEDOR') return t;
+  return t.filter(x => x[0] !== 'depositos' || vendDeposita());
+}
+function vendDeposita() {
+  const v = ((S.cat && S.cat.vendedores) || []).find(x => x.usuario === S.sess.usuario);
+  return !!(v && v.deposita);
+}
 const IC = {
   cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
@@ -41,7 +51,9 @@ const IC = {
   doc: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',
   out: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
-  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  fuel: '<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M7 9h4M14 10h2a2 2 0 0 1 2 2v4a1.5 1.5 0 0 0 3 0V8l-3-3"/>'
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
 
@@ -646,7 +658,7 @@ async function iniciar() {
   app.innerHTML = `<main>${skeleton(4)}</main>`;
   S.cat = await api('catalogo', S.sess.token);
   S.fecha = S.fecha || hoyCL();
-  const tabs = TABS[S.sess.rol] || [];
+  const tabs = tabsRol();
   S.tab = S.tab && tabs.some(t => t[0] === S.tab) ? S.tab : tabs[0][0];
   const unica = tabs.length === 1;          // una sola pantalla, sin menú
   const abajo = !unica && (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA' || tabs.length <= 4);
@@ -741,7 +753,7 @@ function ir(t, silencioso) {
     S.impPendiente = false;
   }
   S.tab = t;
-  const tabs = TABS[S.sess.rol] || [];
+  const tabs = tabsRol();
   if (S.grupos) {
     const g = S.grupos.find(x => x[2].indexOf(t) >= 0);
     S.ultimoDeGrupo[g[0]] = t;
@@ -803,31 +815,23 @@ async function vHoy(m) {
   const tot = docs.reduce((a, d) => a + d.total, 0), ef = por(['EFECTIVO']), tr = por(['TRANSFERENCIA', 'DEP_EFECTIVO']), ch = por(['CHEQUE']), cr = por(['CREDITO']);
   const sumaM = xs => xs.reduce((a, x) => a + (Number(x.monto) || 0), 0), pl = (n, a, b) => n + ' ' + (n === 1 ? a : b);
   const p = docs.length ? hechos.length / docs.length : 0;
-  const hero = `<div class="hero"><span class="kick">Primero</span><b>Anota cada folio que emitas en ruta</b>
-        <span>Folio, monto y cómo te pagó. Funciona sin internet y se detalla solo cuando llega de Mi DTE.</span>
-        <div class="meter" style="margin:12px 0 4px">${nAd ? `<b>${nAd} anotado${nAd > 1 ? 's' : ''} hoy · ${aplAd} ya detallado${aplAd === 1 ? '' : 's'}</b>` : '<b>Aún no anotas folios hoy</b>'}</div>
-        <button class="btn cu block" id="hanota" ${cerrada ? 'disabled' : ''}>Anotar folio</button></div>
-    <div class="hero2">${!docs.length ? `<b>Folios que ya subió la encargada</b><span>Aparecen cuando se importa Mi DTE. Ahí completas lo que falte.</span>`
-      : !pend ? `<b>✓ Todos tus folios están detallados</b><span>${pl(docs.length, 'folio', 'folios')}.</span>`
-      : `<b>Detallar folios que ya subieron</b><div class="meter" style="margin:8px 0 4px"><div class="bar"><i style="width:${Math.round(p * 100)}%"></i></div><b>${hechos.length} de ${docs.length}</b></div>
-        <button class="btn ghost block" id="hgo" ${cerrada ? 'disabled' : ''}>${hechos.length ? 'Seguir detallando' : 'Empezar a detallar'} · ${pend} por hacer</button>`}</div>`;
-  const pasos = [
-    ['folios', docs.length > 0 && !pend, 'Mis folios', !docs.length ? 'Todavía no hay folios' : pend ? `Te faltan ${pend}` : 'Todos detallados', ''],
-    ['COBRANZA', cob.length > 0, 'Cobranza', cob.length ? `${pl(cob.length, 'pago', 'pagos')} · ${clp(sumaM(cob))}` : 'Si un cliente te pagó una factura de otro día', 'Si corresponde'],
-    ['GASTOS', gas.length > 0, 'Gastos', gas.length ? `${pl(gas.length, 'gasto', 'gastos')} · ${clp(sumaM(gas))}` : 'Combustible, peajes, almuerzo', 'Si corresponde'],
-    ['depositos', false, 'Depósito de efectivo', 'Si depositaste lo que te pagaron en efectivo', 'Si corresponde']];
-  render(m, `<h2>Hola, ${esc(pri)}</h2><p class="lead">Esto es lo que falta para cerrar ${F === hoyCL() ? 'tu día' : 'ese día'}.</p>
+  const dep = vendDeposita();
+  const gb = (n, cls) => n ? `<span class="bd ${cls || ''}">${n}</span>` : '';
+  const tiles = [
+    ['folios', 'receipt', 'Mis folios', !docs.length ? '' : pend ? `<span class="bd">${pend}</span>` : '<span class="bd ok">Listo</span>'],
+    ['COBRANZA', 'cash', 'Cobranza', gb(cob.length, 'ok')],
+    ['GASTOS', 'fuel', 'Gastos', gb(gas.length, 'ok')]];
+  if (dep) tiles.push(['depositos', 'bank', 'Depósito', '']);
+  render(m, `<h2>Hola, ${esc(pri)}</h2>
     ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : ''}
-    ${hero}
-    <div class="hpasos">${pasos.map((x, i) => `<button class="hpaso ${x[1] ? 'd' : ''}" data-t="${x[0]}"><span class="n">${x[1] ? '✓' : i + 1}</span>
-      <span class="t"><b>${x[2]}</b><small>${x[3]}</small></span><span class="go" aria-hidden="true">›</span></button>`).join('')}</div>
-    ${hechos.length ? `<h3>Cómo va tu día</h3><div class="kpis"><div><span>Vendido</span><b>${clp(tot)}</b></div><div><span>Efectivo</span><b>${clp(ef)}</b></div>
-      <div><span>Transferencias</span><b>${clp(tr)}</b></div>${ch ? `<div><span>Cheques</span><b>${clp(ch)}</b></div>` : ''}<div><span>A crédito</span><b>${clp(cr)}</b></div></div>
-      <p class="muted" style="margin:6px 2px 0">Solo cuenta los folios que ya detallaste.</p>` : ''}`);
+    <button class="bigbtn" id="hanota" ${cerrada ? 'disabled' : ''}>${icon('plus')}<span><b>Anotar folio</b><small>${nAd ? pl(nAd, 'anotado', 'anotados') + ' hoy' : 'Funciona sin internet'}</small></span></button>
+    <div class="htiles${tiles.length % 2 ? ' odd' : ''}">${tiles.map(x => `<button class="htile" data-t="${x[0]}">${x[3]}${icon(x[1])}<b>${x[2]}</b></button>`).join('')}</div>
+    ${hechos.length ? `<div class="hvend"><span>Vendido hoy</span><b>${clp(tot)}</b></div>
+      <details class="mas"><summary>Ver desglose</summary><div class="kpis"><div><span>Efectivo</span><b>${clp(ef)}</b></div>
+      <div><span>Transferencias</span><b>${clp(tr)}</b></div>${ch ? `<div><span>Cheques</span><b>${clp(ch)}</b></div>` : ''}<div><span>A crédito</span><b>${clp(cr)}</b></div></div></details>` : ''}`);
   m.onclick = e => {
     if (e.target.closest('#hanota')) return abrirAdelanto(S.sess.usuario, () => { olvidarCache(false); ir(S.tab, true); });
-    if (e.target.closest('#hgo')) { S.autoempezar = true; return ir('folios'); }
-    const b = e.target.closest('.hpaso'); if (b) ir(b.dataset.t);
+    const b = e.target.closest('.htile'); if (b) ir(b.dataset.t);
   };
 }
 
@@ -1797,13 +1801,14 @@ async function vUsuarios(m) {
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
       <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
       </div>
+      <label class="muted" id="u7w" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u7" ${u.deposita ? 'checked' : ''}> Deposita el efectivo (le sale el botón Depósito)</label>
       <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u6" ${u.activo ? 'checked' : ''}> Activo (si lo desactivas, no puede ingresar)</label></div>
       <div class="foot"><button class="btn ghost" id="ux">Cancelar</button><span class="grow"></span><button class="btn cu" id="ug">Guardar</button></div></div>`;
     document.body.appendChild(ov);
-    const rolCh = () => { $('#u5w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
+    const rolCh = () => { $('#u5w', ov).hidden = $('#u7w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
     $('#ux', ov).onclick = () => cerrarHoja(ov);
     $('#ug', ov).onclick = async () => {
-      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: false };
+      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: false, deposita: $('#u7', ov).checked };
       if (!o.nombre) return toast('Escribe el nombre.', true);
       if (!o.rut && !o.correo) return toast('Indica el RUT o el correo.', true);
       const r = await api('guardarUsuario', S.sess.token, o); cerrarHoja(ov);
