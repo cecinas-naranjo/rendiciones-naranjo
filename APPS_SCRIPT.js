@@ -23,6 +23,7 @@ const CFG = {
   KG_POR_UNIDAD: { porDefecto: 3, porCodigo: { '7': 1.8 } },   // 7 = salchichón cervecero
   // Se sugieren por kilo, no por unidad (patés y longanizas)
   SOLO_KILOS: ['1', '1.1', '3'],
+  VENTA_EN_KILOS: ['COSTILLAR'],   // productos que se venden y se pesan en kilos aunque la hoja PRODUCTOS diga UN (parte del nombre)
   INV_EN_KILOS: ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'COSTILLAR', 'LONGANIZA', 'PATE DE CERDO', 'COSTILLAR DE CERDO AHUMADO ENV.'],   // nombre en la planilla de inventario o nombre de venta   // productos terminados que el inventario lleva en kilos; el resto de terminados va en unidades
   // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
   INFORMES_FOLDER_ID: '',
@@ -99,7 +100,7 @@ const PRODUCTOS_BASE = [
   ['?MOLIDA','CARNE MOLIDA VACUNO 500G - 10 PORCIENTO','CARNICOS','UN',4553],
   ['?BBQ','CERDO BBQ DESMECHADA 1KG','CARNICOS','UN',12531],
   ['?CHULETA','CHULETA VETADA','CARNICOS','KG',4190],
-  ['?COSTILLAR','COSTILLAR DE CERDO AHUMADO ENV.','CARNICOS','UN',7000],
+  ['?COSTILLAR','COSTILLAR DE CERDO AHUMADO ENV.','CARNICOS','KG',7000],
   ['?ARVEJAS','ARVEJAS 10X200G M. VERDE','CONGELADOS','UN',6139],
   ['?CHOCLO','CHOCLO 10X200G M. VERDE','CONGELADOS','UN',6186],
   ['?CHOCLOT','CHOCLO TROCITO M. VERDE 20X180G','CONGELADOS','UN',16135],
@@ -477,6 +478,7 @@ function read_(name) {
     const o = { _row: i + 2 };
     head.forEach((h, j) => o[h] = r[j] instanceof Date && (h === 'fecha' || h === 'cheque_fecha') ? normFecha_(r[j]) : r[j]);
     if (o.fecha !== undefined) o.fecha = normFecha_(o.fecha);
+    if (name === 'PRODUCTOS' && CFG.VENTA_EN_KILOS.some(k => normTxt_(o.nombre).indexOf(k) >= 0)) o.unidad = 'KG';
     return o;
   });
 }
