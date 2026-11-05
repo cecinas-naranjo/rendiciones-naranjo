@@ -469,3 +469,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v92 — Cobranza del vendedor en dos pasos (solo frontend)
 - `cobrarDesdeLista`: sin "política de crédito" ni RUT en la lista; buscador "Nombre, RUT o folio"; al elegir cliente: "¿Cómo pagó?" con botones grandes (Efectivo/Transferencia/Cheque; banco también en botones; datos del cheque como siempre), "¿Qué facturas pagó?" (folio, "Hace N días", saldo; el monto editable para abonos aparece al marcar) y un botón grande "Registrar cobro $X". `forma`/`bancoSel` son objetos `{value}` (ya no selects).
 - `vMov('COBRANZA')` para VENDEDOR (`simple`): sin frase de ayuda; "Cobrado hoy · total" en filas cortas con ×; el registro a mano queda plegado como enlace "Registrar un pago sin la lista". Oficina conserva la tabla.
+
+## v93 — Cobranza: factura que se despliega y botones limpios (solo frontend)
+- `cobrarDesdeLista`: cliente → lista de sus facturas; al tocar una se despliega debajo su formulario (¿Cómo pagó? en chips compactos, banco en un select, datos del cheque, monto editable, "Registrar cobro"). Una factura por cobro, una abierta a la vez; si se buscó por folio, se abre sola. Ya no hay casillas ni "Marcar todas".
+- `.bigbtn`/`.gobtn` con `border:0` (se veía el borde gris por defecto del botón).

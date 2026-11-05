@@ -2797,48 +2797,46 @@ async function cobrarDesdeLista(box, alTerminar) {
   res.onclick = e => { const b = e.target.closest('.cli'); if (!b) return; abrirCliente(clientes.find(c => c.clave === b.dataset.k), String($('#cq', box).value || '').replace(/\D/g, '')); };
   function abrirCliente(c, folioBuscado) {
     res.innerHTML = '';
-    pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b></div>
-        <button type="button" class="btn ghost sm" id="cvolver">Cambiar</button></div>
-      <div class="csec">¿Cómo pagó?</div>
-      <div class="fpay" id="cforma">${[['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CHEQUE', 'Cheque']].map(([v, t], i) => `<button type="button" data-v="${v}" class="${i ? '' : 'on'}">${t}</button>`).join('')}</div>
-      <div id="cbancow" hidden><div class="fpay b3" id="cbanco">${S.cat.bancos.map((b, i) => `<button type="button" data-v="${esc(b)}" class="${i ? '' : 'on'}">${esc(b.charAt(0) + b.slice(1).toLowerCase())}</button>`).join('')}</div></div>
-      <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div>
-      <div class="csec">¿Qué facturas pagó?</div>
-      ${c.facturas.map((f, i) => `<div class="cfac"><label class="row" style="gap:10px"><input type="checkbox" class="cchk" data-i="${i}">
-          <span class="grow"><b>${esc(f.tipo.replace(' Electrónica', ''))} ${esc(f.folio)}</b>${f.cheque ? ' <span class="chip warn">Cheque en cartera</span>' : ''}
-          <div class="muted">Hace ${f.dias} días${f.venc && f.venc < r.hoy ? ' · <b class="bad">Vencida</b>' : ''}</div></span>
-          <b>${clp(f.saldo)}</b></label>
-        <div class="cmonto" hidden><label class="f">Monto que paga</label><input class="in n" inputmode="numeric" data-m="${i}" value="${f.saldo}"></div></div>`).join('')}
-      ${c.facturas.length > 1 ? '<button type="button" class="linkbtn" id="ctodas">Marcar todas</button>' : '<span id="ctodas" hidden></span>'}
-      <button class="gobtn" id="cok" type="button"><span>Registrar cobro</span><b id="ctot">$0</b></button></div>`;
-    if (folioBuscado && folioBuscado.length >= 2) c.facturas.forEach((f, i) => { if (String(f.folio).indexOf(folioBuscado) >= 0) { const ck = $('.cchk[data-i="' + i + '"]', pan); if (ck) { ck.checked = true; $('.cmonto', ck.closest('.cfac')).hidden = false; ck.closest('.cfac').classList.add('buscada'); } } });
-    const sel = () => $$('.cchk', pan).filter(x => x.checked);
-    const total = () => { const t = sel().reduce((a, x) => a + soloDigitos($('[data-m="' + x.dataset.i + '"]', pan).value), 0); $('#ctot', pan).textContent = clp(t); return t; };
-    pan.onchange = e => { if (e.target.classList.contains('cchk')) { $('.cmonto', e.target.closest('.cfac')).hidden = !e.target.checked; total(); } };
-    pan.oninput = e => { if (e.target.dataset.m !== undefined) total(); };
-    total();
-    $('#cvolver', pan).onclick = () => { pan.innerHTML = ''; lista($('#cq', box).value); };
-    $('#ctodas', pan).onclick = () => { const todas = $$('.cchk', pan); const on = todas.some(x => !x.checked); todas.forEach(x => { x.checked = on; $('.cmonto', x.closest('.cfac')).hidden = !on; }); total(); };
     const forma = { value: 'EFECTIVO' }, bancoSel = { value: S.cat.bancos[0] };
-    const grupo = (id, cual, alCambiar) => { $('#' + id, pan).onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('button', e.currentTarget).forEach(x => x.classList.toggle('on', x === b)); cual.value = b.dataset.v; if (alCambiar) alCambiar(); }; };
-    grupo('cforma', forma, () => { $('#cbancow', pan).hidden = forma.value !== 'TRANSFERENCIA'; $('#cch', pan).hidden = forma.value !== 'CHEQUE'; if (forma.value === 'CHEQUE') avisoTipoCheque($('.cheque', pan)); });
-    grupo('cbanco', bancoSel);
-    $('#cok', pan).onclick = async () => {
-      const xs = sel(); if (!xs.length) return toast('Marca al menos una factura.', true);
-      const items = xs.map(x => { const f = c.facturas[x.dataset.i], m = soloDigitos($('[data-m="' + x.dataset.i + '"]', pan).value); return { folio_key: f.folio_key, folio: f.folio, monto: m, saldo: f.saldo }; });
-      if (items.some(i => !i.monto)) return toast('Hay una factura sin monto.', true);
-      const mas = items.find(i => i.monto > i.saldo);
-      if (mas && !confirm('Una de las facturas paga más de lo que debe (' + clp(mas.monto) + ' de ' + clp(mas.saldo) + '). ¿Registrar igual?')) return;
-      const pago = { forma: forma.value };
-      if (forma.value === 'TRANSFERENCIA') pago.banco = bancoSel.value;
-      if (forma.value === 'CHEQUE') { const ch = leerCheque($('.cheque', pan)); if (ch.error) return toast(ch.error, true); Object.assign(pago, ch.datos); }
-      const b = $('#cok', pan); b.disabled = true;
-      try {
-        const r = await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pago, items.map(i => ({ folio_key: i.folio_key, folio: i.folio, monto: i.monto })));
-        toast((r._pendiente ? 'Cobro guardado en el teléfono (sin conexión): ' : 'Cobro registrado: ') + clp(items.reduce((a, i) => a + i.monto, 0)));
-        await alTerminar();
-      } finally { b.disabled = false; }
-    };
+    pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b><div class="muted">Toca la factura que pagó</div></div>
+        <button type="button" class="btn ghost sm" id="cvolver">Cambiar</button></div>
+      <div id="cfacs" style="margin-top:8px">${c.facturas.map((f, i) => `<div class="cfac" data-i="${i}"><button type="button" class="cfh" data-i="${i}"><span class="grow"><b>${esc(f.tipo.replace(' Electrónica', ''))} ${esc(f.folio)}</b>${f.cheque ? ' <span class="chip warn">Cheque en cartera</span>' : ''}
+          <small>Hace ${f.dias} días${f.venc && f.venc < r.hoy ? ' · <b class="bad">Vencida</b>' : ''}</small></span><b>${clp(f.saldo)}</b><span class="go">›</span></button>
+        <div class="cform" hidden></div></div>`).join('')}</div></div>`;
+    $('#cvolver', pan).onclick = () => { pan.innerHTML = ''; lista($('#cq', box).value); };
+    const cerrar = () => $$('.cfac.abierta', pan).forEach(d => { d.classList.remove('abierta'); const f = $('.cform', d); f.hidden = true; f.innerHTML = ''; });
+    function abrir(i) {
+      const f = c.facturas[i], d = $('.cfac[data-i="' + i + '"]', pan), fm = $('.cform', d);
+      if (d.classList.contains('abierta')) { cerrar(); return; }
+      cerrar(); forma.value = 'EFECTIVO'; bancoSel.value = S.cat.bancos[0];
+      d.classList.add('abierta'); fm.hidden = false;
+      fm.innerHTML = `<div class="csec" style="margin-top:4px">¿Cómo pagó?</div>
+        <div class="chips2" id="cforma">${[['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CHEQUE', 'Cheque']].map(([v, t], k) => `<button type="button" data-v="${v}" class="${k ? '' : 'on'}">${t}</button>`).join('')}</div>
+        <div id="cbancow" hidden style="margin-top:10px"><label class="f" for="cbanco">Banco</label><select class="in" id="cbanco">${S.cat.bancos.map(b => `<option value="${esc(b)}">${esc(b.charAt(0) + b.slice(1).toLowerCase())}</option>`).join('')}</select></div>
+        <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div>
+        <div style="margin-top:10px"><label class="f" for="cmonto">Monto que paga</label><input class="in n" id="cmonto" inputmode="numeric" value="${f.saldo}"></div>
+        <button class="btn cu block" id="cok" type="button" style="margin-top:12px">Registrar cobro</button>`;
+      $('#cforma', fm).onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('button', e.currentTarget).forEach(x => x.classList.toggle('on', x === b)); forma.value = b.dataset.v;
+        $('#cbancow', fm).hidden = forma.value !== 'TRANSFERENCIA'; $('#cch', fm).hidden = forma.value !== 'CHEQUE'; if (forma.value === 'CHEQUE') avisoTipoCheque($('.cheque', fm)); };
+      $('#cbanco', fm).onchange = e => { bancoSel.value = e.target.value; };
+      $('#cok', fm).onclick = async () => {
+        const m = soloDigitos($('#cmonto', fm).value);
+        if (!m) return toast('Escribe el monto que paga.', true);
+        if (m > f.saldo && !confirm('Paga más de lo que debe (' + clp(m) + ' de ' + clp(f.saldo) + '). ¿Registrar igual?')) return;
+        const pago = { forma: forma.value };
+        if (forma.value === 'TRANSFERENCIA') pago.banco = bancoSel.value;
+        if (forma.value === 'CHEQUE') { const ch = leerCheque($('.cheque', fm)); if (ch.error) return toast(ch.error, true); Object.assign(pago, ch.datos); }
+        const b = $('#cok', fm); b.disabled = true;
+        try {
+          const rr = await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pago, [{ folio_key: f.folio_key, folio: f.folio, monto: m }]);
+          toast((rr._pendiente ? 'Cobro guardado en el teléfono (sin conexión): ' : 'Cobro registrado: ') + clp(m));
+          await alTerminar();
+        } finally { b.disabled = false; }
+      };
+      d.scrollIntoView({ block: 'nearest' });
+    }
+    $('#cfacs', pan).onclick = e => { const h = e.target.closest('.cfh'); if (h) abrir(+h.dataset.i); };
+    if (folioBuscado && folioBuscado.length >= 2) { const i = c.facturas.findIndex(f => String(f.folio).indexOf(folioBuscado) >= 0); if (i >= 0) abrir(i); }
   }
 }
 
