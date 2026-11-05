@@ -436,3 +436,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Toques repetidos: (1) `escribir` ignora una escritura idéntica (misma función, usuario y argumentos) repetida en 4 s y devuelve la misma promesa (`RECIEN`); (2) listener global en captura ignora un 2.º clic al mismo botón en <900 ms (excepto + / − y `data-rep`).
 - Botón recargar (`actualizarTodo`): si la app cree que no hay internet, hace el intento (ping, ~1 s con giro y botón bloqueado) antes de decir que no hay conexión.
 - Hoy del vendedor: tarjeta principal "Anota cada folio que emitas en ruta" (abre `abrirAdelanto`, con contador anotados/detallados) y segunda tarjeta "Detallar folios que ya subieron" con avance y botón.
+
+## v83 — Animaciones livianas (solo frontend)
+- Queja: en el computador de la oficina las animaciones se "pegaban". Bloque final de style.css: sin `backdrop-filter`, sin transiciones de `box-shadow`/`transform` en tarjetas, botones y filas, sin `scroll-behavior:smooth`, entradas solo con fundido de 160 ms, listas (`.folio`, `.vcard`, `.hpaso`) sin animación por fila, hojas y avisos con fundido. `animarMontos` (conteo animado) desactivado. Para volver a animaciones ricas hay que quitar ese bloque; no reintroducir sombras/blur animados.

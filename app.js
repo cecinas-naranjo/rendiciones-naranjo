@@ -67,6 +67,7 @@ function render(el, html) {
 }
 /** Los totales de las tarjetas resumen "suben" desde cero al abrir la pantalla (solo se ve, el valor final es el real). */
 function animarMontos(raiz) {
+  return;       // v83: el conteo animado redibujaba el texto en cada cuadro y se sentía pegado
   $$('.kpis b', raiz).forEach(el => {
     const txt = el.textContent.trim(), m = txt.match(/^\$([\d.]+)$/); if (!m) return;
     const fin = Number(m[1].replace(/\./g, '')); if (!(fin > 0)) return;

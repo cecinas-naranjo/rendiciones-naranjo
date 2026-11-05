@@ -845,3 +845,22 @@ body.solo-leer .ordenar, body.solo-leer .pasos button { pointer-events: none; }
 .hero span:not(.kick):not(.tick){display:block;opacity:.85;font-size:14px;margin-top:2px}
 .hero2{background:var(--card,#fff);border:1px solid var(--line,#e3dfda);border-radius:16px;padding:14px 16px;margin:12px 0}
 .hero2>b{display:block;font-size:16px}.hero2>span{display:block;color:var(--mut);font-size:13.5px;margin-top:2px}
+
+/* ===== v83: animaciones livianas (sin tirones en computadores modestos) =====
+   Se quita lo que obliga a redibujar mucho: desenfoque de fondo, sombras animadas, rebotes y animación de cada fila de las listas. */
+html{scroll-behavior:auto}
+.ov{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(30,22,18,.5)}
+.card,.btn,.chip,.in,tr,.kpis>*,.folio,.vcard,.hpaso,.dks{transition:background-color .15s ease,border-color .15s ease,color .15s ease,opacity .15s ease}
+@media(hover:hover){.btn:hover,.dks:hover{transform:none;box-shadow:none}.card:hover{box-shadow:none}.btn:hover{filter:brightness(.97)}}
+.btn:active,.folio:active,.vcard.clic:active,.hpaso:active,nav.bottom button:active{transform:none;opacity:.85}
+.enter>*,.enter[data-dir]>*{animation:solofade .16s ease both!important;animation-delay:0ms!important}
+.enter .folio,.enter .vcard,.enter .urow,.enter .hpaso{animation:none!important}
+details[open]>*:not(summary){animation:none}
+.ov{animation:fade .12s ease both}
+.ov .sheet{animation:solofade .16s ease both!important}
+.toast{animation:solofade .2s ease both}
+#app,.login,.login .card,.login>*{animation:solofade .18s ease both}
+.vm{transition:opacity .06s linear}
+.vm.sale{transform:none}
+nav.bottom button.on svg,nav .on svg,.side .on svg{animation:none;transform:none}
+.meter .bar i{animation-duration:.35s}
