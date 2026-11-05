@@ -1011,20 +1011,20 @@ async function vFolios(m) {
   let docs = [], estadoDia = '', q = '';
   const r = await api('misDocumentos', S.sess.token, S.fecha, S.vend);
   docs = r.docs; estadoDia = r.estadoDia;
-  render(m, `<h2>${esV ? 'Mis folios' : 'Detallar ventas'}</h2><p class="lead">${esV ? 'Toca un folio y marca cómo te pagó el cliente.' : fechaLarga(S.fecha) + ' · Puedes detallar los folios de cualquier vendedor; quedará registrado que lo hiciste tú.'}</p>
+  render(m, `<h2>${esV ? 'Mis folios' : 'Detallar ventas'}</h2>${esV ? '' : '<p class="lead">' + fechaLarga(S.fecha) + ' · Puedes detallar los folios de cualquier vendedor; quedará registrado que lo hiciste tú.</p>'}
     ${esV ? '' : `<div class="row" style="margin-bottom:6px"><select class="in" style="width:auto" id="fv">${opcVend(S.vend, true)}</select></div>`}
     <div class="meter" id="meter"><div class="bar"><i></i></div><b></b></div>
     <div id="adl"></div>
-    <div id="anl"></div>
     <div id="acc"></div>
     <div class="row filtros"><div class="seg" id="seg"><button data-f="pend">Por detallar</button><button data-f="det">Detallados</button><button data-f="todos">Todos</button></div>
       ${docs.length > 8 || !esV ? `<div class="search grow" style="min-width:180px">${icon('search')}<input class="in" id="q" placeholder="Cliente o folio" type="search"></div>` : ''}</div>
-    <div id="fl"></div>`);
+    <div id="fl"></div>
+    <div id="anl"></div>`);
   if (!esV) $('#fv').onchange = e => { S.vend = e.target.value; ir('folios'); };
   // Folios adelantados: el vendedor anota folio + monto + forma de pago antes de que llegue Mi DTE; la app cruza sola al importar
   const vAdl = esV ? S.sess.usuario : S.vend;
   async function pintarAdl() {
-    if (!vAdl || !document.body.contains(m)) { $('#adl', m).innerHTML = ''; return; }
+    if (esV || !vAdl || !document.body.contains(m)) { $('#adl', m).innerHTML = ''; return; }
     let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vAdl); } catch (e) {}
     if (!document.body.contains(m)) return;
     const esp = ls.filter(x => x.estado === 'ESPERANDO').length, rev = ls.filter(x => x.estado === 'REVISAR').length, apl = ls.filter(x => x.estado === 'APLICADO').length;
@@ -1038,8 +1038,8 @@ async function vFolios(m) {
     let ls = []; try { ls = await api('listarAnulaciones', S.sess.token, S.fecha, vAdl); } catch (e) {}
     if (!document.body.contains(m)) return;
     const pe = ls.filter(x => x.estado === 'PENDIENTE').length, ap = ls.filter(x => x.estado === 'APROBADA').length, re = ls.filter(x => x.estado === 'RECHAZADA').length;
-    $('#anl', m).innerHTML = `<div class="card adl anl"><span class="ic">${icon('receipt')}</span><div class="grow"><b>Anular folio o pedir nota de crédito</b><div class="muted">${pe || ap || re ? [pe ? pe + ' por aprobar' : '', ap ? ap + ' aprobada' + (ap > 1 ? 's' : '') : '', re ? '<span class="bad">' + re + ' rechazada' + (re > 1 ? 's' : '') + '</span>' : ''].filter(Boolean).join(' · ') : 'Si un folio salió mal: anúlalo completo o por partes (producto, kilos y monto).'}</div></div>
-      <button class="btn ghost sm" id="anlb" type="button">${pe || ap || re ? 'Ver / agregar' : 'Anular folio'}</button></div>`;
+    const partes = [pe ? pe + ' por aprobar' : '', ap ? ap + ' aprobada' + (ap > 1 ? 's' : '') : '', re ? '<span class="bad">' + re + ' rechazada' + (re > 1 ? 's' : '') + '</span>' : ''].filter(Boolean).join(' · ');
+    $('#anl', m).innerHTML = `<div class="anlin"><button class="linkbtn" id="anlb" type="button">${pe || ap || re ? 'Anulaciones' : 'Anular un folio'}</button>${partes ? ' <span class="muted">· ' + partes + '</span>' : ''}</div>`;
     $('#anlb', m).onclick = () => abrirAnulacion(vAdl, docs, () => { olvidarCache(false); ir('folios', true); });
   }
   pintarAnl();
@@ -1057,23 +1057,23 @@ async function vFolios(m) {
     ['pend', 'det', 'todos'].forEach(f => { sb(f).innerHTML = nom[f] + (docs.length ? ` <span class="cn">${cn[f]}</span>` : ''); });
     $('#acc').innerHTML = pendientes && estadoDia !== 'CERRADA' ? `<div class="acciones col">
       <button class="btn cu" id="emp">${hechos ? 'Seguir detallando' : 'Empezar a detallar'} <span class="cnt">${pendientes}</span></button>
-      ${pendientes > 1 ? (esV || S.vend ? '<button class="btn ghost sm" id="var">Marcar varios de una vez</button>'
+      ${pendientes > 1 ? (esV || S.vend ? '<button class="btn ghost sm" id="var">Marcar varios</button>'
         : '<button class="btn ghost sm" disabled title="Elige un vendedor arriba">Elige un vendedor para marcar varios</button>') : ''}</div>` : '';
     $('.bar i', mt).style.width = (p * 100) + '%';
     $('b', mt).textContent = docs.length ? `${hechos} de ${docs.length} detallados · ${clp(docs.reduce((a, d) => a + d.total, 0))}` : '';
     const el = $('#fl');
-    if (!docs.length) { el.innerHTML = `<div class="empty"><b>No hay documentos para este día</b>Los folios aparecen cuando la encargada importa el informe de ventas de Mi DTE.</div>`; return; }
+    if (!docs.length) { el.innerHTML = `<div class="empty"><b>Todavía no hay folios</b>Aparecen cuando se sube Mi DTE.</div>`; return; }
     let lista = docs.filter(d => S.filtro === 'todos' || (S.filtro === 'det') === (d.estado === 'DETALLADO'));
     if (q) lista = lista.filter(d => norm(d.cliente).includes(q) || String(d.folio).includes(q));
     lista.sort((a, b) => String(a.folio).localeCompare(String(b.folio), 'es', { numeric: true }));
     if (!lista.length) {
-      el.innerHTML = S.filtro === 'pend' && !q ? `<div class="empty alert ok" style="border-style:solid"><b>Todo detallado</b>No quedan folios pendientes para este día.</div>`
+      el.innerHTML = S.filtro === 'pend' && !q ? `<div class="empty alert ok" style="border-style:solid"><b>Todo detallado ✓</b></div>`
         : `<div class="empty">Nada coincide con el filtro.</div>`;
       return;
     }
     el.innerHTML = lista.map(d => `<button class="folio ${d.estado === 'DETALLADO' ? 'd' : ''} ${d.folio_key === recienGuardado ? 'just' : ''}" data-k="${esc(d.folio_key)}">
       <div class="grow"><div class="c">${esc(d.cliente)}</div>
-        <div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)} · Mi DTE: ${esc(d.condicion_dte)}${esV ? '' : ' · ' + esc(d.vendedor || 'sin vendedor')}</div>
+        <div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)} · ${esc(d.condicion_dte)}${esV ? '' : ' · ' + esc(d.vendedor || 'sin vendedor')}</div>
         <div class="chips">${chipsEstado(d)}</div></div>
       <div class="t">${clp(d.total)}</div></button>`).join('');
     el.onclick = e => { const b = e.target.closest('.folio'); if (!b) return;

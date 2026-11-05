@@ -942,3 +942,8 @@ nav.bottom button.on svg,nav .on svg,.side .on svg{animation:none;transform:none
 .htile:hover{background:#fbf6f1;border-color:var(--cu)}
 .htile:active{background:#f4e7db;border-color:var(--cu);transform:translateY(2px);box-shadow:none}
 .htile:focus-visible,.bigbtn:focus-visible{outline:3px solid var(--cu-soft,#f3c9ac);outline-offset:2px}
+
+/* v91 Mis folios más simple */
+.anlin{margin:18px 2px 4px;text-align:center;font-size:15px}
+.linkbtn{background:none;border:0;padding:8px 6px;color:var(--cu-2);font-weight:600;text-decoration:underline;cursor:pointer;min-height:44px}
+.linkbtn:hover{color:var(--cu)}

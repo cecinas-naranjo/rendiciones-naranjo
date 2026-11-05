@@ -462,3 +462,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v90 — Botones de Hoy que se notan como botones (solo frontend)
 - `.bigbtn`/`.htile`: sombra inferior fija, flecha ›, cambio de color al pasar el cursor, se hunden 2 px al tocar y borde cobre en foco. Solo transición de color (sin animar sombras ni transform, por v83).
+
+## v91 — Mis folios más simple (solo frontend)
+- Vendedor: sin frase de ayuda ni tarjeta "Anotar folios por adelantado" (anotar vive en Hoy; la oficina que detalla a nombre de un vendedor sí la conserva). La tarjeta de anulación pasó a un enlace discreto "Anular un folio" al final de la lista (con "N por aprobar…" si hay). Queda: progreso, botón "Seguir/Empezar a detallar (N)", "Marcar varios", filtros con contadores y la lista (sin el rótulo "Mi DTE:").
