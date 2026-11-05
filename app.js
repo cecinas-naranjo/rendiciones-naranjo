@@ -294,12 +294,32 @@ async function escribir1(fn, args) {
   if (EN_LINEA) setTimeout(sincronizar, 50);
   return { _pendiente: true, id: 'pend_' + op };
 }
+let ADEL_UNO = false;
 async function sincronizar() {
   if (sincronizando || !S.sess || !pendActivos().length) return;
   sincronizando = true; pintarRed(); let enviados = 0, rechazados = 0;
   try {
     for (;;) {
       const x = pendActivos()[0]; if (!x) break;
+      // v99: los folios adelantados seguidos van todos en UNA llamada (antes una por folio, cada una con su espera y su cruce con Mi DTE)
+      const grupo = (x.fn === 'adelantarFolio' && !ADEL_UNO) ? pendActivos().filter(p => p.fn === 'adelantarFolio').slice(0, 100) : [];
+      if (grupo.length > 1) {
+        try {
+          const r = await llamar('adelantarVarios', [S.sess.token, grupo.map(g => g.args)], { op: grupo[0].op, rep: !!grupo[0].enviado });
+          grupo.forEach((g, i) => {
+            const ri = (r && r.resultados || [])[i];
+            if (ri && ri.ok === false) { g.error = String(ri.error || 'No se pudo anotar'); rechazados++; }
+            else { PEND = PEND.filter(p => p !== g); enviados++; }
+          });
+          guardarPend();
+        } catch (e) {
+          if (e.red) { grupo.forEach(g => { g.enviado = true; }); guardarPend(); break; }
+          if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; return salir(true); }
+          if (/desconocid/i.test(String(e.message))) { ADEL_UNO = true; continue; }      // servidor antiguo: uno por uno, como antes
+          grupo.forEach(g => { g.error = String(e.message || e).replace('SESION: ', ''); rechazados++; }); guardarPend();
+        }
+        continue;
+      }
       try { await llamar(x.fn, [S.sess.token].concat(x.args), { op: x.op, rep: !!x.enviado }); PEND = PEND.filter(p => p !== x); enviados++; guardarPend(); }
       catch (e) {
         if (e.red) { x.enviado = true; guardarPend(); break; }                      // sigue sin conexión: se intenta más tarde

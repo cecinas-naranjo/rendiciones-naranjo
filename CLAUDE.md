@@ -488,3 +488,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v98 — Fotos y comprobantes se adjuntan después (solo frontend)
 - Pedido del dueño: subir fotos al registrar vuelve lento y tedioso el trabajo apurado. Gastos, Proveedores, Consumo y Depósitos ya NO piden foto en el formulario: se registra al instante y la foto se agrega después con el chip de cada fila (`chipsAdj`): "Falta foto · Adjuntar" (ámbar) si no tiene, "Agregar" si ya tiene archivos. Se quitó el upload bloqueante tras guardar. Devoluciones (bodega) conserva la foto opcional de la NC. Sin conexión: un registro pendiente (`pend_`) no se puede adjuntar hasta que se envíe (las fotos no se encolan, ver Pendientes).
+
+## v99 — Folios adelantados: sincronización en una sola llamada (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Problema: al volver el internet, cada folio anotado sin conexión se enviaba como una petición aparte (bloqueo + lectura de ADELANTOS + cruce completo con Mi DTE por cada uno): con muchos folios tardaba minutos.
+- Servidor: `adelantarVarios(token, items)` (en `API`; items = `[fecha,tipo,folio,monto,pagos,vendedor]`): valida cada uno (`validarAdelanto_`, compartido con `adelantarFolio`), un solo `withLock_`, una lectura, alta/actualización en bloque y UN `cruzarAdelantos_()`. Devuelve `resultados[]` en el mismo orden (`{ok,estado,nota}` o `{ok:false,error}`); idempotente por `folio_key`, máx. 200.
+- Cliente: `sincronizar()` junta los `adelantarFolio` pendientes (hasta 100) en una llamada; los rechazados quedan con error en "Cambios por enviar", los demás se quitan de la cola. Si el servidor responde "Acción desconocida" cae a uno por uno (`ADEL_UNO`).
+- Pendiente posible: agrupar también `guardarDetalle` de la cola y optimizar el cruce de `importarDTE` con muchos adelantos.

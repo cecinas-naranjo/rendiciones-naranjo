@@ -259,7 +259,7 @@ function setup() {
 const API = {
   getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -949,8 +949,7 @@ function reintentarAdelantos(token) {
   return withLock_(() => cruzarAdelantos_());
 }
 /** El vendedor (o la oficina a nombre de uno) anota un folio por adelantado. tipo: 'Factura' | 'Boleta'. */
-function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2) {
-  const u = auth_(token);
+function validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, vend2) {
   if (typeof pagos === 'string') { pagos = [{ forma: pagos, banco: vendedor || '' }]; vendedor = vend2; }     // formato de v68 (forma, banco, vendedor)
   const v = u.rol === 'VENDEDOR' ? u.usuario : String(vendedor || '');
   if (!v) throw new Error('Indica el vendedor.');
@@ -969,16 +968,54 @@ function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2
   });
   if (!ls.length) throw new Error('Indica cómo pagó.');
   if (ls.reduce((a, p) => a + p.monto, 0) !== m) throw new Error('Los pagos no suman el monto del folio ($' + m + ').');
+  return { v, fecha, t, f, m, ls, key: folioKey_(t, f) };
+}
+function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2) {
+  const u = auth_(token);
+  const p = validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, vend2);
   return withLock_(() => {
     asegurarAdelantos_();
-    const key = folioKey_(t, f), prev = read_('ADELANTOS').filter(a => a.folio_key === key);
+    const prev = read_('ADELANTOS').filter(a => a.folio_key === p.key);
     if (prev.some(a => a.estado === 'APLICADO')) return { estado: 'APLICADO', nota: 'Ese folio ya estaba detallado.', id: prev[0].id };
-    const reg = { id: uid_(), fecha, vendedor: v, tipo: t, folio: f, folio_key: key, monto: m, forma: ls.length > 1 ? 'MIXTO' : ls[0].forma, banco: ls[0].banco || '',
-      estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(ls) };
+    const reg = { id: uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: p.ls.length > 1 ? 'MIXTO' : p.ls[0].forma, banco: p.ls[0].banco || '',
+      estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls) };
     if (prev.length) { reg.id = prev[0].id; updateRow_('ADELANTOS', prev[0]._row, reg); } else append_('ADELANTOS', [reg]);
     cruzarAdelantos_();      // si el folio ya llegó de Mi DTE, se cruza al tiro
-    const fin = read_('ADELANTOS').find(a => a.folio_key === key);
+    const fin = read_('ADELANTOS').find(a => a.folio_key === p.key);
     return { estado: fin.estado, nota: fin.nota, id: fin.id };
+  });
+}
+/** v99: anota varios folios adelantados de una vez (los que el vendedor dejó en el teléfono sin internet).
+    Una sola petición, un solo bloqueo y UN solo cruce con Mi DTE (antes cada folio hacía todo eso por separado y tardaba minutos).
+    items = [[fecha, tipo, folio, monto, pagos, vendedor], …]. Devuelve un resultado por folio, en el mismo orden. Es idempotente por folio_key. */
+function adelantarVarios(token, items) {
+  const u = auth_(token);
+  items = (items || []).slice(0, 200);
+  const res = items.map(() => null), ok = [];
+  items.forEach((it, i) => {
+    try { ok.push({ i, p: validarAdelanto_(u, it[0], it[1], it[2], it[3], it[4], it[5]) }); }
+    catch (e) { res[i] = { ok: false, error: String(e.message || e) }; }
+  });
+  if (!ok.length) return { resultados: res };
+  return withLock_(() => {
+    asegurarAdelantos_();
+    const existentes = {}; read_('ADELANTOS').forEach(a => { (existentes[a.folio_key] = existentes[a.folio_key] || []).push(a); });
+    const nuevos = {}, ids = {};
+    ok.forEach(o => {
+      const p = o.p, prev = existentes[p.key] || [];
+      if (prev.some(a => a.estado === 'APLICADO')) { res[o.i] = { ok: true, estado: 'APLICADO', nota: 'Ese folio ya estaba detallado.' }; return; }
+      const reg = { id: (nuevos[p.key] || prev[0] || {}).id || uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: p.ls.length > 1 ? 'MIXTO' : p.ls[0].forma, banco: p.ls[0].banco || '',
+        estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls) };
+      ids[p.key] = reg.id;
+      if (prev.length) updateRow_('ADELANTOS', prev[0]._row, reg); else nuevos[p.key] = reg;      // si el mismo folio viene dos veces, vale el último
+      res[o.i] = { ok: true, key: p.key };
+    });
+    const lista = Object.keys(nuevos).map(k => nuevos[k]);
+    if (lista.length) append_('ADELANTOS', lista);
+    cruzarAdelantos_();
+    const fin = {}; read_('ADELANTOS').forEach(a => { fin[a.folio_key] = a; });
+    res.forEach(r => { if (r && r.ok && r.key) { const a = fin[r.key]; r.estado = a ? a.estado : 'ESPERANDO'; r.nota = a ? a.nota : ''; delete r.key; } });
+    return { resultados: res };
   });
 }
 /** Avance de cada vendedor en el día (v78): folios detallados / por detallar, adelantos anotados y la hora del último envío al servidor.
