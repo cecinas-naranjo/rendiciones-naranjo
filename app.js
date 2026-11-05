@@ -113,7 +113,7 @@ async function subirArchivos(tabla, id, files) {
 }
 const chipsAdj = (adj, tabla, id, editable) => (adj || []).map((a, i) =>
   `<a class="chip cu" href="${esc(a.url)}" target="_blank" rel="noopener" title="Ver archivo">${icon('clip')}${i + 1}</a>`).join(' ') +
-  (editable ? ` <button type="button" class="chip" data-adj="${esc(id)}" data-tabla="${tabla}" title="Adjuntar foto o archivo">${icon('camera')} Adjuntar</button>` : '');
+  (editable ? ` <button type="button" class="chip ${(adj || []).length ? '' : 'warn'}" data-adj="${esc(id)}" data-tabla="${tabla}" title="Adjuntar foto o archivo">${icon('camera')} ${(adj || []).length ? 'Agregar' : 'Falta foto · Adjuntar'}</button>` : '');
 /** Un solo input oculto para "adjuntar después" en cualquier fila. */
 function activarAdjuntarDespues(cont, alTerminar) {
   let inp = $('#adjLater');
@@ -2715,7 +2715,6 @@ async function vDepositos(m) {
         <div><label class="f" for="db">Banco</label><select class="in" id="db"><option value="">Elegir…</option>${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div>
         <div><label class="f" for="dm">Monto depositado</label><input class="in n" id="dm" inputmode="numeric" value="${q.saldo > 0 ? q.saldo : ''}"></div>
         <div><label class="f" for="dr">N° de operación</label><input class="in" id="dr" inputmode="numeric"></div>
-        ${campoArchivos('dfile')}
       </div>
       <div id="dsal"></div>
       <button class="btn cu block" id="dg" style="margin-top:6px">Registrar depósito</button></div>`}
@@ -2731,7 +2730,6 @@ async function vDepositos(m) {
     await api('borrarDeposito', S.sess.token, id); toast('Depósito borrado'); ir('depositos'); };
   activarAdjuntarDespues(m, () => ir('depositos'));
   if (cerrada) return;
-  enlazarCampoArchivos('dfile');
   const dm = $('#dm');
   const aviso = () => {
     const mon = soloDigitos(dm.value), resta = q.saldo - mon;
@@ -2755,9 +2753,6 @@ async function vDepositos(m) {
       const nuevo = await api('guardarDeposito', S.sess.token, S.fecha, { vendedor: esV ? '' : S.vend, banco: $('#db').value, monto: mon, referencia: $('#dr').value, folios: [], cobranzas: [] });
       const resta = saldo - mon;
       toast((nuevo._pendiente ? 'Depósito guardado en el teléfono (sin conexión)' : 'Depósito registrado') + (resta > 0 ? `. Faltan ${clp(resta)} por depositar` : resta < 0 ? `. Depositaste ${clp(-resta)} más que el efectivo` : '. Queda todo depositado'));
-      const fs = [...$('#dfile').files];
-      if (fs.length && nuevo._pendiente) toast('Sin conexión: el comprobante no se puede subir ahora. Cuando se envíe el depósito, usa "Adjuntar".', true);
-      else if (fs.length) { try { await subirArchivos('DEPOSITOS', nuevo.id, fs); } catch (e) { toast('El depósito quedó guardado, pero el comprobante no subió. Usa "Adjuntar".', true); } }
       ir('depositos');
     } finally { b.disabled = false; }
   };
@@ -2851,7 +2846,7 @@ const MOV = {
     f: [['proveedor', 'Proveedor'], ['documento', 'Documento'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
   CONSUMO: { t: 'Consumo', d: 'Ventas hechas directamente en la bodega.',
     f: [['cliente', 'Cliente'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
-  GASTOS: { t: 'Gastos', d: 'Combustible, peajes, almuerzo y otros gastos del día. Saca una foto a la boleta. Se descuentan del efectivo a entregar.',
+  GASTOS: { t: 'Gastos', d: 'Combustible, peajes, almuerzo y otros gastos del día. La foto de la boleta se agrega después con «Falta foto · Adjuntar». Se descuentan del efectivo a entregar.',
     f: [['concepto', 'Concepto'], ['monto', 'Monto', 'n'], ['respaldo', 'N° de boleta'], ['responsable', 'Responsable', 'vend'], ['obs', 'Observación']] }
 };
 async function vMov(m, tabla) {
@@ -2871,9 +2866,8 @@ async function vMov(m, tabla) {
     <div class="card">${tabla === 'GASTOS' ? (() => {
         const celda = c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`, extra = c => c[0] === 'respaldo' || c[0] === 'obs';
         return `<div id="fm"><div class="grid g2">${campos.filter(c => !extra(c)).map(celda).join('')}</div>
-          <div style="margin-top:12px">${campoArchivos('mf').replace('Foto o archivo de respaldo', 'Foto de la boleta')}</div>
           <details class="mas"><summary>Agregar N° de boleta u observación</summary><div class="grid g2" style="margin-top:8px">${campos.filter(extra).map(celda).join('')}</div></details></div>`; })()
-      : `<div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}${conAdj ? campoArchivos('mf') : ''}</div>`}
+      : `<div class="grid g3" id="fm">${campos.map(c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`).join('')}</div>`}
       ${tabla === 'COBRANZA' ? `<div id="mch" hidden style="margin-top:12px"><div class="pregunta" style="margin-top:0">Datos del cheque</div>${camposCheque(null, 'mov')}</div>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     ${tabla === 'COBRANZA' ? '</details>' : ''}
@@ -2904,7 +2898,7 @@ async function vMov(m, tabla) {
     });
     panel();
   }
-  if (conAdj) { enlazarCampoArchivos('mf'); activarAdjuntarDespues($('#ml'), recargar); }
+  if (conAdj) activarAdjuntarDespues($('#ml'), recargar);
   // cobranza: el cliente se elige de la lista (razón social del DTE), no se escribe
   const cq = $('#m_cliente_q');
   if (cq) {
@@ -2932,10 +2926,7 @@ async function vMov(m, tabla) {
     const b = $('#ad'); b.disabled = true;
     try {
       const nuevo = await api('guardarMov', S.sess.token, tabla, S.fecha, o); toast(nuevo._pendiente ? 'Guardado en el teléfono (sin conexión)' : 'Agregado');
-      const fs = conAdj ? [...$('#mf').files] : [];
-      if (fs.length && nuevo._pendiente) toast('Sin conexión: el archivo no se puede subir ahora. Cuando se envíe el registro, usa "Adjuntar".', true);
-      else if (fs.length) { try { await subirArchivos(tabla, nuevo.id, fs); } catch (e) { toast('El registro quedó guardado, pero el archivo no subió. Usa "Adjuntar" en la fila.', true); } }
-      $$('input', $('#fm')).forEach(x => x.value = ''); if (cq) cq.classList.remove('okc'); if (conAdj) $('#mf').onchange();
+      $$('input', $('#fm')).forEach(x => x.value = ''); if (cq) cq.classList.remove('okc');
       if (mch) { $$('input:not([type=date])', mch).forEach(x => x.value = ''); $('[data-c="banco"]', mch).value = ''; }
       await recargar();
     } finally { b.disabled = false; }

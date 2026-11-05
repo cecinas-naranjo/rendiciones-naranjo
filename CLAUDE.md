@@ -485,3 +485,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v97 — Cobranza menos cargada (solo CSS)
 - Pedido del dueño: "se ve muy cargado". Bordes de 1 px grises (naranja solo al pasar el cursor o en la factura abierta), sin sombras, botones `.bt` en píldora más chicos y sin sombra, "‹ Ver otros clientes" como enlace de texto, tarjeta del cliente elegido sin borde, línea guía gris (no naranja) en las facturas, chips de forma de pago seleccionados en cobre claro (no sólidos). Mantiene la idea de v95/v96 con menos peso visual.
+
+## v98 — Fotos y comprobantes se adjuntan después (solo frontend)
+- Pedido del dueño: subir fotos al registrar vuelve lento y tedioso el trabajo apurado. Gastos, Proveedores, Consumo y Depósitos ya NO piden foto en el formulario: se registra al instante y la foto se agrega después con el chip de cada fila (`chipsAdj`): "Falta foto · Adjuntar" (ámbar) si no tiene, "Agregar" si ya tiene archivos. Se quitó el upload bloqueante tras guardar. Devoluciones (bodega) conserva la foto opcional de la NC. Sin conexión: un registro pendiente (`pend_`) no se puede adjuntar hasta que se envíe (las fotos no se encolan, ver Pendientes).
