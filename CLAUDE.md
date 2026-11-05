@@ -514,3 +514,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v105 — Efectivo del día vendedor por vendedor (solo frontend)
 - `vEfectivo`: cada vendedor/supermercado es un acordeón (`.efh` con nombre, «Debe entregar» y chip Por contar / Cuadra / Falta / Sobra); solo uno abierto a la vez (`abrirEf`), parte abierto el primero sin contar, y «Listo, siguiente ›» cierra y abre el siguiente (el último lleva al resumen). Los cálculos, el resumen y el guardado no cambian.
+
+## v106 — Efectivo del día sin «Listo, siguiente» (solo frontend)
+- Se quitó el botón que empujaba al siguiente vendedor y la apertura automática del primero: todos parten cerrados y se abre el que se toca (uno a la vez), en el orden que quiera la encargada.
