@@ -259,7 +259,7 @@ function setup() {
 const API = {
   getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -299,7 +299,7 @@ function registrarOp_(op, fn) {
 function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { ping: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
+const LECTURAS_ = { ping: 1, listarClientes: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, getSugerido: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -1467,6 +1467,7 @@ function guardarMov(token, tabla, fecha, obj) {
   return withLock_(() => {
     const o = Object.assign({}, obj, { id: uid_(), fecha, monto: num_(obj.monto), registrado_por: u.usuario, registrado: now_() });
     if (tabla === 'COBRANZA') { o.folio = String(o.folio || '').replace(/[^0-9]/g, ''); if (!o.folio) throw new Error('Falta el folio de la factura que paga. Es obligatorio.'); }
+    if (tabla === 'COBRANZA' && o.rut) { const cl = read_('CLIENTES').find(c => String(c.rut) === String(o.rut)); if (cl && cl.razon_social) o.cliente = cl.razon_social; }   // el nombre vale el del DTE
     if (tabla === 'COBRANZA' && o.forma === 'CHEQUE') Object.assign(o, datosCheque_(o));
     if (tabla === 'COBRANZA' && u.rol === 'VENDEDOR') o.vendedor = u.usuario;
     if (tabla === 'GASTOS' && u.rol === 'VENDEDOR') o.responsable = u.usuario;
@@ -2113,6 +2114,13 @@ function reintentarRut(token) {
 function listaClientesRut_() { return read_('CLIENTES').map(c => ({ rut: c.rut, razon: c.razon_social })); }
 
 /** Lo que hay por cobrar, para la pantalla de Cobranza. El vendedor ve solo sus facturas. */
+/** Lista de clientes (razón social del DTE) para elegir en vez de escribir el nombre. */
+function listarClientes(token) {
+  auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR','ADMIN']);
+  return conCache_('clientes_lista', ['CLIENTES'], () => read_('CLIENTES').filter(c => String(c.razon_social || '').trim())
+    .map(c => ({ rut: String(c.rut || ''), nombre: String(c.razon_social).trim() })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+}
+
 function porCobrar(token) {
   const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
   const r = conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_());

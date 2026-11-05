@@ -914,3 +914,7 @@ nav.bottom button.on svg,nav .on svg,.side .on svg{animation:none;transform:none
 }
 .invl{display:block!important;grid-template-columns:none!important}
 .invt .ghostlink{background:none;border:0;color:var(--cu-2,#A3440F);font-weight:600;padding:4px 0;cursor:pointer}
+
+/* v87 selector de cliente en Cobranza */
+.cpick{position:relative}.cpl{position:absolute;left:0;right:0;top:100%;z-index:5;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px;max-height:300px;overflow:auto}
+.cpick .in.okc{border-color:#2e7d32;background:#f3faf3}

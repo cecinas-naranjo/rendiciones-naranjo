@@ -450,3 +450,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v86 — Costillar de cerdo en kilos (requiere pegar APPS_SCRIPT.js COMPLETO)
 - El costillar salía con columna Unidades en Despacho porque PRODUCTOS.unidad decía UN. `CFG.VENTA_EN_KILOS = ['COSTILLAR']`: `read_('PRODUCTOS')` fuerza unidad KG a los productos cuyo nombre contenga ese texto (Despacho, inventario, kilos facturados). Para otro producto igual, agregar parte de su nombre a la lista.
+
+## v87 — Cobranza sin foto y cliente elegido de la lista (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Cobranza (registro a mano) ya no pide ni muestra "Foto o archivo de respaldo": se puede registrar sin internet y la foto no se subiría. Los adjuntos antiguos quedan en Drive.
+- El cliente de una cobranza se elige de la lista de razones sociales del DTE (hoja CLIENTES) con un buscador (nombre o RUT); no se escribe. API `listarClientes` (lectura, caché por versión de CLIENTES, roles VENDEDOR/RENDICION/SUPERVISOR/ADMIN; el vendedor la precarga para el modo sin conexión). Se guardan `cliente` (nombre del DTE) y `rut`; `guardarMov` pisa el nombre con el del DTE si llega el RUT. Si la lista está vacía o no hay caché, queda el campo de texto libre.

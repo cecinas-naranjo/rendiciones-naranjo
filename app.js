@@ -131,7 +131,7 @@ function enlazarCampoArchivos(id) {
    Velocidad: las consultas (no los guardados) se guardan en el teléfono. Al volver a una pantalla se muestra
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
-const LECTURA = new Set(['getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
+const LECTURA = new Set(['listarClientes', 'getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
   'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos', 'listarAnulaciones', 'anulacionesPendientes']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
@@ -463,7 +463,7 @@ function precargar(tabs) {
     historial: ['historial', [tok]] };
   const lista = [];
   tabs.forEach(t => {
-    if (t === 'COBRANZA') lista.push(['porCobrar', [tok]]);
+    if (t === 'COBRANZA') { lista.push(['porCobrar', [tok]]); lista.push(['listarClientes', [tok]]); }
     const x = q[t] || (/^[A-Z]+$/.test(t) ? ['listarMov', [tok, t, F]] : null);
     if (!x) return;
     const e = CACHE.get(claveApi(x[0], x[1]));
@@ -2861,9 +2861,11 @@ async function vMov(m, tabla) {
   const inp = c => c[2] === 'forma' ? `<select class="in" name="${c[0]}" id="m_${c[0]}">${S.cat.formas.filter(f => f !== 'CREDITO').map(f => `<option value="${f}">${FL[f]}</option>`).join('')}</select>`
     : c[2] === 'banco' ? `<select class="in" name="${c[0]}" id="m_${c[0]}"><option value="">—</option>${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select>`
     : c[2] === 'vend' ? `<select class="in" name="${c[0]}" id="m_${c[0]}">${tabla === 'GASTOS' ? '<option value="GENERAL">General / planta</option>' : ''}${opcVend(S.vend)}</select>`
+    : tabla === 'COBRANZA' && c[0] === 'cliente' && clientesLista.length ? `<div class="cpick"><input class="in" id="m_cliente_q" placeholder="Busca y elige el cliente" autocomplete="off"><input type="hidden" name="cliente" id="m_cliente"><input type="hidden" name="rut" id="m_rut"><div id="m_cliente_l" class="cpl" hidden></div></div>`
     : `<input class="in ${c[2] === 'n' ? 'n' : ''}" name="${c[0]}" id="m_${c[0]}" ${c[2] === 'n' ? 'inputmode="numeric"' : ''}>`;
   const rows = await api('listarMov', S.sess.token, tabla, S.fecha);
-  const conAdj = !!ADJ[tabla];
+  const conAdj = !!ADJ[tabla] && tabla !== 'COBRANZA';        // la cobranza ya no lleva foto (se registra también sin internet)
+  let clientesLista = []; if (tabla === 'COBRANZA') { try { clientesLista = await api('listarClientes', S.sess.token) || []; } catch (e) {} }
   render(m, `<h2>${cfg.t}</h2><p class="lead">${cfg.d}</p>
     ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div><details class="manual"><summary>Registrar un pago a mano (sin usar la lista)</summary>' : ''}
     <div class="card">${tabla === 'GASTOS' ? (() => {
@@ -2897,6 +2899,16 @@ async function vMov(m, tabla) {
     panel();
   }
   if (conAdj) { enlazarCampoArchivos('mf'); activarAdjuntarDespues($('#ml'), recargar); }
+  // cobranza: el cliente se elige de la lista (razón social del DTE), no se escribe
+  const cq = $('#m_cliente_q');
+  if (cq) {
+    const cl = $('#m_cliente_l'), elegir = c => { $('#m_cliente').value = c ? c.nombre : ''; $('#m_rut').value = c ? c.rut : ''; cq.value = c ? c.nombre : cq.value; cl.hidden = true; cq.classList.toggle('okc', !!c); };
+    const pintar = () => { const n = normBus(cq.value); const xs = (n ? clientesLista.filter(c => normBus(c.nombre).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0) : clientesLista).slice(0, 8);
+      cl.innerHTML = xs.length ? xs.map((c, i) => `<button type="button" class="cli" data-i="${i}"><span class="grow"><b>${esc(c.nombre)}</b><small>${esc(c.rut || 'Sin RUT')}</small></span></button>`).join('') : '<div class="muted" style="padding:8px">Ningún cliente coincide.</div>';
+      cl.hidden = false; cl._xs = xs; };
+    cq.oninput = () => { elegir(null); pintar(); }; cq.onfocus = pintar;
+    cl.onclick = e => { const b = e.target.closest('[data-i]'); if (b) elegir(cl._xs[+b.dataset.i]); };
+  }
   $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
     await api('borrarMov', S.sess.token, tabla, id); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); };
   // cobranza con cheque: se piden sus datos y el banco pasa a ser el del cheque
@@ -2906,6 +2918,7 @@ async function vMov(m, tabla) {
   $('#ad').onclick = async () => {
     const o = {}; $$('[name]', $('#fm')).forEach(x => o[x.name] = x.value);
     o.monto = String(soloDigitos(o.monto));
+    if (cq && !o.cliente) return toast('Elige el cliente de la lista.', true);
     if (mch && o.forma === 'CHEQUE') { const r = leerCheque($('.cheque', mch)); if (r.error) return toast(r.error, true); Object.assign(o, r.datos); }
     if (o.monto === '0') return toast('Ingresa el monto.', true);
     if (tabla === 'COBRANZA') { o.folio = String(o.folio || '').replace(/\D/g, ''); if (!o.folio) return toast('Falta el folio de la factura que paga. Es obligatorio.', true); }
@@ -2916,7 +2929,7 @@ async function vMov(m, tabla) {
       const fs = conAdj ? [...$('#mf').files] : [];
       if (fs.length && nuevo._pendiente) toast('Sin conexión: el archivo no se puede subir ahora. Cuando se envíe el registro, usa "Adjuntar".', true);
       else if (fs.length) { try { await subirArchivos(tabla, nuevo.id, fs); } catch (e) { toast('El registro quedó guardado, pero el archivo no subió. Usa "Adjuntar" en la fila.', true); } }
-      $$('input', $('#fm')).forEach(x => x.value = ''); if (conAdj) $('#mf').onchange();
+      $$('input', $('#fm')).forEach(x => x.value = ''); if (cq) cq.classList.remove('okc'); if (conAdj) $('#mf').onchange();
       if (mch) { $$('input:not([type=date])', mch).forEach(x => x.value = ''); $('[data-c="banco"]', mch).value = ''; }
       await recargar();
     } finally { b.disabled = false; }
