@@ -675,22 +675,33 @@ function pintarDia() {
   if (p) p.classList.toggle('otro', f !== hoy);
 }
 function abrirFecha(cambiar) {
-  const hoy = hoyCL(), ov = document.createElement('div'); ov.className = 'ov';
-  const op = (f, t) => `<button type="button" class="dop ${f === S.fecha ? 'on' : ''}" data-f="${f}"><b>${t}</b><small>${esc(fechaLarga(f))}</small>${f === S.fecha ? icon('check') : ''}</button>`;
-  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Elegir el día"><div class="grip"></div><div class="body">
-    <div style="font-weight:700;font-size:19px;margin-bottom:10px">¿Qué día quieres ver?</div>
-    ${op(hoy, 'Hoy')}${op(sumarDias(hoy, -1), 'Ayer')}${op(sumarDias(hoy, -2), 'Anteayer')}
-    <div class="csec" style="margin-top:14px">Otro día</div>
-    <input class="in" type="date" id="fo" max="${hoy}" value="${S.fecha !== hoy && S.fecha !== sumarDias(hoy, -1) && S.fecha !== sumarDias(hoy, -2) ? S.fecha : ''}">
-    <div id="fon" class="muted" style="margin-top:6px;min-height:18px"></div></div>
-    <div class="foot"><button class="btn ghost" id="fx">Cancelar</button><span class="grow"></span><button class="btn cu" id="fg">Ver ese día</button></div></div>`;
-  document.body.appendChild(ov);
-  const ir_ = f => { cerrarHoja(ov); if (f !== S.fecha) cambiar(f); };
-  const nota = () => { const f = $('#fo', ov).value; $('#fon', ov).textContent = !f ? '' : f > hoy ? 'Ese día todavía no llega.' : f === hoy ? 'Es hoy.' : `${fechaLarga(f)} · hace ${Math.round((new Date(hoy + 'T12:00:00') - new Date(f + 'T12:00:00')) / 864e5)} días`; };
-  ov.onclick = e => { if (e.target === ov) return cerrarHoja(ov); const b = e.target.closest('.dop'); if (b) ir_(b.dataset.f); };
-  $('#fo', ov).oninput = nota; nota();
-  $('#fx', ov).onclick = () => cerrarHoja(ov);
-  $('#fg', ov).onclick = () => { const f = $('#fo', ov).value; if (!f) return toast('Elige un día en el calendario.', true); if (f > hoy) return toast('Ese día todavía no llega.', true); ir_(f); };
+  const ya = $('#fpop'); if (ya) { ya.remove(); return; }
+  const hoy = hoyCL(), pill = $('#dpill'), pop = document.createElement('div'); pop.id = 'fpop'; pop.className = 'fpop';
+  let mes = S.fecha.slice(0, 7);          // mes que muestra el calendario (AAAA-MM)
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const cerrar = () => { pop.remove(); document.removeEventListener('click', fuera, true); document.removeEventListener('keydown', tecla); };
+  const fuera = e => { if (!pop.contains(e.target) && !pill.contains(e.target)) cerrar(); };
+  const tecla = e => { if (e.key === 'Escape') cerrar(); };
+  const elegir = f => { cerrar(); if (f !== S.fecha) cambiar(f); };
+  const pinta = () => {
+    const [A, M] = mes.split('-').map(Number), pri = new Date(A, M - 1, 1), ini = (pri.getDay() + 6) % 7, dias = new Date(A, M, 0).getDate();
+    const sig = new Date(A, M, 1), hayMasAdelante = sig.toISOString().slice(0, 7) <= hoy.slice(0, 7) && `${sig.getFullYear()}-${String(sig.getMonth() + 1).padStart(2, '0')}` <= hoy.slice(0, 7);
+    let celdas = ''; for (let i = 0; i < ini; i++) celdas += '<i></i>';
+    for (let d = 1; d <= dias; d++) {
+      const f = `${A}-${String(M).padStart(2, '0')}-${String(d).padStart(2, '0')}`, fut = f > hoy;
+      celdas += `<button type="button" class="fd ${f === S.fecha ? 'on' : ''} ${f === hoy ? 'hoy' : ''}" data-f="${f}" ${fut ? 'disabled' : ''}>${d}</button>`;
+    }
+    pop.innerHTML = `<div class="fq">${[[hoy, 'Hoy'], [sumarDias(hoy, -1), 'Ayer'], [sumarDias(hoy, -2), 'Anteayer']].map(([f, t]) => `<button type="button" class="${f === S.fecha ? 'on' : ''}" data-f="${f}">${t}</button>`).join('')}</div>
+      <div class="fm"><button type="button" data-m="-1" aria-label="Mes anterior">‹</button><b>${MESES[M - 1]} ${A}</b><button type="button" data-m="1" aria-label="Mes siguiente" ${hayMasAdelante ? '' : 'disabled'}>›</button></div>
+      <div class="fs"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div><div class="fg">${celdas}</div>`;
+  };
+  pop.onclick = e => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    if (b.dataset.f) return elegir(b.dataset.f);
+    if (b.dataset.m) { const d = new Date(+mes.slice(0, 4), +mes.slice(5) - 1 + Number(b.dataset.m), 1); mes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; pinta(); }
+  };
+  pinta(); (pill.closest('.dwrap') || pill.parentNode).appendChild(pop);
+  setTimeout(() => { document.addEventListener('click', fuera, true); document.addEventListener('keydown', tecla); }, 0);
 }
 
 /* ---------- estructura ---------- */

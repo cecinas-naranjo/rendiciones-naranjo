@@ -499,3 +499,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - **Día**: ya no hay flechas ‹ ›. Una píldora «📅 Hoy ▾» (`#dpill`, vendedor/bodega y oficina) abre una hoja (`abrirFecha`) con Hoy / Ayer / Anteayer y «Otro día» (calendario con máximo hoy y aviso «hace N días»). Si se mira otro día la píldora se pone ámbar (`.otro`) y sigue el aviso «Estás viendo… Volver a hoy». `pintarDia()` actualiza texto y estado; `#fecha` quedó como input oculto (lo usa Importar).
 - **Gastos (VENDEDOR)** `vGastosV`: tarjeta «Gastado hoy», conceptos en botones (Combustible, Peaje, Almuerzo, Estacionamiento, Otro con texto), monto grande, «Registrar gasto»; boleta y nota plegadas; lista con chip de foto. Oficina conserva la tabla.
 - **Depósito**: tarjeta «Te falta depositar $X» (+ efectivo del día / depositado), banco en 3 botones (`#dbs`, input oculto `#db`), monto relleno, N° de operación opcional; «Cómo se calcula» plegado.
+
+## v101 — Calendario desplegable bajo la píldora del día (solo frontend)
+- Reemplaza la hoja de v100: al tocar «Hoy ▾» (`#dpill`) se abre `#fpop` (`abrirFecha`, anclado a `.dwrap`) con atajos **Hoy / Ayer / Anteayer** y un calendario del mes (L–D, sin días futuros, hoy con anillo, día elegido relleno, ‹ › solo cambian de MES). Un toque en un día cambia y cierra; se cierra al tocar fuera o con Esc. Sin flechas de día en día.

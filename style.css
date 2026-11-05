@@ -1038,7 +1038,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .chips2 button.on{background:var(--cu-soft);border-color:var(--cu);color:#712B13}
 
 /* ===== v100: selector de día (píldora + hoja) ===== */
-.dwrap{display:flex;flex:none}
+.dwrap{display:flex;flex:none;position:relative}
 .dpill{display:flex;align-items:center;gap:7px;height:40px;padding:0 12px 0 11px;border:1px solid #5A483D;background:#3A2D26;color:#fff;border-radius:999px;font-weight:700;font-size:15px;white-space:nowrap;text-transform:capitalize;transition:background-color .15s ease,border-color .15s ease}
 .dpill svg{width:16px;height:16px;flex:none;opacity:.9}
 .dpill .dcar{width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translate(-1px,-1px);opacity:.8;flex:none}
@@ -1069,3 +1069,19 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 #dbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 12px}
 #dbs button{border:1px solid var(--line);background:#fff;border-radius:12px;padding:14px 0;font-size:15px;color:var(--ink)}
 #dbs button.on{background:var(--cu-soft);border-color:var(--cu);color:var(--cu-2);font-weight:700}
+
+/* v100b: calendario desplegable bajo la píldora (reemplaza la hoja) */
+.fpop{position:absolute;top:calc(100% + 8px);right:0;z-index:40;width:292px;max-width:calc(100vw - 24px);background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 10px 28px rgba(42,31,26,.22)}
+.fpop button{font:inherit;color:inherit}
+.fq{display:flex;gap:6px;margin-bottom:10px}
+.fq button{flex:1;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 0;font-size:14px}
+.fq button.on{background:var(--cu-soft);border-color:var(--cu);color:var(--cu-2);font-weight:700}
+.fm{display:flex;align-items:center;justify-content:space-between;margin:2px 0 6px;text-transform:capitalize}
+.fm button{width:36px;height:36px;border:0;background:none;font-size:22px;border-radius:50%}
+.fm button:disabled{opacity:.25}
+.fs,.fg{display:grid;grid-template-columns:repeat(7,1fr);text-align:center}
+.fs span{font-size:12px;color:var(--mut);padding:4px 0}
+.fg .fd{height:38px;border:0;background:none;border-radius:50%;font-size:15px}
+.fg .fd.hoy{box-shadow:inset 0 0 0 1.5px var(--cu)}
+.fg .fd.on{background:var(--cu);color:#fff;font-weight:700}
+.fg .fd:disabled{color:#C9C3BC}
