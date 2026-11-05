@@ -817,8 +817,8 @@ async function vHoy(m) {
   if (dep) tiles.push(['depositos', 'bank', 'Depósito', '']);
   render(m, `<h2>Hola, ${esc(pri)}</h2>
     ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : ''}
-    <button class="bigbtn" id="hanota" ${cerrada ? 'disabled' : ''}>${icon('plus')}<span><b>Anotar folio</b><small>${nAd ? pl(nAd, 'anotado', 'anotados') + ' hoy' : 'Funciona sin internet'}</small></span></button>
-    <div class="htiles${tiles.length % 2 ? ' odd' : ''}">${tiles.map(x => `<button class="htile" data-t="${x[0]}">${x[3]}${icon(x[1])}<b>${x[2]}</b></button>`).join('')}</div>
+    <button class="bigbtn" id="hanota" ${cerrada ? 'disabled' : ''}>${icon('plus')}<span class="grow"><b>Anotar folio</b><small>${nAd ? pl(nAd, 'anotado', 'anotados') + ' hoy' : 'Funciona sin internet'}</small></span><i class="go" aria-hidden="true">›</i></button>
+    <div class="htiles${tiles.length % 2 ? ' odd' : ''}">${tiles.map(x => `<button class="htile" data-t="${x[0]}">${x[3]}${icon(x[1])}<b>${x[2]}</b><i class="go" aria-hidden="true">›</i></button>`).join('')}</div>
     ${hechos.length ? `<div class="hvend"><span>Vendido hoy</span><b>${clp(tot)}</b></div>
       <details class="mas"><summary>Ver desglose</summary><div class="kpis"><div><span>Efectivo</span><b>${clp(ef)}</b></div>
       <div><span>Transferencias</span><b>${clp(tr)}</b></div>${ch ? `<div><span>Cheques</span><b>${clp(ch)}</b></div>` : ''}<div><span>A crédito</span><b>${clp(cr)}</b></div></div></details>` : ''}`);

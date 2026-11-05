@@ -459,3 +459,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - `vHoy`: botón grande "Anotar folio" (con "N anotados hoy") y cuadrícula de botones Mis folios / Cobranza / Gastos / Depósito con un globito corto (por detallar en ámbar, "Listo"/cantidad en verde). Sin frases explicativas; desaparece la tarjeta "Folios que ya subió la encargada" (Mis folios la reemplaza). Debajo "Vendido hoy" y "Ver desglose" (solo con folios detallados). No son pasos obligatorios.
 - Depósito: se probó hacerlo opcional por vendedor, pero el dueño pidió que lo tengan TODOS (por emergencia). v89 lo deja siempre visible; la columna `deposita` de USUARIOS y su soporte en el servidor quedan sin uso (inofensivos).
 - Pendiente: mismo estilo de menos texto en Mis folios, Cobranza, Gastos y Depósito.
+
+## v90 — Botones de Hoy que se notan como botones (solo frontend)
+- `.bigbtn`/`.htile`: sombra inferior fija, flecha ›, cambio de color al pasar el cursor, se hunden 2 px al tocar y borde cobre en foco. Solo transición de color (sin animar sombras ni transform, por v83).

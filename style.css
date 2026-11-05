@@ -931,3 +931,14 @@ nav.bottom button.on svg,nav .on svg,.side .on svg{animation:none;transform:none
 .htile .bd.ok{background:#e4f3e6;color:#1f6b2d}
 .hvend{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:12px 0 0;color:var(--ink-2)}
 .hvend b{font-size:19px;color:var(--ink)}
+
+/* v90 Hoy del vendedor: se nota que son botones (sombra fija, flecha, reacción al pasar y al tocar; sin animaciones pesadas) */
+.bigbtn,.htile{cursor:pointer;box-shadow:0 2px 0 rgba(42,31,26,.14);transition:background-color .12s,border-color .12s}
+.bigbtn{box-shadow:0 3px 0 #8f3f10}
+.bigbtn .go{margin-left:auto;font-style:normal;font-size:34px;line-height:1;opacity:.9}
+.bigbtn:hover{background:#a94a14}
+.bigbtn:active{background:#8f3f10;transform:translateY(2px);box-shadow:none}
+.htile .go{position:absolute;right:12px;bottom:10px;font-style:normal;font-size:26px;line-height:1;color:var(--cu)}
+.htile:hover{background:#fbf6f1;border-color:var(--cu)}
+.htile:active{background:#f4e7db;border-color:var(--cu);transform:translateY(2px);box-shadow:none}
+.htile:focus-visible,.bigbtn:focus-visible{outline:3px solid var(--cu-soft,#f3c9ac);outline-offset:2px}
