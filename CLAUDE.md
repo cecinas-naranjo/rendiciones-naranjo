@@ -502,3 +502,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v101 — Calendario desplegable bajo la píldora del día (solo frontend)
 - Reemplaza la hoja de v100: al tocar «Hoy ▾» (`#dpill`) se abre `#fpop` (`abrirFecha`, anclado a `.dwrap`) con atajos **Hoy / Ayer / Anteayer** y un calendario del mes (L–D, sin días futuros, hoy con anillo, día elegido relleno, ‹ › solo cambian de MES). Un toque en un día cambia y cierra; se cierra al tocar fuera o con Esc. Sin flechas de día en día.
+
+## v102 — Calendario sin atajos (solo frontend)
+- Se quitaron Hoy/Ayer/Anteayer del cuadro del día: queda solo el calendario del mes. Al mirar otro día sigue el aviso «Estás viendo… Volver a hoy» y la píldora ámbar.

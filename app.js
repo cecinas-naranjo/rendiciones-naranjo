@@ -691,8 +691,7 @@ function abrirFecha(cambiar) {
       const f = `${A}-${String(M).padStart(2, '0')}-${String(d).padStart(2, '0')}`, fut = f > hoy;
       celdas += `<button type="button" class="fd ${f === S.fecha ? 'on' : ''} ${f === hoy ? 'hoy' : ''}" data-f="${f}" ${fut ? 'disabled' : ''}>${d}</button>`;
     }
-    pop.innerHTML = `<div class="fq">${[[hoy, 'Hoy'], [sumarDias(hoy, -1), 'Ayer'], [sumarDias(hoy, -2), 'Anteayer']].map(([f, t]) => `<button type="button" class="${f === S.fecha ? 'on' : ''}" data-f="${f}">${t}</button>`).join('')}</div>
-      <div class="fm"><button type="button" data-m="-1" aria-label="Mes anterior">‹</button><b>${MESES[M - 1]} ${A}</b><button type="button" data-m="1" aria-label="Mes siguiente" ${hayMasAdelante ? '' : 'disabled'}>›</button></div>
+    pop.innerHTML = `<div class="fm"><button type="button" data-m="-1" aria-label="Mes anterior">‹</button><b>${MESES[M - 1]} ${A}</b><button type="button" data-m="1" aria-label="Mes siguiente" ${hayMasAdelante ? '' : 'disabled'}>›</button></div>
       <div class="fs"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div><div class="fg">${celdas}</div>`;
   };
   pop.onclick = e => {
