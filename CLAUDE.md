@@ -505,3 +505,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v102 — Calendario sin atajos (solo frontend)
 - Se quitaron Hoy/Ayer/Anteayer del cuadro del día: queda solo el calendario del mes. Al mirar otro día sigue el aviso «Estás viendo… Volver a hoy» y la píldora ámbar.
+
+## v103 — Sin aviso de «guardar contraseña» de Chrome (solo frontend)
+- Los campos de clave (login, clave inicial, cambiar mi clave) ya no son `type="password"`: son `type="text"` con clase `.pw` (`-webkit-text-security:disc`), `autocomplete="off"` y nombres propios. Chrome solo ofrece guardar/autocompletar cuando ve un campo password, así que no sale la ventana ni el aviso de filtración. «Ver/Ocultar» alterna `.pw.ver`. Si algún día se quiere volver al gestor de claves, restaurar `type="password"` + `autocomplete="current-password"/"new-password"`.

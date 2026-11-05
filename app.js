@@ -600,13 +600,13 @@ function pantallaLogin() {
   render(app, `<div class="login"><img class="logo" src="icon-192.png" alt="Cecinas Naranjo" width="96" height="96">
     <h1>Rendiciones</h1><p class="lead">Ingresa con tu RUT o correo y tu clave.</p>
     <label class="f" for="lid">RUT o correo</label>
-    <input id="lid" class="in" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="12.345.678-5" value="${esc(ult)}">
+    <input id="lid" class="in" autocomplete="off" name="rn-id" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="12.345.678-5" value="${esc(ult)}">
     <label class="f" for="lpw" style="margin-top:12px">Clave</label>
-    <div class="row" style="gap:8px"><input id="lpw" class="in grow" type="password" autocomplete="current-password" placeholder="Tu clave">
+    <div class="row" style="gap:8px"><input id="lpw" class="in grow pw" type="text" name="rn-clave" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Tu clave">
       <button type="button" class="btn ghost sm" id="lver" aria-label="Mostrar u ocultar la clave">Ver</button></div>
     <button class="btn cu block" style="margin-top:14px" id="go">Ingresar</button>
     <p class="muted" style="margin-top:14px">Si olvidaste tu clave o es tu primera vez, pide a la administración que te dé una clave temporal.</p></div>`);
-  $('#lver').onclick = () => { const p = $('#lpw'); p.type = p.type === 'password' ? 'text' : 'password'; $('#lver').textContent = p.type === 'password' ? 'Ver' : 'Ocultar'; };
+  $('#lver').onclick = () => { const p = $('#lpw'); p.classList.toggle('ver'); $('#lver').textContent = p.classList.contains('ver') ? 'Ocultar' : 'Ver'; };
   const go = async () => {
     const id = $('#lid').value.trim(), pw = $('#lpw').value;
     if (!id || !pw) return toast('Escribe tu RUT o correo y tu clave.', true);
@@ -631,8 +631,8 @@ function entrar(s) {
 function pantallaNuevaClave(ident, temporal, nombre) {
   render($('#app'), `<div class="login"><img class="logo" src="icon-192.png" alt="" width="96" height="96">
     <h1>Hola, ${esc(String(nombre || '').split(' ')[0])}</h1><p class="lead">Crea tu clave personal. Solo tú debes conocerla: con ella se registra todo lo que hagas en la app.</p>
-    <label class="f" for="np1">Clave nueva (mínimo 4 caracteres)</label><input id="np1" class="in" type="password" autocomplete="new-password">
-    <label class="f" for="np2" style="margin-top:12px">Repite la clave</label><input id="np2" class="in" type="password" autocomplete="new-password">
+    <label class="f" for="np1">Clave nueva (mínimo 4 caracteres)</label><input id="np1" class="in pw" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <label class="f" for="np2" style="margin-top:12px">Repite la clave</label><input id="np2" class="in pw" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
     <button class="btn cu block" style="margin-top:14px" id="npg">Guardar y entrar</button>
     <button class="btn ghost block" style="margin-top:8px" id="npc">Cancelar</button></div>`);
   $('#npc').onclick = () => pantallaLogin();
@@ -650,9 +650,9 @@ function abrirMiClave() {
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Cambiar mi clave"><div class="grip"></div><div class="body">
     <div style="font-weight:700;font-size:19px">Cambiar mi clave</div>
-    <label class="f" for="mc0">Clave actual</label><input id="mc0" class="in" type="password" autocomplete="current-password">
-    <label class="f" for="mc1" style="margin-top:10px">Clave nueva (mínimo 4 caracteres)</label><input id="mc1" class="in" type="password" autocomplete="new-password">
-    <label class="f" for="mc2" style="margin-top:10px">Repite la clave nueva</label><input id="mc2" class="in" type="password" autocomplete="new-password"></div>
+    <label class="f" for="mc0">Clave actual</label><input id="mc0" class="in pw" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <label class="f" for="mc1" style="margin-top:10px">Clave nueva (mínimo 4 caracteres)</label><input id="mc1" class="in pw" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
+    <label class="f" for="mc2" style="margin-top:10px">Repite la clave nueva</label><input id="mc2" class="in pw" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
     <div class="foot"><button class="btn ghost" id="mcx">Cancelar</button><span class="grow"></span><button class="btn cu" id="mcg">Guardar</button></div></div>`;
   document.body.appendChild(ov);
   $('#mcx', ov).onclick = () => cerrarHoja(ov);
