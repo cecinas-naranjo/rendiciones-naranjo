@@ -977,3 +977,17 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .chips2{display:flex;gap:6px;flex-wrap:wrap}
 .chips2 button{background:#fff;border:1px solid var(--line);border-radius:999px;padding:8px 14px;min-height:40px;font-weight:600;font-size:14.5px;cursor:pointer;transition:background-color .12s,border-color .12s}
 .chips2 button.on{background:var(--cu);border-color:var(--cu);color:#fff}
+
+/* v94: clientes y facturas se ven como botones que se pueden tocar */
+.cli{border:1px solid #cfc9c2;border-bottom-width:2px;padding:12px 14px;min-height:60px;cursor:pointer;font:inherit;color:inherit;box-shadow:0 1px 0 rgba(42,31,26,.08);transition:background-color .12s,border-color .12s}
+.cli b{font-size:16px}
+.cli::after{content:"›";flex:none;font-size:28px;line-height:1;color:var(--cu);font-weight:700;margin-left:4px}
+.cli:hover{border-color:var(--cu);background:#fffaf6}
+.cli:active{background:var(--cu-soft)}
+#cfacs .cfac{border:1px solid #cfc9c2;border-bottom-width:2px;border-radius:var(--r-sm);background:#fff;margin-bottom:8px;padding:0 10px;box-shadow:0 1px 0 rgba(42,31,26,.08)}
+#cfacs .cfh{padding:10px 0;min-height:62px}
+#cfacs .cfh b:first-child{font-size:16px}
+#cfacs .cfh .go{color:var(--cu);font-weight:700;font-size:28px}
+#cfacs .cfac:hover{border-color:var(--cu)}
+#cfacs .cfac.abierta{background:var(--cu-soft);border-color:var(--cu);padding:0 10px 12px}
+#cfacs .cfh:hover{background:transparent}

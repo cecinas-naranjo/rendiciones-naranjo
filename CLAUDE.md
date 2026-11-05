@@ -473,3 +473,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v93 — Cobranza: factura que se despliega y botones limpios (solo frontend)
 - `cobrarDesdeLista`: cliente → lista de sus facturas; al tocar una se despliega debajo su formulario (¿Cómo pagó? en chips compactos, banco en un select, datos del cheque, monto editable, "Registrar cobro"). Una factura por cobro, una abierta a la vez; si se buscó por folio, se abre sola. Ya no hay casillas ni "Marcar todas".
 - `.bigbtn`/`.gobtn` con `border:0` (se veía el borde gris por defecto del botón).
+
+## v94 — Clientes y facturas de Cobranza se ven tocables (solo frontend)
+- `.cli` (lista de clientes) con borde marcado, sombra inferior fija, flecha › cobre y hover/active; cada factura de `#cfacs` es una tarjeta con borde y flecha (gira al abrirse, queda en cobre claro).
