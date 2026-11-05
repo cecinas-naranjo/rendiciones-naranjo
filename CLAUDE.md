@@ -439,3 +439,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v83 — Animaciones livianas (solo frontend)
 - Queja: en el computador de la oficina las animaciones se "pegaban". Bloque final de style.css: sin `backdrop-filter`, sin transiciones de `box-shadow`/`transform` en tarjetas, botones y filas, sin `scroll-behavior:smooth`, entradas solo con fundido de 160 ms, listas (`.folio`, `.vcard`, `.hpaso`) sin animación por fila, hojas y avisos con fundido. `animarMontos` (conteo animado) desactivado. Para volver a animaciones ricas hay que quitar ese bloque; no reintroducir sombras/blur animados.
+
+## v84 — Despacho en tabla compacta (solo frontend)
+- Salida y Retorno usan una tabla: una fila por producto con columnas Producto | Sugerido (en Salida) o Salió (en Retorno) | Kilos | Unidades. Sin botones − y +; se escribe y Enter pasa al siguiente campo. Productos por unidad (UN) solo usan la columna Unidades; los de kilos sin conteo por unidad, solo Kilos; los pesados con inventario en unidades usan ambas (`salida`/`retorno` = kilos, `salidaUn`/`retornoUn` = unidades). Los avisos (más de lo que salió, diferencia vs. facturado) siguen debajo de la fila (`.st`). En celular la fila pasa a 2 columnas.
+- El pie solo tiene "Guardar" (se quitó "Guardar y seguir con <vendedor>": el bodeguero no siempre sigue el mismo orden).

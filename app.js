@@ -1465,8 +1465,7 @@ async function vDespacho(m) {
   const cats = {};
   S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
   const orden = Object.keys(cats).sort((a, b) => (Object.keys(CATS).indexOf(a) + 99) % 99 - (Object.keys(CATS).indexOf(b) + 99) % 99);
-  const nin = (k, p, v) => { const w = k.replace('Un', ''), un = k !== w; return `<div class="nin" data-w="${w}"><button type="button" class="mn" tabindex="-1" aria-label="Menos">−</button>
-      <input class="in n" data-k="${k}" inputmode="decimal" aria-label="${w === 'salida' ? 'Salida' : 'Retorno'}${un ? ' en unidades' : ''} ${esc(p.nombre)}" placeholder="0" value="${val(v)}"><button type="button" class="pl" tabindex="-1" aria-label="Más">+</button></div>`; };
+  const nin = (k, p, v) => { const w = k.replace('Un', ''), un = k !== w; return `<div class="nin" data-w="${w}"><input class="in n" data-k="${k}" inputmode="decimal" enterkeyhint="next" aria-label="${w === 'salida' ? 'Salida' : 'Retorno'}${un ? ' en unidades' : ' en kilos'} ${esc(p.nombre)}" placeholder="0" value="${val(v)}"></div>`; };
   // Productos que se pesan (kilos) pero el inventario cuenta por unidad: además de los kilos se anotan las unidades
   const conUn = p => p.unidad !== 'UN' && p.inv === 'UN';
   render(m, `<h2>Despacho y retorno</h2><p class="lead">${fechaLarga(S.fecha)}</p>
@@ -1477,15 +1476,16 @@ async function vDespacho(m) {
     <div id="dvg"></div>
     <div id="sgc"></div>
     <div id="vac" class="vac" hidden></div>
+    <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span></div>
     <div id="dt" class="dt dm-${S.dmod}">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
       return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
-        <div class="pn">${esc(p.nombre)}<small>${p.unidad === 'UN' ? 'se anota en unidades' : 'se anota en kilos'}</small></div>
-        ${nin('salida', p, f.salida)}${nin('retorno', p, f.retorno)}
-        ${conUn(p) ? `<div class="pu"><span class="pul">Unidades <small>para el inventario</small></span>${nin('salidaUn', p, f.salidaUn)}${nin('retornoUn', p, f.retornoUn)}</div>` : ''}
+        <div class="pn">${esc(p.nombre)}</div><div class="rf"></div>
+        <div class="cl kgc" data-col="Kilos">${p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
+        <div class="cl unc" data-col="Unidades">${p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}</div>
         <div class="st"></div></div>`; }).join('')).join('')}</div>
     <button type="button" class="btn ghost sm" id="mas" hidden></button>
     <div class="sticky-foot"><div class="card dvf"><div class="dvfi"><div class="muted" id="fl"></div><b id="tv"></b></div>
-      <div class="dvfb"><button class="btn ${sig ? 'ghost' : 'cu'}" id="sv" type="button">Guardar</button>${sig ? `<button class="btn cu" id="sn" type="button">Guardar y seguir<span class="lg"> con ${esc(sig.nombre)}</span> ›</button>` : ''}</div></div></div>`);
+      <div class="dvfb"><button class="btn cu" id="sv" type="button">Guardar</button></div></div></div>`);
   const filas = $$('.pr', m), dt = $('#dt', m);
   const inp = (el, k) => $('[data-k=' + k + ']', el), S0 = el => inp(el, 'salida').value, R0 = el => inp(el, 'retorno').value;
   const estado = (nS, nR) => !nS ? ['Sin salida', 'x'] : !nR ? ['Salida lista', 'a'] : nR < nS ? [`Retorno ${nR} de ${nS}`, 'b'] : ['Completo ✓', 'ok'];
@@ -1510,20 +1510,21 @@ async function vDespacho(m) {
   function poner(modo) {
     S.dmod = modo; dt.className = 'dt dm-' + modo + (dt.classList.contains('todos') ? ' todos' : '');
     $$('#seg button', m).forEach(b => b.classList.toggle('on', b.dataset.m === modo));
-    $('#dvh', m).innerHTML = modo === 'salida' ? `Anota cuánto se lleva <b>${esc(nomDe(S.vend))}</b> hoy. Usa + y − o escribe el número.` : `Anota lo que <b>${esc(nomDe(S.vend))}</b> devuelve al volver. Sale lo que se llevó como referencia.`
+    $('#dvh', m).innerHTML = modo === 'salida' ? `Anota cuánto se lleva <b>${esc(nomDe(S.vend))}</b> hoy. Escribe el número y presiona Enter para pasar al siguiente.` : `Anota lo que <b>${esc(nomDe(S.vend))}</b> devuelve al volver. La columna "Salió" muestra lo que se llevó.`
       + ((r.vuelven || []).length && modo === 'retorno' ? `<br><span class="okt">Folios anulados con producto devuelto: ${r.vuelven.map(x => esc(x.producto) + ' ' + nk(x.cantidad) + (x.unidad === 'UN' ? ' un' : ' kg')).join(' · ')}. Inclúyelos en el retorno si ya llegaron.</span>` : '');
     $('#sgc', m).hidden = modo !== 'salida'; $('#dvg', m).hidden = modo !== 'salida';
+    $('#rfh', m).textContent = modo === 'salida' ? 'Sugerido' : 'Salió';
     aplicarVis(); calc();
   }
   function calc() {
     let sal = 0, ret = 0, nS = 0, nR = 0, nSv = 0; 
     filas.forEach(el => {
       const c = el.dataset.c, s = S0(el), rt = R0(el), st = $('.st', el), esKg = el.dataset.u !== 'UN';
-      const fac = r.facturado[c] || 0, vend = dec(s) - dec(rt); let h = '';
+      const fac = r.facturado[c] || 0, vend = dec(s) - dec(rt); let h = '', rf = '';
       if (S.dmod === 'retorno') {
         const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn');
-        if (s !== '') h += `<span>Salió <b>${esKg ? kg(dec(s)) + ' kg' : dec(s) + ' un'}${su && su.value !== '' ? ' · ' + dec(su.value) + ' un' : ''}</b></span>`;
-        else if (su && su.value !== '') h += `<span>Salió <b>${dec(su.value)} un</b></span>`;
+        if (s !== '') rf = `<b>${esKg ? kg(dec(s)) + ' kg' : dec(s) + ' un'}${su && su.value !== '' ? ' · ' + dec(su.value) + ' un' : ''}</b>`;
+        else if (su && su.value !== '') rf = `<b>${dec(su.value)} un</b>`;
         if (su && ru && ru.value !== '' && dec(ru.value) > dec(su.value)) h += `<span class="bad">Las unidades que vuelven son más de las que salieron</span>`;
         if (rt !== '' && dec(rt) > dec(s)) h += `<span class="bad">Es más de lo que salió</span>`;
         else if (r.hayDetalle && s !== '' && rt !== '') {
@@ -1531,9 +1532,9 @@ async function vDespacho(m) {
           if (Math.abs(dif) > 0.2) h += `<span class="${dif > 0 ? 'warn' : 'bad'}">Vendido ${kg(vend)} · facturado ${kg(fac)} · diferencia <b>${dif > 0 ? '+' : ''}${kg(dif)}</b></span>`;
         }
       } else if (el.dataset.sg !== undefined) {
-        h += `<span class="sug">Sugerido <b>${esc(el.dataset.sgt)}</b></span>`;
+        rf = `<span class="sug"><b>${esc(el.dataset.sgt)}</b></span>`;
       }
-      st.innerHTML = h;
+      st.innerHTML = h; $('.rf', el).innerHTML = rf;
       const hecho = (S.dmod === 'salida' ? s : rt) !== ''; el.classList.toggle('ok', hecho);
       if (s !== '' && dec(s) > 0) nS++; if (rt !== '' && s !== '' && dec(s) > 0) nR++; if (hecho) nSv++;
       if (esKg) { sal += dec(s); ret += dec(rt); }
@@ -1585,10 +1586,9 @@ async function vDespacho(m) {
     const datos = filas.map(el => { const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn'), o = { codigo: el.dataset.c, salida: S0(el).replace(',', '.'), retorno: R0(el).replace(',', '.') };
       if (su) { o.salidaUn = su.value.replace(',', '.'); o.retornoUn = ru.value.replace(',', '.'); } return o; });
     await api('saveDespacho', S.sess.token, S.fecha, S.vend, datos); sucio = false;
-    if (sigue && sig) { toast('Guardado. Ahora ' + sig.nombre); S.vend = sig.usuario; ir('despacho'); } else toast('Despacho de ' + nomDe(S.vend) + ' guardado');
+    toast('Despacho de ' + nomDe(S.vend) + ' guardado');
   };
   $('#sv', m).onclick = () => guardar(false);
-  if ($('#sn', m)) $('#sn', m).onclick = () => guardar(true);
   poner(S.dmod);
 }
 
