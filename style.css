@@ -947,3 +947,18 @@ nav.bottom button.on svg,nav .on svg,.side .on svg{animation:none;transform:none
 .anlin{margin:18px 2px 4px;text-align:center;font-size:15px}
 .linkbtn{background:none;border:0;padding:8px 6px;color:var(--cu-2);font-weight:600;text-decoration:underline;cursor:pointer;min-height:44px}
 .linkbtn:hover{color:var(--cu)}
+
+/* v92 Cobranza del vendedor */
+.csec{font-size:14px;font-weight:700;color:var(--ink-2);margin:14px 2px 6px}
+.fpay{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fpay.b3{margin-top:8px}
+.fpay button{background:#fff;border:1px solid var(--line);border-bottom:2px solid #cfc9c2;border-radius:var(--r-sm);padding:13px 6px;min-height:50px;font-weight:600;font-size:15px;cursor:pointer;transition:background-color .12s,border-color .12s}
+.fpay button:hover{border-color:var(--cu)}
+.fpay button:active{background:#f4e7db}
+.fpay button.on{background:var(--cu-soft);border-color:var(--cu);color:#712B13}
+.gobtn{display:flex;justify-content:space-between;align-items:center;width:100%;margin-top:14px;background:var(--cu);color:#fff;border-radius:var(--r);padding:16px 18px;font-size:17px;font-weight:700;box-shadow:0 3px 0 #8f3f10;cursor:pointer;transition:background-color .12s}
+.gobtn:hover{background:var(--cu-2)}.gobtn:active{transform:translateY(2px);box-shadow:none}.gobtn:disabled{opacity:.55}
+.gobtn b{font-size:19px}
+.hrow{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:6px}
+.hrow small{display:block;color:var(--mut);font-size:13px}
+details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-decoration:underline;text-align:center;list-style:none;padding:10px}

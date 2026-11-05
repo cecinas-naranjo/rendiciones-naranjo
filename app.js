@@ -2782,15 +2782,14 @@ async function cobrarDesdeLista(box, alTerminar) {
   if (!clientes.length) { box.innerHTML = '<div class="card"><b>Por cobrar</b><p class="muted" style="margin:4px 0 0">No hay créditos por cobrar cargados. La encargada puede subir la lista en <b>Importar Mi DTE</b>.</p></div>'; return; }
   const edad = d => d > 60 ? 'bad' : d > 30 ? 'warn' : 'ok';
   box.innerHTML = `<div class="card"><div class="row"><b class="grow" style="font-size:17px">Cobrar a un cliente</b><span class="muted">${clientes.length} con deuda · ${clp(clientes.reduce((a, c) => a + c.deuda, 0))}</span></div>
-    <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Ver política de crédito</summary>${tarjetaPolitica()}</details>
-    <input class="in" id="cq" placeholder="Buscar por nombre, RUT o N° de folio" autocomplete="off" inputmode="search" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
+    <input class="in" id="cq" placeholder="Nombre, RUT o folio" autocomplete="off" inputmode="search" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
   const res = $('#cres', box), pan = $('#cpan', box);
   const lista = q => {
     const n = normBus(q), fq = String(q || '').replace(/\D/g, '');         // si lo escrito son números, también se busca entre los folios de cada cliente
     const porFolio = c => fq.length >= 2 ? c.facturas.filter(f => String(f.folio).indexOf(fq) >= 0) : [];
     const xs = (n ? clientes.filter(c => normBus(c.cliente).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0 || porFolio(c).length) : clientes.slice().sort((a, b) => b.deuda - a.deuda)).slice(0, 8);
     res.innerHTML = xs.length ? xs.map(c => { const pf = porFolio(c);
-      return `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${esc(c.rut || 'Sin RUT')} · ${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}${pf.length ? ' · <b style="color:var(--cu-2)">Folio ' + pf.map(f => esc(f.folio)).slice(0, 3).join(', ') + '</b>' : ''}</small></span><b>${clp(c.deuda)}</b></button>`; }).join('')
+      return `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}${pf.length ? ' · <b style="color:var(--cu-2)">Folio ' + pf.map(f => esc(f.folio)).slice(0, 3).join(', ') + '</b>' : ''}</small></span><b>${clp(c.deuda)}</b></button>`; }).join('')
       : '<div class="muted">Ningún cliente con deuda coincide.</div>';
   };
   lista('');
@@ -2798,20 +2797,20 @@ async function cobrarDesdeLista(box, alTerminar) {
   res.onclick = e => { const b = e.target.closest('.cli'); if (!b) return; abrirCliente(clientes.find(c => c.clave === b.dataset.k), String($('#cq', box).value || '').replace(/\D/g, '')); };
   function abrirCliente(c, folioBuscado) {
     res.innerHTML = '';
-    pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')}${c.condicion ? ' · crédito a ' + c.condicion + ' días' : ''}</div></div>
-        <button type="button" class="btn ghost sm" id="cvolver">Otro cliente</button></div>
-      <div class="cforma" style="margin:10px 0 4px"><div class="muted" style="font-weight:700;margin-bottom:4px">1. ¿Cómo pagó?</div>
-        <div class="grid g2"><div><select class="in" id="cforma" aria-label="Forma de pago"><option value="EFECTIVO">Efectivo</option><option value="TRANSFERENCIA">Transferencia</option><option value="CHEQUE">Cheque</option></select></div>
-          <div id="cbancow" hidden><select class="in" id="cbanco" aria-label="Banco al que transfirió">${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div></div>
-        <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div></div>
-      <div class="muted" style="margin:10px 0 4px;font-weight:700">2. Marca las facturas que paga hoy:</div>
+    pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b></div>
+        <button type="button" class="btn ghost sm" id="cvolver">Cambiar</button></div>
+      <div class="csec">¿Cómo pagó?</div>
+      <div class="fpay" id="cforma">${[['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CHEQUE', 'Cheque']].map(([v, t], i) => `<button type="button" data-v="${v}" class="${i ? '' : 'on'}">${t}</button>`).join('')}</div>
+      <div id="cbancow" hidden><div class="fpay b3" id="cbanco">${S.cat.bancos.map((b, i) => `<button type="button" data-v="${esc(b)}" class="${i ? '' : 'on'}">${esc(b.charAt(0) + b.slice(1).toLowerCase())}</button>`).join('')}</div></div>
+      <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div>
+      <div class="csec">¿Qué facturas pagó?</div>
       ${c.facturas.map((f, i) => `<div class="cfac"><label class="row" style="gap:10px"><input type="checkbox" class="cchk" data-i="${i}">
-          <span class="grow">${esc(f.tipo.replace(' Electrónica', ''))} N° ${esc(f.folio)} <span class="muted">· ${fcorta(f.fecha)}${f.vendedor ? ' · ' + esc(f.vendedor) : ''}</span>
-          <div>${f.cheque ? '<span class="chip warn">Cheque en cartera</span> ' : ''}<span class="chip ${edad(f.dias)}">${f.dias} días</span>${f.venc && f.venc < r.hoy ? ' <span class="chip bad">Vencida</span>' : ''}</div>${plazoPolitica(netoDe(f.total)) ? `<div class="muted">Neto ${clp(netoDe(f.total))} · política: ${plazoPolitica(netoDe(f.total))} días</div>` : ''}</span>
-          <span style="text-align:right"><b>${clp(f.saldo)}</b><div class="muted">de ${clp(f.total)}</div></span></label>
+          <span class="grow"><b>${esc(f.tipo.replace(' Electrónica', ''))} ${esc(f.folio)}</b>${f.cheque ? ' <span class="chip warn">Cheque en cartera</span>' : ''}
+          <div class="muted">Hace ${f.dias} días${f.venc && f.venc < r.hoy ? ' · <b class="bad">Vencida</b>' : ''}</div></span>
+          <b>${clp(f.saldo)}</b></label>
         <div class="cmonto" hidden><label class="f">Monto que paga</label><input class="in n" inputmode="numeric" data-m="${i}" value="${f.saldo}"></div></div>`).join('')}
-      <div class="row" style="margin:8px 0"><button type="button" class="btn ghost sm" id="ctodas">Marcar todas</button><span class="grow"></span><span class="muted">Total a cobrar <b id="ctot" style="color:var(--ink);font-size:18px">$0</b></span></div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="cok">Registrar cobro</button></div></div>`;
+      ${c.facturas.length > 1 ? '<button type="button" class="linkbtn" id="ctodas">Marcar todas</button>' : '<span id="ctodas" hidden></span>'}
+      <button class="gobtn" id="cok" type="button"><span>Registrar cobro</span><b id="ctot">$0</b></button></div>`;
     if (folioBuscado && folioBuscado.length >= 2) c.facturas.forEach((f, i) => { if (String(f.folio).indexOf(folioBuscado) >= 0) { const ck = $('.cchk[data-i="' + i + '"]', pan); if (ck) { ck.checked = true; $('.cmonto', ck.closest('.cfac')).hidden = false; ck.closest('.cfac').classList.add('buscada'); } } });
     const sel = () => $$('.cchk', pan).filter(x => x.checked);
     const total = () => { const t = sel().reduce((a, x) => a + soloDigitos($('[data-m="' + x.dataset.i + '"]', pan).value), 0); $('#ctot', pan).textContent = clp(t); return t; };
@@ -2820,8 +2819,10 @@ async function cobrarDesdeLista(box, alTerminar) {
     total();
     $('#cvolver', pan).onclick = () => { pan.innerHTML = ''; lista($('#cq', box).value); };
     $('#ctodas', pan).onclick = () => { const todas = $$('.cchk', pan); const on = todas.some(x => !x.checked); todas.forEach(x => { x.checked = on; $('.cmonto', x.closest('.cfac')).hidden = !on; }); total(); };
-    const forma = $('#cforma', pan);
-    forma.onchange = () => { $('#cbancow', pan).hidden = forma.value !== 'TRANSFERENCIA'; $('#cch', pan).hidden = forma.value !== 'CHEQUE'; if (forma.value === 'CHEQUE') avisoTipoCheque($('.cheque', pan)); };
+    const forma = { value: 'EFECTIVO' }, bancoSel = { value: S.cat.bancos[0] };
+    const grupo = (id, cual, alCambiar) => { $('#' + id, pan).onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('button', e.currentTarget).forEach(x => x.classList.toggle('on', x === b)); cual.value = b.dataset.v; if (alCambiar) alCambiar(); }; };
+    grupo('cforma', forma, () => { $('#cbancow', pan).hidden = forma.value !== 'TRANSFERENCIA'; $('#cch', pan).hidden = forma.value !== 'CHEQUE'; if (forma.value === 'CHEQUE') avisoTipoCheque($('.cheque', pan)); });
+    grupo('cbanco', bancoSel);
     $('#cok', pan).onclick = async () => {
       const xs = sel(); if (!xs.length) return toast('Marca al menos una factura.', true);
       const items = xs.map(x => { const f = c.facturas[x.dataset.i], m = soloDigitos($('[data-m="' + x.dataset.i + '"]', pan).value); return { folio_key: f.folio_key, folio: f.folio, monto: m, saldo: f.saldo }; });
@@ -2829,7 +2830,7 @@ async function cobrarDesdeLista(box, alTerminar) {
       const mas = items.find(i => i.monto > i.saldo);
       if (mas && !confirm('Una de las facturas paga más de lo que debe (' + clp(mas.monto) + ' de ' + clp(mas.saldo) + '). ¿Registrar igual?')) return;
       const pago = { forma: forma.value };
-      if (forma.value === 'TRANSFERENCIA') pago.banco = $('#cbanco', pan).value;
+      if (forma.value === 'TRANSFERENCIA') pago.banco = bancoSel.value;
       if (forma.value === 'CHEQUE') { const ch = leerCheque($('.cheque', pan)); if (ch.error) return toast(ch.error, true); Object.assign(pago, ch.datos); }
       const b = $('#cok', pan); b.disabled = true;
       try {
@@ -2863,8 +2864,9 @@ async function vMov(m, tabla) {
   const rows = await api('listarMov', S.sess.token, tabla, S.fecha);
   const conAdj = !!ADJ[tabla] && tabla !== 'COBRANZA';        // la cobranza ya no lleva foto (se registra también sin internet)
   let clientesLista = []; if (tabla === 'COBRANZA') { try { clientesLista = await api('listarClientes', S.sess.token) || []; } catch (e) {} }
-  render(m, `<h2>${cfg.t}</h2><p class="lead">${cfg.d}</p>
-    ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div><details class="manual"><summary>Registrar un pago a mano (sin usar la lista)</summary>' : ''}
+  const simple = tabla === 'COBRANZA' && esV;
+  render(m, `<h2>${cfg.t}</h2>${simple ? '' : `<p class="lead">${cfg.d}</p>`}
+    ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div>' + (simple ? '<div id="ml" style="margin-top:6px"></div>' : '') + '<details class="manual"><summary>' + (simple ? 'Registrar un pago sin la lista' : 'Registrar un pago a mano (sin usar la lista)') + '</summary>' : ''}
     <div class="card">${tabla === 'GASTOS' ? (() => {
         const celda = c => `<div><label class="f" for="m_${c[0]}">${c[1]}</label>${inp(c)}</div>`, extra = c => c[0] === 'respaldo' || c[0] === 'obs';
         return `<div id="fm"><div class="grid g2">${campos.filter(c => !extra(c)).map(celda).join('')}</div>
@@ -2874,8 +2876,14 @@ async function vMov(m, tabla) {
       ${tabla === 'COBRANZA' ? `<div id="mch" hidden style="margin-top:12px"><div class="pregunta" style="margin-top:0">Datos del cheque</div>${camposCheque(null, 'mov')}</div>` : ''}
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     ${tabla === 'COBRANZA' ? '</details>' : ''}
-    <div id="ml" style="margin-top:16px"></div>`);
+    ${simple ? '' : '<div id="ml" style="margin-top:16px"></div>'}`);
   function lista(rows) {
+    if (simple) {
+      $('#ml').innerHTML = rows.length ? `<div class="csec" style="margin-top:4px">Cobrado hoy · ${clp(rows.reduce((a, r) => a + r.monto, 0))}</div>` + rows.map(r =>
+        `<div class="hrow"><span class="grow">${esc(r.cliente)}<small>Fact. ${esc(r.folio)} · ${FL[r.forma] || esc(r.forma)}${r._pendiente || String(r.id).indexOf('pend_') === 0 ? ' · en el teléfono' : ''}</small></span><b>${clp(r.monto)}</b>
+        <button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></div>`).join('') : '';
+      return;
+    }
     const cols = campos.map(c => c[0]);
     $('#ml').innerHTML = rows.length ? `<div class="tw"><table><thead><tr>${campos.map(c => `<th class="${c[2] === 'n' ? 'r' : ''}">${c[1]}</th>`).join('')}${conAdj ? '<th>Respaldo</th>' : ''}<th>Registró</th><th></th></tr></thead><tbody>
       ${rows.map(r => `<tr>${cols.map(k => `<td class="${k === 'monto' ? 'r' : ''}">${k === 'monto' ? clp(r[k]) : k === 'forma' ? (FL[r[k]] || esc(r[k])) : esc(r[k])}</td>`).join('')}

@@ -465,3 +465,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v91 — Mis folios más simple (solo frontend)
 - Vendedor: sin frase de ayuda ni tarjeta "Anotar folios por adelantado" (anotar vive en Hoy; la oficina que detalla a nombre de un vendedor sí la conserva). La tarjeta de anulación pasó a un enlace discreto "Anular un folio" al final de la lista (con "N por aprobar…" si hay). Queda: progreso, botón "Seguir/Empezar a detallar (N)", "Marcar varios", filtros con contadores y la lista (sin el rótulo "Mi DTE:").
+
+## v92 — Cobranza del vendedor en dos pasos (solo frontend)
+- `cobrarDesdeLista`: sin "política de crédito" ni RUT en la lista; buscador "Nombre, RUT o folio"; al elegir cliente: "¿Cómo pagó?" con botones grandes (Efectivo/Transferencia/Cheque; banco también en botones; datos del cheque como siempre), "¿Qué facturas pagó?" (folio, "Hace N días", saldo; el monto editable para abonos aparece al marcar) y un botón grande "Registrar cobro $X". `forma`/`bancoSel` son objetos `{value}` (ya no selects).
+- `vMov('COBRANZA')` para VENDEDOR (`simple`): sin frase de ayuda; "Cobrado hoy · total" en filas cortas con ×; el registro a mano queda plegado como enlace "Registrar un pago sin la lista". Oficina conserva la tabla.
