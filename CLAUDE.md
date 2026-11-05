@@ -479,3 +479,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v95 — Cobranza: botón naranjo en cada fila y facturas con sangría (solo frontend)
 - Opción A elegida por el dueño: cada cliente lleva el botón "Elegir" y cada factura el botón "Cobrar" (pasa a "Cerrar" cuando está abierta). Las facturas van sangradas 22 px con una línea naranja a la izquierda para notar que pertenecen al cliente abierto. `.bt` es el botón; la flecha › queda solo en el selector de cliente del registro a mano (`.cpl`).
+
+## v96 — Cobranza: transición al elegir cliente (solo frontend)
+- Al tocar "Elegir" el cliente queda marcado (`.cli.sel`) y los demás se desvanecen 200 ms (`.apag`) antes de mostrar sus facturas con fundido (`.enter2`). Arriba de las facturas: botón grande "‹ Ver otros clientes" (`.volver`) y una tarjeta con el cliente elegido (`.cselc`). Solo opacidad (v83).

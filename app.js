@@ -2794,16 +2794,19 @@ async function cobrarDesdeLista(box, alTerminar) {
   };
   lista('');
   $('#cq', box).oninput = e => { pan.innerHTML = ''; lista(e.target.value); };
-  res.onclick = e => { const b = e.target.closest('.cli'); if (!b) return; abrirCliente(clientes.find(c => c.clave === b.dataset.k), String($('#cq', box).value || '').replace(/\D/g, '')); };
+  res.onclick = e => { const b = e.target.closest('.cli'); if (!b || res.dataset.ocupado) return; res.dataset.ocupado = '1';
+    const c = clientes.find(x => x.clave === b.dataset.k), fq = String($('#cq', box).value || '').replace(/\D/g, '');
+    $$('.cli', res).forEach(x => x.classList.add(x === b ? 'sel' : 'apag'));          // el elegido queda marcado y los demás se desvanecen
+    setTimeout(() => { delete res.dataset.ocupado; abrirCliente(c, fq); }, 220); };
   function abrirCliente(c, folioBuscado) {
     res.innerHTML = '';
     const forma = { value: 'EFECTIVO' }, bancoSel = { value: S.cat.bancos[0] };
-    pan.innerHTML = `<div class="cpan"><div class="row"><div class="grow"><b style="font-size:17px">${esc(c.cliente)}</b><div class="muted">Toca la factura que pagó</div></div>
-        <button type="button" class="btn ghost sm" id="cvolver">Cambiar</button></div>
+    pan.innerHTML = `<div class="cpan enter2"><button type="button" class="volver" id="cvolver">‹ Ver otros clientes</button>
+      <div class="cselc"><span class="grow"><b>${esc(c.cliente)}</b><small>${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''} · toca "Cobrar" en la que pagó</small></span><b>${clp(c.deuda)}</b></div>
       <div id="cfacs" style="margin-top:8px">${c.facturas.map((f, i) => `<div class="cfac" data-i="${i}"><button type="button" class="cfh" data-i="${i}"><span class="grow"><b>${esc(f.tipo.replace(' Electrónica', ''))} ${esc(f.folio)}</b>${f.cheque ? ' <span class="chip warn">Cheque en cartera</span>' : ''}
           <small>Hace ${f.dias} días${f.venc && f.venc < r.hoy ? ' · <b class="bad">Vencida</b>' : ''}</small></span><b>${clp(f.saldo)}</b><span class="bt">Cobrar</span></button>
         <div class="cform" hidden></div></div>`).join('')}</div></div>`;
-    $('#cvolver', pan).onclick = () => { pan.innerHTML = ''; lista($('#cq', box).value); };
+    $('#cvolver', pan).onclick = () => { const p = $('.cpan', pan); if (p) p.classList.add('sale2'); setTimeout(() => { pan.innerHTML = ''; lista($('#cq', box).value); res.classList.remove('enter2'); void res.offsetWidth; res.classList.add('enter2'); }, 160); };
     const cerrar = () => $$('.cfac.abierta', pan).forEach(d => { d.classList.remove('abierta'); const f = $('.cform', d); f.hidden = true; f.innerHTML = ''; $('.bt', d).textContent = 'Cobrar'; });
     function abrir(i) {
       const f = c.facturas[i], d = $('.cfac[data-i="' + i + '"]', pan), fm = $('.cform', d);
