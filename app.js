@@ -265,7 +265,17 @@ function guardarPend() {
   catch (e) { toast('El teléfono no tiene espacio para guardar más cambios sin conexión.', true); }
   pintarRed();
 }
-async function escribir(fn, args) {
+const RECIEN = new Map();      // firma de la última escritura -> {t, p}: dos toques seguidos al mismo botón no duplican nada
+function escribir(fn, args) {
+  let firma; try { firma = fn + '|' + (S.sess ? S.sess.usuario : '') + '|' + JSON.stringify(args.slice(1)); } catch (e) { return escribir1(fn, args); }
+  const r = RECIEN.get(firma);
+  if (r && Date.now() - r.t < 4000) return r.p;
+  const p = escribir1(fn, args); RECIEN.set(firma, { t: Date.now(), p });
+  p.catch(() => RECIEN.delete(firma));
+  if (RECIEN.size > 60) for (const [k, v] of RECIEN) if (Date.now() - v.t > 4000) RECIEN.delete(k);
+  return p;
+}
+async function escribir1(fn, args) {
   const resto = args.slice(1), op = idOp(); let enviado = false;
   if (EN_LINEA && !pendActivos().length) {
     const key = claveApi(fn, args), fin = trabajando(fn, true);
@@ -708,16 +718,19 @@ async function iniciar() {
 /** Botón "Actualizar": envía lo pendiente, olvida lo guardado en el teléfono y vuelve a pedir todo al servidor (por ejemplo, tras importar de Mi DTE). */
 async function actualizarTodo() {
   const b = $('#refr');
-  if (!EN_LINEA) return toast('Sin conexión: no se puede actualizar ahora.', true);
-  if (b) { if (b.classList.contains('girando')) return; b.classList.add('girando'); }
+  if (b) { if (b.classList.contains('girando')) return; b.classList.add('girando'); b.disabled = true; }
   try {
+    if (!EN_LINEA) {                          // no se rinde al tiro: hace el intento de conectarse (puede que el aviso de red esté atrasado)
+      toast('Conectando…');
+      let fallo = null; await Promise.all([llamar('ping', []).catch(x => { fallo = x; }), new Promise(r => setTimeout(r, 900))]); if (fallo) throw fallo;
+    }
     if (pendActivos().length) await sincronizar();
     olvidarCache(true);
     S.cat = await api('catalogo', S.sess.token);
     ir(S.tab);
     toast('Información actualizada');
-  } catch (e) { toast('No se pudo actualizar. Revisa tu conexión.', true); }
-  finally { if (b) b.classList.remove('girando'); }
+  } catch (e) { toast(e && e.red ? 'Todavía no hay conexión. Se intentará de nuevo solo cuando vuelva.' : 'No se pudo actualizar. Revisa tu conexión.', true); }
+  finally { if (b) { b.classList.remove('girando'); b.disabled = false; } }
 }
 function ir(t, silencioso) {
   // Importación a medias (subió un informe y falta el otro): no se pierde sin avisar
@@ -771,9 +784,9 @@ function ir(t, silencioso) {
       const delGrupo = S.grupos ? (S.grupos.find(x => x[2].indexOf(t) >= 0) || [0, 0, []])[2] : tabs.map(x => x[0]);
       const otras = S.grupos ? S.grupos.filter(g => g[2].indexOf(t) < 0).map(g => g[2][0]) : [];
       precargar(delGrupo.filter(x => x !== t).concat(otras).filter(x => x !== 'saldos').slice(0, 7));
-    }, 600);
+    }, 250);
   });  };
-  if (salir) { m.classList.add('sale'); setTimeout(arrancar, 130); } else arrancar();
+  if (salir && !(window.matchMedia && matchMedia('(min-width:900px)').matches)) { m.classList.add('sale'); setTimeout(arrancar, 60); } else arrancar();
 }
 const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(p * 100) + '%'; };
 const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores</option>' : '') +
@@ -782,17 +795,21 @@ const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores<
 /* ============ HOY (inicio del vendedor): qué hacer y cómo va el día ============ */
 async function vHoy(m) {
   const tok = S.sess.token, F = S.fecha, pri = (S.sess.nombre || '').split(' ')[0];
-  const [r, cob, gas] = await Promise.all([api('misDocumentos', tok, F, S.vend), api('listarMov', tok, 'COBRANZA', F), api('listarMov', tok, 'GASTOS', F)]);
+  const [r, cob, gas, ads] = await Promise.all([api('misDocumentos', tok, F, S.vend), api('listarMov', tok, 'COBRANZA', F), api('listarMov', tok, 'GASTOS', F), api('listarAdelantos', tok, F, S.sess.usuario).catch(() => [])]);
+  const nAd = ads.length, aplAd = ads.filter(x => x.estado === 'APLICADO').length;
   const docs = r.docs, cerrada = r.estadoDia === 'CERRADA', hechos = docs.filter(d => d.estado === 'DETALLADO'), pend = docs.length - hechos.length;
   const por = fs => hechos.reduce((a, d) => a + d.pagos.filter(p => fs.indexOf(p.forma) >= 0).reduce((b, p) => b + p.monto, 0), 0);
   const tot = docs.reduce((a, d) => a + d.total, 0), ef = por(['EFECTIVO']), tr = por(['TRANSFERENCIA', 'DEP_EFECTIVO']), ch = por(['CHEQUE']), cr = por(['CREDITO']);
   const sumaM = xs => xs.reduce((a, x) => a + (Number(x.monto) || 0), 0), pl = (n, a, b) => n + ' ' + (n === 1 ? a : b);
   const p = docs.length ? hechos.length / docs.length : 0;
-  const hero = !docs.length ? `<div class="hero vacio"><b>Aún no tienes folios</b><span>Aparecen cuando la encargada importa el informe de Mi DTE. Vuelve a mirar en un rato.</span></div>`
-    : !pend ? `<div class="hero ok"><span class="tick">✓</span><b>Listo: detallaste todos tus folios</b><span>${pl(docs.length, 'folio', 'folios')}. Mira abajo si te falta registrar algo más.</span></div>`
-    : `<div class="hero"><span class="kick">Primero</span><b>Cuéntanos cómo te pagó cada cliente</b>
-        <div class="meter" style="margin:12px 0 4px"><div class="bar"><i style="width:${Math.round(p * 100)}%"></i></div><b>${hechos.length} de ${docs.length}</b></div>
-        <button class="btn cu block" id="hgo" ${cerrada ? 'disabled' : ''}>${hechos.length ? 'Seguir detallando' : 'Empezar a detallar'} · ${pend} por hacer</button></div>`;
+  const hero = `<div class="hero"><span class="kick">Primero</span><b>Anota cada folio que emitas en ruta</b>
+        <span>Folio, monto y cómo te pagó. Funciona sin internet y se detalla solo cuando llega de Mi DTE.</span>
+        <div class="meter" style="margin:12px 0 4px">${nAd ? `<b>${nAd} anotado${nAd > 1 ? 's' : ''} hoy · ${aplAd} ya detallado${aplAd === 1 ? '' : 's'}</b>` : '<b>Aún no anotas folios hoy</b>'}</div>
+        <button class="btn cu block" id="hanota" ${cerrada ? 'disabled' : ''}>Anotar folio</button></div>
+    <div class="hero2">${!docs.length ? `<b>Folios que ya subió la encargada</b><span>Aparecen cuando se importa Mi DTE. Ahí completas lo que falte.</span>`
+      : !pend ? `<b>✓ Todos tus folios están detallados</b><span>${pl(docs.length, 'folio', 'folios')}.</span>`
+      : `<b>Detallar folios que ya subieron</b><div class="meter" style="margin:8px 0 4px"><div class="bar"><i style="width:${Math.round(p * 100)}%"></i></div><b>${hechos.length} de ${docs.length}</b></div>
+        <button class="btn ghost block" id="hgo" ${cerrada ? 'disabled' : ''}>${hechos.length ? 'Seguir detallando' : 'Empezar a detallar'} · ${pend} por hacer</button>`}</div>`;
   const pasos = [
     ['folios', docs.length > 0 && !pend, 'Mis folios', !docs.length ? 'Todavía no hay folios' : pend ? `Te faltan ${pend}` : 'Todos detallados', ''],
     ['COBRANZA', cob.length > 0, 'Cobranza', cob.length ? `${pl(cob.length, 'pago', 'pagos')} · ${clp(sumaM(cob))}` : 'Si un cliente te pagó una factura de otro día', 'Si corresponde'],
@@ -807,6 +824,7 @@ async function vHoy(m) {
       <div><span>Transferencias</span><b>${clp(tr)}</b></div>${ch ? `<div><span>Cheques</span><b>${clp(ch)}</b></div>` : ''}<div><span>A crédito</span><b>${clp(cr)}</b></div></div>
       <p class="muted" style="margin:6px 2px 0">Solo cuenta los folios que ya detallaste.</p>` : ''}`);
   m.onclick = e => {
+    if (e.target.closest('#hanota')) return abrirAdelanto(S.sess.usuario, () => { olvidarCache(false); ir(S.tab, true); });
     if (e.target.closest('#hgo')) { S.autoempezar = true; return ir('folios'); }
     const b = e.target.closest('.hpaso'); if (b) ir(b.dataset.t);
   };
@@ -3055,3 +3073,16 @@ async function vDatos(m) {
   };
   await cargar(false);
 }
+
+/* ---- v82: toques repetidos ---- un botón que se aprieta muchas veces seguidas solo cuenta una vez (menos los de + / − y los marcados data-rep) */
+(function () {
+  const ult = new WeakMap();
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('button, .btn, [role=button]');
+    if (!b || b.hasAttribute('data-rep') || b.closest('[data-rep]')) return;
+    const tx = (b.textContent || '').trim(); if (tx === '+' || tx === '−' || tx === '-' || b.closest('.pr .nin, .nin, .stp, .pad')) return;
+    const t = Date.now(), a = ult.get(b);
+    if (a && t - a < 900) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+    ult.set(b, t);
+  }, true);
+})();

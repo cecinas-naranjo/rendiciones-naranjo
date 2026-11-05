@@ -430,3 +430,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Problema: de 23 folios anotados solo ~18 se aplicaban y los demás quedaban "Esperando" sin explicación. Causas cubiertas: folio de Mi DTE con ceros o ".0" (ahora `keyNorm_` compara sin ceros), tipo equivocado (Boleta/Factura: avisa "Mi DTE lo trae como Factura"), monto/vendedor distinto (ya existía), y folio que nunca llegó.
 - `cruzarAdelantos_`: si se importó Mi DTE de ese día DESPUÉS de anotarlo y el folio no aparece → REVISAR con el motivo; si aún no hay importación posterior → ESPERANDO. Devuelve `{aplicados, revisar, sinLlegar}`. Nueva API `reintentarAdelantos(token)` (botón "Volver a cruzar con Mi DTE").
 - `listarAdelantos` devuelve `anotado`, `resuelto`, `llego`, `docCliente`, `docTotal`: cada folio muestra su línea ① Anotado hh:mm · ② Llegó/Aún no llega de Mi DTE · ③ Detallado ✓/No se pudo/Pendiente. Cabecera "Anotados: N · detallados · esperando · para revisar" (suma siempre N) y la tarjeta de Mis folios usa lo mismo.
+
+## v82 — Rapidez, toques repetidos y Hoy del vendedor (solo frontend)
+- Transiciones: en PC (≥900 px) ya no hay fundido de salida antes de cargar la pantalla; en celular 60 ms. Entradas escalonadas más cortas (≤60 ms de retraso, 180 ms), precarga de pestañas vecinas a los 250 ms.
+- Toques repetidos: (1) `escribir` ignora una escritura idéntica (misma función, usuario y argumentos) repetida en 4 s y devuelve la misma promesa (`RECIEN`); (2) listener global en captura ignora un 2.º clic al mismo botón en <900 ms (excepto + / − y `data-rep`).
+- Botón recargar (`actualizarTodo`): si la app cree que no hay internet, hace el intento (ping, ~1 s con giro y botón bloqueado) antes de decir que no hay conexión.
+- Hoy del vendedor: tarjeta principal "Anota cada folio que emitas en ruta" (abre `abrirAdelanto`, con contador anotados/detallados) y segunda tarjeta "Detallar folios que ya subieron" con avance y botón.
