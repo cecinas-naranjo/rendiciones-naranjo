@@ -1089,3 +1089,14 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 /* v103: campos de clave como texto enmascarado: Chrome no ofrece guardar la contraseña */
 .pw{-webkit-text-security:disc;text-security:disc}
 .pw.ver{-webkit-text-security:none;text-security:none}
+
+/* v105: Efectivo del día, un vendedor abierto a la vez */
+.efv{padding:0}
+.efh{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:14px 16px;text-align:left;color:var(--ink);font:inherit}
+.efh b{font-size:17px;display:block}
+.efh small{color:var(--mut);font-size:13px}
+.efh .dcar{width:8px;height:8px;border-right:2px solid var(--mut);border-bottom:2px solid var(--mut);transform:rotate(45deg);flex:none;margin:0 4px 4px 2px}
+.efv.abierto .efh .dcar{transform:rotate(-135deg);margin-bottom:-2px}
+.efv.abierto{border-color:var(--cu)}
+.efb{padding:0 16px 14px;border-top:1px solid var(--line-2)}
+.efb .bill{margin-top:12px}

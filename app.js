@@ -2572,11 +2572,13 @@ async function vEfectivo(m) {
   if (!r.vendedores.length) return render(m, `<h2>Efectivo del día</h2><div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>`);
   const n = el => soloDigitos(el.value);
   render(m, `<h2>Efectivo del día</h2><p class="lead">Cuenta el efectivo de cada vendedor: cuántos billetes de cada tipo y las monedas (las monedas no se depositan). Abajo queda cuánto hay que depositar.</p>
-    ${r.vendedores.map(v => `<div class="card efv" data-u="${esc(v.usuario)}" data-esp="${v.esperado}" style="margin-bottom:10px">
-      <div class="row"><b class="grow" style="font-size:17px">${esc(v.nombre)}</b><span class="muted">Debe entregar <b>${clp(v.esperado)}</b></span></div>
+    ${r.vendedores.map((v, i) => `<div class="card efv" data-u="${esc(v.usuario)}" data-esp="${v.esperado}" style="margin-bottom:10px">
+      <button type="button" class="efh" aria-expanded="false"><span class="grow"><b>${esc(v.nombre)}</b><small>Debe entregar ${clp(v.esperado)}</small></span><span data-hdf></span><i class="dcar" aria-hidden="true"></i></button>
+      <div class="efb" hidden>
       <div class="bill">${BILLETES.map(b => `<label><span>${clp(b)}</span><input class="in n" inputmode="numeric" data-b="${b}" value="${v['b' + b] || ''}" ${cerrada ? 'disabled' : ''} aria-label="Billetes de ${clp(b)} de ${esc(v.nombre)}" placeholder="0"></label>`).join('')}
         <label class="mon"><span>Monedas ($)</span><input class="in n" inputmode="numeric" data-mon value="${v.monedas || ''}" ${cerrada ? 'disabled' : ''} aria-label="Monedas de ${esc(v.nombre)}" placeholder="0"></label></div>
-      <div class="row efr"><span class="muted">Billetes <b data-bt></b> · contado <b data-ct></b></span><span class="grow"></span><span data-df></span></div></div>`).join('')}
+      <div class="row efr"><span class="muted">Billetes <b data-bt></b> · contado <b data-ct></b></span><span class="grow"></span><span data-df></span></div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px"><button type="button" class="btn cu sm" data-sig>${i < r.vendedores.length - 1 ? 'Listo, siguiente ›' : 'Listo, ir al resumen ›'}</button></div></div></div>`).join('')}
     <div class="card" id="efs" style="border:1.5px solid var(--ink)">
       <dl class="efd"><dt>Efectivo que debían entregar</dt><dd id="s_esp"></dd>
         <dt>Billetes contados</dt><dd id="s_bil"></dd><dt class="muted" id="s_det" style="grid-column:1/-1;text-align:left"></dt>
@@ -2593,6 +2595,7 @@ async function vEfectivo(m) {
       let b = 0; $$('[data-b]', f).forEach(i => { const q = n(i); b += q * Number(i.dataset.b); por[i.dataset.b] += q; });
       const mo = n($('[data-mon]', f)), e = Number(f.dataset.esp), dif = b + mo - e;
       $('[data-bt]', f).textContent = clp(b); $('[data-ct]', f).textContent = clp(b + mo);
+      $('[data-hdf]', f).innerHTML = b + mo === 0 ? '<span class="chip">Por contar</span>' : dif === 0 ? '<span class="chip ok">Cuadra</span>' : `<span class="chip ${dif < 0 ? 'bad' : 'warn'}">${dif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(dif))}</span>`;
       $('[data-df]', f).innerHTML = b + mo === 0 ? '' : dif === 0 ? '<span class="chip ok">Cuadra</span>' : `<span class="chip ${dif < 0 ? 'bad' : 'warn'}">${dif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(dif))}</span>`;
       esp += e; bil += b; mon += mo;
     });
@@ -2604,7 +2607,18 @@ async function vEfectivo(m) {
     return { esp, bil, mon, cc };
   }
   m.oninput = e => { if (e.target.matches('input')) { S.tocado = true; calc(); } };
+  // de a uno: al abrir un vendedor se cierra el que estaba abierto
+  const abrirEf = f => {
+    filas.forEach(x => { const on = x === f; $('.efb', x).hidden = !on; $('.efh', x).setAttribute('aria-expanded', String(on)); x.classList.toggle('abierto', on); });
+    if (f) { f.scrollIntoView({ block: 'nearest' }); const i = $('[data-b]', f); if (i && !cerrada && !i.value) setTimeout(() => i.focus({ preventScroll: true }), 50); }
+  };
+  m.addEventListener('click', e => {
+    const h = e.target.closest('.efh'); if (h) { const f = h.closest('.efv'); return abrirEf(f.classList.contains('abierto') ? null : f); }
+    const sg = e.target.closest('[data-sig]'); if (sg) { const f = sg.closest('.efv'), sig = filas[filas.indexOf(f) + 1];
+      if (sig) abrirEf(sig); else { abrirEf(null); $('#efs').scrollIntoView({ block: 'start' }); } }
+  });
   calc();
+  abrirEf(filas.find(f => !$$('input', f).some(i => n(i))) || null);        // parte con el primero que falta contar
   if ($('#efg')) $('#efg').onclick = async () => {
     const b = $('#efg'); b.disabled = true;
     const datos = { cajaChica: n($('#cc')), obs: $('#cco').value.trim(), filas: filas.map(f => { const o = { vendedor: f.dataset.u, monedas: n($('[data-mon]', f)) }; $$('[data-b]', f).forEach(i => o['b' + i.dataset.b] = n(i)); return o; }) };

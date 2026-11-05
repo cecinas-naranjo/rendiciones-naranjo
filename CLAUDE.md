@@ -511,3 +511,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v104 — Depósito opcional para el vendedor (solo frontend)
 - Pocos vendedores depositan: la pantalla ya no dice «Te falta depositar». Para VENDEDOR: texto «Solo si depositaste efectivo antes de rendir», tarjeta «Depositado hoy $X» (con «Efectivo del día» como dato), monto SIN rellenar, sin aviso «Faltarían», sin confirmación de exceso ni «Faltan $X» al guardar. La oficina conserva el saldo (rotulado «Sin depositar»).
+
+## v105 — Efectivo del día vendedor por vendedor (solo frontend)
+- `vEfectivo`: cada vendedor/supermercado es un acordeón (`.efh` con nombre, «Debe entregar» y chip Por contar / Cuadra / Falta / Sobra); solo uno abierto a la vez (`abrirEf`), parte abierto el primero sin contar, y «Listo, siguiente ›» cierra y abre el siguiente (el último lleva al resumen). Los cálculos, el resumen y el guardado no cambian.
