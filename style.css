@@ -886,3 +886,31 @@ nav.bottom button.on svg,nav .on svg,.side .on svg{animation:none;transform:none
  .pr .cl .nin{flex:1}
  .pr .cl{justify-content:flex-start}
 }
+
+/* ===== v85: Inventario en tabla (Ver stock / Contar y anotar) ===== */
+.invtop{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:10px}
+.invtop .seg{margin:0}
+.invt{background:#fff;border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+.invt table{width:100%;border-collapse:collapse}
+.invt th{font-size:12.5px;font-weight:700;color:var(--mut);text-align:right;padding:10px 10px;background:#fff;border-bottom:1px solid var(--line)}
+.invt th:first-child,.invt td.nm{text-align:left}
+.invt td{padding:7px 10px;text-align:right;border-top:1px solid var(--line);vertical-align:middle;font-size:14.5px}
+.invt tr:first-child td{border-top:0}
+.invt td.nm{font-weight:700;white-space:normal;min-width:160px}.invt td.nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.invt .lab{font-weight:400;color:var(--mut);font-size:12px}
+.invt td.q{font-size:17px;font-weight:700}.invt .neg,.invt td.q.neg{color:var(--bad)}
+.invt tr.mod td{background:#FFF8F2}
+.invt input.in{width:92px;min-height:42px;font-size:17px;text-align:right;padding:4px 8px}
+.invt .chip{display:inline-block;font-size:12px;padding:2px 9px;border-radius:99px;font-weight:600}
+.invt .chip.okc{background:#E3F6E8;color:#14633A}.invt .chip.difc{background:#FDE6E6;color:#9B1C1C}
+.invt td.lk{white-space:nowrap}
+@media(max-width:700px){
+ .invt table,.invt tbody,.invt tr,.invt td{display:block}.invt tr:first-child:has(th){display:none}
+ .invt tr{padding:10px 12px;border-top:1px solid var(--line)}
+ .invt td{border:0;padding:3px 0;display:flex;justify-content:space-between;align-items:center;text-align:right}
+ .invt td::before{content:attr(data-col);color:var(--mut);font-size:12.5px;text-align:left;margin-right:10px}
+ .invt td.nm{display:block;font-size:16px;padding-bottom:4px}.invt td.nm::before{display:none}
+ .invt td[data-col='']::before{display:none}
+}
+.invl{display:block!important;grid-template-columns:none!important}
+.invt .ghostlink{background:none;border:0;color:var(--cu-2,#A3440F);font-weight:600;padding:4px 0;cursor:pointer}
