@@ -46,6 +46,7 @@ const IC = {
   out: '<path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
   fuel: '<path d="M4 21V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v16M3 21h12M7 9h4M14 10h2a2 2 0 0 1 2 2v4a1.5 1.5 0 0 0 3 0V8l-3-3"/>'
 };
 const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
@@ -665,6 +666,33 @@ function abrirMiClave() {
   $('#mc0', ov).focus();
 }
 
+
+/* ---------- cambiar de día (v100) ---------- */
+function pintarDia() {
+  const f = S.fecha, hoy = hoyCL(), dt = $('#dtxt'), p = $('#dpill'), inp = $('#fecha');
+  if (inp) inp.value = f;
+  if (dt) dt.textContent = f === hoy ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
+  if (p) p.classList.toggle('otro', f !== hoy);
+}
+function abrirFecha(cambiar) {
+  const hoy = hoyCL(), ov = document.createElement('div'); ov.className = 'ov';
+  const op = (f, t) => `<button type="button" class="dop ${f === S.fecha ? 'on' : ''}" data-f="${f}"><b>${t}</b><small>${esc(fechaLarga(f))}</small>${f === S.fecha ? icon('check') : ''}</button>`;
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Elegir el día"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px;margin-bottom:10px">¿Qué día quieres ver?</div>
+    ${op(hoy, 'Hoy')}${op(sumarDias(hoy, -1), 'Ayer')}${op(sumarDias(hoy, -2), 'Anteayer')}
+    <div class="csec" style="margin-top:14px">Otro día</div>
+    <input class="in" type="date" id="fo" max="${hoy}" value="${S.fecha !== hoy && S.fecha !== sumarDias(hoy, -1) && S.fecha !== sumarDias(hoy, -2) ? S.fecha : ''}">
+    <div id="fon" class="muted" style="margin-top:6px;min-height:18px"></div></div>
+    <div class="foot"><button class="btn ghost" id="fx">Cancelar</button><span class="grow"></span><button class="btn cu" id="fg">Ver ese día</button></div></div>`;
+  document.body.appendChild(ov);
+  const ir_ = f => { cerrarHoja(ov); if (f !== S.fecha) cambiar(f); };
+  const nota = () => { const f = $('#fo', ov).value; $('#fon', ov).textContent = !f ? '' : f > hoy ? 'Ese día todavía no llega.' : f === hoy ? 'Es hoy.' : `${fechaLarga(f)} · hace ${Math.round((new Date(hoy + 'T12:00:00') - new Date(f + 'T12:00:00')) / 864e5)} días`; };
+  ov.onclick = e => { if (e.target === ov) return cerrarHoja(ov); const b = e.target.closest('.dop'); if (b) ir_(b.dataset.f); };
+  $('#fo', ov).oninput = nota; nota();
+  $('#fx', ov).onclick = () => cerrarHoja(ov);
+  $('#fg', ov).onclick = () => { const f = $('#fo', ov).value; if (!f) return toast('Elige un día en el calendario.', true); if (f > hoy) return toast('Ese día todavía no llega.', true); ir_(f); };
+}
+
 /* ---------- estructura ---------- */
 async function iniciar() {
   const app = $('#app');
@@ -680,9 +708,10 @@ async function iniciar() {
   document.body.classList.toggle('solo-leer', S.sess.rol === 'GERENCIA');
   document.body.classList.toggle('has-bottom', abajo || !!grupos);
   document.body.classList.toggle('oficina', !!grupos);
-  const dia = `<div class="day"><button id="prev" aria-label="Día anterior">‹</button><input type="date" id="fecha" value="${S.fecha}" aria-label="Fecha"><button id="next" aria-label="Día siguiente">›</button></div>`;
   const txtDia = f => f === hoyCL() ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
-  const diaC = `<div class="hday"><button id="prev" aria-label="Día anterior">‹</button><label class="dl">${icon('cal')}<span id="dtxt">${txtDia(S.fecha)}</span><input type="date" id="fecha" value="${S.fecha}" aria-label="Elegir fecha"></label><button id="next" aria-label="Día siguiente">›</button></div>`;
+  // v100: el día se cambia tocando la píldora (abre una hoja con Hoy / Ayer / Anteayer / otra fecha); ya no hay flechas de día en día
+  const dia = `<div class="dwrap"><button type="button" class="dpill" id="dpill" aria-label="Cambiar el día que estás viendo">${icon('cal')}<span id="dtxt">${txtDia(S.fecha)}</span><i class="dcar" aria-hidden="true"></i></button><input type="date" id="fecha" value="${S.fecha}" hidden></div>`;
+  const diaC = dia;
   const cuenta = `<button class="icon-btn" id="refr" aria-label="Actualizar la información">${icon('refresh')}<span>Actualizar</span></button><button class="icon-btn" id="mclv" aria-label="Cambiar mi clave">${icon('key')}<span>Clave</span></button><button class="icon-btn" id="letra" aria-label="Tamaño de letra"><b style="font-size:17px;line-height:1">Aa</b><span id="letraT"></span></button><button class="icon-btn" id="out" aria-label="Salir">${icon('out')}<span>Salir</span></button>`;
   const ref = t => tabs.find(x => x[0] === t) || [];
   if (grupos) {
@@ -713,7 +742,7 @@ async function iniciar() {
   $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
   let tFecha = 0;
   const cambiarFecha = f => {       // la fecha y la pantalla cambian juntas: al instante se ve "cargando" y las respuestas del día anterior se descartan
-    S.fecha = f; $('#fecha').value = f; const dt = $('#dtxt'); if (dt) dt.textContent = txtDia(f);
+    S.fecha = f; pintarDia();
     S.vistaId++; const mm = $('#main'); mm.onclick = null; mm.replaceChildren(); const sk = document.createElement('div'); sk.className = 'vm'; sk.innerHTML = skeleton(4); mm.appendChild(sk);
     const od = $('#otrodia'); if (od) { od.hidden = f === hoyCL(); if (f !== hoyCL()) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(f)}</b>`; }
     clearTimeout(tFecha); tFecha = setTimeout(() => ir(S.tab), 200);
@@ -723,10 +752,7 @@ async function iniciar() {
     mb.onclick = e => { e.stopPropagation(); const mn = $('#menu'); mn.hidden = !mn.hidden; mb.setAttribute('aria-expanded', String(!mn.hidden)); };
     if (!window._menuCierra) { window._menuCierra = true; document.addEventListener('click', () => { const mn = $('#menu'); if (mn) { mn.hidden = true; const b = $('#menub'); if (b) b.setAttribute('aria-expanded', 'false'); } }); }
   }
-  $('#fecha').onclick = e => { try { if (e.target.showPicker) e.target.showPicker(); } catch (x) {} };
-  $('#fecha').onchange = e => e.target.value && cambiarFecha(e.target.value);
-  $('#prev').onclick = () => cambiarFecha(sumarDias(S.fecha, -1));
-  $('#next').onclick = () => cambiarFecha(sumarDias(S.fecha, 1));
+  $('#dpill').onclick = () => abrirFecha(cambiarFecha); pintarDia();
   $('#hoyBtn').onclick = () => cambiarFecha(hoyCL());
   if ($('#nav')) $('#nav').onclick = e => { const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.t) return ir(b.dataset.t);
@@ -2475,7 +2501,7 @@ async function vImportar(m) {
           : `<b>No había nada nuevo.</b> Todo lo de estos archivos ya estaba cargado${rep ? ' (' + rep + ' documentos)' : ''}; no cambié nada.`;
         if (!errores.length && (ad || adr)) caja.innerHTML += `<br>${ad ? `<b>${ad}</b> folio${ad > 1 ? 's' : ''} ya quedó${ad > 1 ? 'aron' : ''} detallado${ad > 1 ? 's' : ''} con lo que anotaron los vendedores. ` : ''}${adr ? `<b>${adr}</b> no calzó${adr > 1 ? 'aron' : ''} (no aparece el folio, tipo, monto o vendedor distinto): el vendedor ve el motivo de cada uno en Anotar folio.` : ''}`;
         pp.insertAdjacentElement('afterend', caja); }
-      if (f.length === 1 && f[0] !== S.fecha) { S.fecha = f[0]; $('#fecha').value = S.fecha; toast('Mostrando el ' + fechaLarga(S.fecha)); }
+      if (f.length === 1 && f[0] !== S.fecha) { S.fecha = f[0]; pintarDia(); toast('Mostrando el ' + fechaLarga(S.fecha)); }
       if (sinT.size) toast('Hay terminales sin vendedor: ' + [...sinT].join(', ') + '. Asígnalos abajo.', true);
       cargarTerminales([...sinT], f.slice().sort());
     };
@@ -2720,25 +2746,21 @@ async function vDepositos(m) {
   const q = r.resumen || (() => { const ev = r.folios.reduce((t, x) => t + x.efectivo, 0), ec = r.cobranzas.reduce((t, x) => t + x.efectivo, 0), dp = r.depositos.reduce((t, x) => t + x.monto, 0);
     return { efectivoVentas: ev, efectivoCobranza: ec, gastos: 0, disponible: ev + ec, depositado: dp, saldo: ev + ec - dp }; })();
   const sinMov = !q.efectivoVentas && !q.efectivoCobranza && !q.depositado && !r.depositos.length;
-  render(m, `<h2>Depósitos de efectivo</h2>
-    <p class="lead">Registra cuánto depositaste. No hace falta elegir folios: se compara con el efectivo que recibiste en el día.</p>
+  render(m, `<h2>Depósito</h2>
     ${esV ? '' : `<div class="row" style="margin-bottom:12px"><select class="in" style="width:auto" id="dv">${opcVend(S.vend)}</select></div>`}
-    <div class="kpis" style="margin-bottom:10px"><div><span>Efectivo del día</span><b>${clp(q.disponible)}</b></div>
-      <div><span>Depositado</span><b>${clp(q.depositado)}</b></div>
-      <div><span>${q.saldo < 0 ? 'Depositaste de más' : 'Falta por depositar'}</span><b>${clp(Math.abs(q.saldo))}</b></div></div>
-    <details class="mas" style="margin:0 0 14px"><summary>Cómo se calcula</summary><ul class="info">
+    <div class="card dsaldo ${q.saldo > 0 ? '' : 'listo'}"><small>${q.saldo < 0 ? 'Depositaste de más' : q.saldo === 0 && q.depositado ? 'Todo depositado' : 'Te falta depositar'}</small><b>${clp(Math.abs(q.saldo))}</b>
+      <div class="dl2"><span>Efectivo del día ${clp(q.disponible)}</span><span>Depositado ${clp(q.depositado)}</span></div></div>
+    ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : `<div class="card">
+      <label class="f">¿En qué banco?</label>
+      <div class="b3" id="dbs">${S.cat.bancos.map(b => `<button type="button" data-b="${esc(b)}">${esc(b)}</button>`).join('')}</div><input type="hidden" id="db" value="">
+      <label class="f" for="dm">Monto depositado</label><input class="in n gmon" id="dm" inputmode="numeric" value="${q.saldo > 0 ? q.saldo : ''}" placeholder="$ 0">
+      <label class="f" for="dr" style="margin-top:6px">N° de operación <span class="muted">(opcional)</span></label><input class="in" id="dr" inputmode="numeric" placeholder="Ej. 48213390">
+      <div id="dsal"></div>
+      <button class="btn cu block" id="dg" style="margin-top:8px">Registrar depósito</button></div>`}
+    <details class="mas" style="margin:0 0 12px"><summary>Cómo se calcula</summary><ul class="info">
       <li>Efectivo de las ventas: <b>${clp(q.efectivoVentas)}</b></li><li>Efectivo de cobranza: <b>${clp(q.efectivoCobranza)}</b></li>
       ${q.gastos ? `<li>Gastos: <b>− ${clp(q.gastos)}</b></li>` : ''}<li>Ya depositado: <b>− ${clp(q.depositado)}</b></li></ul></details>
-    ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : `<div class="card">
-      <b>Registrar un depósito</b>
-      <div class="grid g3" style="margin-top:8px">
-        <div><label class="f" for="db">Banco</label><select class="in" id="db"><option value="">Elegir…</option>${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select></div>
-        <div><label class="f" for="dm">Monto depositado</label><input class="in n" id="dm" inputmode="numeric" value="${q.saldo > 0 ? q.saldo : ''}"></div>
-        <div><label class="f" for="dr">N° de operación</label><input class="in" id="dr" inputmode="numeric"></div>
-      </div>
-      <div id="dsal"></div>
-      <button class="btn cu block" id="dg" style="margin-top:6px">Registrar depósito</button></div>`}
-    <h3>Depósitos registrados</h3>
+    <div class="csec">Depositado ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</div>
     ${r.depositos.length ? r.depositos.map(d => `<div class="card" style="margin-bottom:8px"><div class="row">
       <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}${d.por ? `<div class="muted">Registró ${esc(d.por)}</div>` : ''}
         ${d.folios.length || d.cobranzas.length ? `<div class="muted">Registrado con ${d.folios.length + d.cobranzas.length} folio(s) asociados</div>` : ''}
@@ -2751,6 +2773,7 @@ async function vDepositos(m) {
   activarAdjuntarDespues(m, () => ir('depositos'));
   if (cerrada) return;
   const dm = $('#dm');
+  $('#dbs').onclick = e => { const b = e.target.closest('[data-b]'); if (!b) return; $('#db').value = b.dataset.b; $$('#dbs button').forEach(x => x.classList.toggle('on', x === b)); };
   const aviso = () => {
     const mon = soloDigitos(dm.value), resta = q.saldo - mon;
     $('#dsal').innerHTML = mon ? `<div class="saldo ${resta >= 0 ? 'ok' : 'no'}"><span>Después de este depósito</span><span>${resta > 0 ? 'Faltarían ' + clp(resta) : resta < 0 ? 'Más que el efectivo: ' + clp(-resta) : 'Queda todo depositado'}</span></div>` : '';
@@ -2871,6 +2894,7 @@ const MOV = {
 };
 async function vMov(m, tabla) {
   const cfg = MOV[tabla], esV = S.sess.rol === 'VENDEDOR';
+  if (tabla === 'GASTOS' && esV) return vGastosV(m);
   const campos = cfg.f.filter(c => !(esV && c[2] === 'vend'));
   const inp = c => c[2] === 'forma' ? `<select class="in" name="${c[0]}" id="m_${c[0]}">${S.cat.formas.filter(f => f !== 'CREDITO').map(f => `<option value="${f}">${FL[f]}</option>`).join('')}</select>`
     : c[2] === 'banco' ? `<select class="in" name="${c[0]}" id="m_${c[0]}"><option value="">—</option>${S.cat.bancos.map(b => `<option>${b}</option>`).join('')}</select>`
@@ -2948,6 +2972,55 @@ async function vMov(m, tabla) {
       const nuevo = await api('guardarMov', S.sess.token, tabla, S.fecha, o); toast(nuevo._pendiente ? 'Guardado en el teléfono (sin conexión)' : 'Agregado');
       $$('input', $('#fm')).forEach(x => x.value = ''); if (cq) cq.classList.remove('okc');
       if (mch) { $$('input:not([type=date])', mch).forEach(x => x.value = ''); $('[data-c="banco"]', mch).value = ''; }
+      await recargar();
+    } finally { b.disabled = false; }
+  };
+}
+
+
+/* ---------- Gastos del vendedor (v100): conceptos en botones, solo el monto a mano ---------- */
+const CONCEPTOS_GASTO = ['Combustible', 'Peaje', 'Almuerzo', 'Estacionamiento', 'Otro'];
+async function vGastosV(m) {
+  const rows = await api('listarMov', S.sess.token, 'GASTOS', S.fecha);
+  let sel = '';
+  render(m, `<h2>Gastos</h2>
+    <div class="gtot"><small>Gastado ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</small><b id="gt"></b><small>Se descuenta de tu efectivo a entregar</small></div>
+    <div class="card" id="fm">
+      <label class="f">¿En qué gastaste?</label>
+      <div class="gch" id="gc">${CONCEPTOS_GASTO.map(c => `<button type="button" data-c="${c}">${c}</button>`).join('')}</div>
+      <div id="gotro" hidden><input class="in" id="m_otro" placeholder="Ej. Reparación, estacionamiento…" maxlength="60"></div>
+      <label class="f" for="m_monto" style="margin-top:6px">Monto</label>
+      <input class="in n gmon" id="m_monto" inputmode="numeric" placeholder="$ 0" autocomplete="off">
+      <button class="btn cu block" id="ad" style="margin-top:10px">Registrar gasto</button>
+      <details class="mas" style="margin-top:8px"><summary>Agregar N° de boleta o nota</summary><div class="grid g2" style="margin-top:8px">
+        <div><label class="f" for="m_respaldo">N° de boleta</label><input class="in" id="m_respaldo" inputmode="numeric"></div>
+        <div><label class="f" for="m_obs">Nota</label><input class="in" id="m_obs"></div></div></details>
+    </div>
+    <div class="csec" id="gh"></div><div id="ml"></div>`);
+  const lista = rs => {
+    $('#gt').textContent = clp(rs.reduce((a, r) => a + r.monto, 0));
+    $('#gh').textContent = rs.length ? (S.fecha === hoyCL() ? 'Hoy' : 'Este día') + ' · ' + rs.length : '';
+    $('#ml').innerHTML = rs.length ? `<div class="card" style="padding:4px 14px">${rs.map(r => `<div class="hrow"><span class="grow">${esc(r.concepto)}<small>${r.respaldo ? 'Boleta ' + esc(r.respaldo) + ' · ' : ''}${r._pendiente || String(r.id).indexOf('pend_') === 0 ? 'en el teléfono' : ''}</small>${chipsAdj(r.adjuntos, 'GASTOS', r.id, true)}</span><b>${clp(r.monto)}</b>
+      <button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></div>`).join('')}</div>`
+      : '<div class="empty">Aún no registras gastos.</div>';
+  };
+  lista(rows);
+  const recargar = async () => lista(await api('listarMov', S.sess.token, 'GASTOS', S.fecha));
+  activarAdjuntarDespues($('#ml'), recargar);
+  $('#gc').onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; sel = b.dataset.c;
+    $$('#gc button').forEach(x => x.classList.toggle('on', x === b)); $('#gotro').hidden = sel !== 'Otro'; if (sel === 'Otro') $('#m_otro').focus(); else $('#m_monto').focus(); };
+  $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este gasto?')) return;
+    await api('borrarMov', S.sess.token, 'GASTOS', id); await recargar(); };
+  $('#ad').onclick = async () => {
+    const concepto = sel === 'Otro' ? $('#m_otro').value.trim() : sel, monto = soloDigitos($('#m_monto').value);
+    if (!sel) return toast('Elige en qué gastaste.', true);
+    if (!concepto) return toast('Escribe en qué gastaste.', true);
+    if (!monto) return toast('Escribe el monto.', true);
+    const b = $('#ad'); b.disabled = true;
+    try {
+      const nuevo = await api('guardarMov', S.sess.token, 'GASTOS', S.fecha, { concepto, monto: String(monto), respaldo: $('#m_respaldo').value, obs: $('#m_obs').value });
+      toast(nuevo._pendiente ? 'Guardado en el teléfono (sin conexión)' : 'Gasto registrado');
+      sel = ''; $$('#gc button').forEach(x => x.classList.remove('on')); $('#gotro').hidden = true; $('#m_otro').value = ''; $('#m_monto').value = ''; $('#m_respaldo').value = ''; $('#m_obs').value = '';
       await recargar();
     } finally { b.disabled = false; }
   };

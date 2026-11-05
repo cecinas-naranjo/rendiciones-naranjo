@@ -1036,3 +1036,36 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 #cfacs .cfac.abierta .bt{background:transparent;color:var(--cu-2);box-shadow:inset 0 0 0 1px var(--cu)}
 .chips2 button{font-size:14px;padding:7px 13px;min-height:38px}
 .chips2 button.on{background:var(--cu-soft);border-color:var(--cu);color:#712B13}
+
+/* ===== v100: selector de día (píldora + hoja) ===== */
+.dwrap{display:flex;flex:none}
+.dpill{display:flex;align-items:center;gap:7px;height:40px;padding:0 12px 0 11px;border:1px solid #5A483D;background:#3A2D26;color:#fff;border-radius:999px;font-weight:700;font-size:15px;white-space:nowrap;text-transform:capitalize;transition:background-color .15s ease,border-color .15s ease}
+.dpill svg{width:16px;height:16px;flex:none;opacity:.9}
+.dpill .dcar{width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translate(-1px,-1px);opacity:.8;flex:none}
+.dpill:active{background:#4A3A31}
+.dpill.otro{background:#FFE9B8;border-color:#E0B24A;color:#6B4700}
+.topbar .dpill{background:#fff;border-color:var(--line);color:var(--ink)}
+.topbar .dpill.otro{background:#FFE9B8;border-color:#E0B24A;color:#6B4700}
+.dop{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:8px;font-size:16px}
+.dop small{color:var(--mut);font-size:13px;text-transform:capitalize;flex:1}
+.dop b{min-width:76px}
+.dop svg{width:18px;height:18px;color:var(--cu)}
+.dop.on{background:var(--cu-soft);border-color:var(--cu)}
+@media (max-width:420px){.dpill{padding:0 9px;gap:5px;font-size:14px}.dpill svg{display:none}}
+
+/* ===== v100: Gastos y Depósito del vendedor ===== */
+.gtot{background:#2A1F1A;color:#fff;border-radius:14px;padding:14px 16px;margin-bottom:12px;display:flex;flex-direction:column;gap:2px}
+.gtot small{color:#CDBFB5;font-size:13px}
+.gtot b{font-size:30px;font-weight:700}
+.gch{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.gch button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:10px 14px;font-size:15px;color:var(--ink)}
+.gch button.on{background:var(--cu-soft);border-color:var(--cu);color:var(--cu-2);font-weight:700}
+.gmon{font-size:22px;height:52px}
+.dsaldo{display:flex;flex-direction:column;gap:2px}
+.dsaldo small{color:var(--mut);font-size:13px}
+.dsaldo b{font-size:32px;font-weight:700;color:var(--cu)}
+.dsaldo.listo b{color:#2F6B2F}
+.dsaldo .dl2{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--mut)}
+#dbs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 12px}
+#dbs button{border:1px solid var(--line);background:#fff;border-radius:12px;padding:14px 0;font-size:15px;color:var(--ink)}
+#dbs button.on{background:var(--cu-soft);border-color:var(--cu);color:var(--cu-2);font-weight:700}
