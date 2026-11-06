@@ -1100,3 +1100,13 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .efv.abierto{border-color:var(--cu)}
 .efb{padding:0 16px 14px;border-top:1px solid var(--line-2)}
 .efb .bill{margin-top:12px}
+
+/* v107 — cobro con varias formas de pago y detalle de crédito */
+.cform .lc { padding: 10px; border: 1px solid var(--line); border-radius: 12px; margin-top: 8px; background: #fff; }
+.cform .lc .x { border: 0; background: transparent; font-size: 22px; line-height: 1; color: var(--mut); padding: 2px 8px; cursor: pointer; }
+.cest { margin-top: 10px; font-size: 15px; color: var(--mut); }
+.cest:empty { display: none; }
+.cest.ok { color: #15803D; }
+.cest.abono { color: #B45309; }
+.cest.mas { color: #B91C1C; }
+.vcard dt.sub, .vcard dd.sub { color: var(--mut); font-size: .9em; }

@@ -242,6 +242,7 @@ async function api(fn, ...args) {
     const id = String(args[fn === 'borrarMov' ? 2 : 1]); PEND = PEND.filter(p => 'pend_' + p.op !== id); guardarPend(); return true;       // aún no se había enviado: solo se cancela
   }
   const lectura = LECTURA.has(fn), key = claveApi(fn, args);
+  if (lectura && S.leidas) S.leidas.set(key, [fn, args]);       // lo que usa la pantalla actual (para el refresco automático)
   if (lectura && CACHE.has(key) && (Date.now() - CACHE.get(key).t < 12 * 3600e3 || !EN_LINEA)) {
     const e = CACHE.get(key);
     if (EN_LINEA && (e.viejo || Date.now() - e.t > FRESCURA)) revalidar(fn, args, key);
@@ -396,7 +397,7 @@ function superponer(fn, args, data) {
       ps.forEach(p => { if (p.fn === 'guardarDevolucion' && p.args[0] === args[1]) { const o = p.args[1], pr = (S.cat.productos || []).find(x => String(x.codigo) === String(o.codigo)) || {};
         data.push(Object.assign({}, o, { id: 'pend_' + p.op, fecha: p.args[0], cantidad: Number(o.cantidad) || 0, monto: soloDigitos(o.monto), producto: pr.nombre || o.codigo, unidad: pr.unidad || 'UN', adjuntos: [], sinEnviar: true })); } });
     } else if (fn === 'porCobrar' && data.clientes) {
-      ps.filter(p => p.fn === 'guardarCobro').forEach(p => p.args[2].forEach(it => data.clientes.forEach(c => c.facturas.forEach(f => { if (f.folio_key === it.folio_key) { const q = Math.min(f.saldo, soloDigitos(it.monto)); f.saldo -= q; c.deuda -= q; } }))));
+      ps.filter(p => p.fn === 'guardarCobro').forEach(p => p.args[3].forEach(it => data.clientes.forEach(c => c.facturas.forEach(f => { if (f.folio_key === it.folio_key) { const q = Math.min(f.saldo, soloDigitos(it.monto)); f.saldo -= q; c.deuda -= q; } }))));
       data.clientes = data.clientes.filter(c => c.facturas.some(f => f.saldo > 0));
       data.clientes.forEach(c => { c.facturas = c.facturas.filter(f => f.saldo > 0); });
     }
@@ -468,6 +469,27 @@ calentar();
 setInterval(calentar, 240e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { calentar(); if (pendActivos().length) sincronizar(); else if (!EN_LINEA) llamar('ping', []).catch(() => {}); } });
 setInterval(() => { if (!S.sess) return; if (pendActivos().length) sincronizar(); else if (!EN_LINEA) llamar('ping', []).catch(() => {}); }, 20000);
+/* ---------- refresco automático (v107) ----------
+   Cada 15 s, con la app a la vista, se vuelve a pedir (UNA sola llamada) lo que muestra la pantalla actual. Si algo cambió porque otra
+   persona registró algo, la pantalla se redibuja sola. No lo hace mientras alguien escribe, con una ventana abierta, con cambios sin enviar o en Importar. */
+let AUTO_BUSY = false;
+async function refrescoAuto() {
+  if (AUTO_BUSY || !S.sess || document.hidden || !EN_LINEA || S.tocado || $('.ov') || S.impPendiente || sincronizando || pendActivos().length) return;
+  const a = document.activeElement; if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+  if (S.tab === 'importar' || !S.leidas || !S.leidas.size) return;
+  const vista = S.vistaId, items = [...S.leidas.values()].filter(x => x[0] !== 'catalogo' && CACHE.has(claveApi(x[0], x[1])));
+  if (!items.length) return;
+  AUTO_BUSY = true;
+  try {
+    const antes = items.map(x => JSON.stringify(CACHE.get(claveApi(x[0], x[1])).d));
+    await pedirLote(items);
+    const cambio = items.some((x, i) => { const e = CACHE.get(claveApi(x[0], x[1])); return e && JSON.stringify(e.d) !== antes[i]; });
+    if (cambio && vista === S.vistaId && !S.tocado && !$('.ov') && !pendActivos().length) ir(S.tab, true);
+  } catch (e) { /* sin red o servidor viejo: se intenta en el próximo ciclo */ }
+  finally { AUTO_BUSY = false; }
+}
+setInterval(refrescoAuto, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(refrescoAuto, 600); });
 /** Pide por detrás la versión nueva de algo que se mostró desde la memoria del teléfono. */
 function revalidar(fn, args, key) {
   const antes = JSON.stringify(CACHE.get(key).d), vista = S.vistaId;
@@ -819,6 +841,7 @@ function ir(t, silencioso) {
   if (silencioso && main.firstElementChild && main.firstElementChild.classList.contains('sale')) return;      // está saliendo la pantalla anterior: la nueva ya viene
   main.onclick = null;
   const id = ++S.vistaId; S.tocado = false;
+  if (!silencioso || !S.leidas) S.leidas = new Map();
   const y = window.scrollY;
   // dirección de la transición: al ir a una pestaña de la derecha el contenido entra desde la derecha, y al revés
   const ni = tabs.findIndex(x => x[0] === t), pi = S.idxAnt === undefined ? ni : S.idxAnt;
@@ -2008,8 +2031,8 @@ async function abrirVendedor(usuario) {
         <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
           <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)} − gastos ${clp(t.gastos)} − depositado ${clp(t.depositos)}</small></div>
         <div class="dres">
-          ${fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${t.credito ? fila('Crédito', v.creditos.length + ' docs', t.credito) : ''}
-          ${v.cheques.length ? fila('Cheques', v.cheques.length, t.cheques) : ''}
+          ${fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${fila('Venta contado', '', t.contado)}${t.creditoTotal ? fila('Crédito total', 'crédito ' + clp(t.credito) + ' · cheques ' + clp(t.chequesVenta), t.creditoTotal) : ''}
+          ${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
           ${Object.keys(v.transf).filter(b => v.transf[b].length).map(b => fila('Transf. ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0))).join('')}
           ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}</div></div>
       <div class="dsec"><div class="dtit"><b>Folios</b><span>${v.detallados} de ${v.documentos} detallados</span></div>
@@ -2070,8 +2093,9 @@ async function imprimirInspeccion(usuario) {
     const tb = {}; bancos.forEach(b => tb[b] = sum(v.transf[b]));
     const transfTot = sum(bancos.map(b => ({ monto: tb[b] })));
     const efTotal = t.efVentas + t.efCob, aEntregar = efTotal - t.gastos - t.depositos;
-    const subtotal = aEntregar + t.depositos + transfTot + t.cheques, total = subtotal + t.credito;
-    const totalDetalle = t.efVentas + t.efCob - t.gastos + transfTot + t.cheques + t.credito;     // por origen: debe dar igual a `total`
+    const chCob = t.cheques - t.chequesVenta;                       // cheques recibidos por cobranza (no son venta del día)
+    const subtotal = aEntregar + t.depositos + transfTot + chCob, total = subtotal + t.creditoTotal;
+    const totalDetalle = t.efVentas + t.efCob - t.gastos + transfTot + chCob + t.creditoTotal;     // por origen: debe dar igual a `total`
     const cobEf = t.efCob, cobCh = sum(v.cobranza.filter(x => x.forma === 'CHEQUE'));
     const cobTr = sum(v.cobranza.filter(x => x.forma === 'TRANSFERENCIA' || x.forma === 'DEP_EFECTIVO'));
 
@@ -2082,9 +2106,11 @@ async function imprimirInspeccion(usuario) {
       suma('Efectivo a entregar', '', aEntregar, true, 'sub'),
       t.depositos ? suma('Depósitos de efectivo', 'en el banco', t.depositos, true) : '',
       ...bancos.map(b => suma('Transferencias ' + b, '', tb[b], true)),
-      suma('Cheques', '', t.cheques, true),
-      suma('Subtotal', '', subtotal, false, 'sub'),
+      chCob ? suma('Cheques de cobranza', '', chCob, true) : '',
+      suma('Subtotal (contado)', '', subtotal, false, 'sub'),
       suma('Crédito', v.creditos.length ? `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}` : '', t.credito, true),
+      suma('Cheques de ventas', 'cuentan como crédito hasta cobrarse', t.chequesVenta, true),
+      suma('Crédito total del día', '', t.creditoTotal, false, 'sub'),
       suma('Total rendición', '', total, false, 'tot')].join('');
 
     const transfHtml = bancos.map(b => {
@@ -2108,7 +2134,7 @@ async function imprimirInspeccion(usuario) {
     const credHtml = v.creditos.length ? bloque('Crédito', t.credito, `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}`, v.creditos.map(x => filaVt({ cliente: x.cliente, rut: x.rut, doc: refOrigen(x.origen), monto: x.monto })).join(''), '', COLS_VT, true) : '';
 
     const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat(t.gastos ? [['− Gastos', -t.gastos]] : [],
-      [['+ Transferencias', transfTot], ['+ Cheques', t.cheques], ['+ Crédito', t.credito]]);
+      [['+ Transferencias', transfTot], ['+ Cheques de cobranza', chCob], ['+ Crédito total (crédito + cheques)', t.creditoTotal]]);
     return `<section class="ins">
       <div class="hd"><div><b class="n">${esc(v.nombre)}</b><small>Inspección de rendición · Cecinas Naranjo</small></div>
         <div class="r"><b>${fc}</b><small>${v.terminal ? 'Terminal ' + esc(v.terminal) : ''}</small></div></div>
@@ -2640,7 +2666,7 @@ async function vResumen(m) {
       <span class="chip ${cerrada ? 'ok' : 'cu'}">${cerrada ? 'Cerrada' : 'Abierta'}</span></div>
     <ol class="pasos">${pasos.map((p, i) => `<li class="${p[2] ? 'ok' : i === actual ? 'now' : ''}"><button type="button" data-paso="${p[3]}">
       <i>${p[2] ? '✓' : i + 1}</i><b>${p[0]}</b><small>${esc(p[1])}</small></button></li>`).join('')}</ol>
-    <div class="kpis" style="margin-top:14px"><div><span>Venta documentada</span><b>${clp(t.venta)}</b></div><div><span>A crédito</span><b>${clp(t.credito)}</b></div>
+    <div class="kpis" style="margin-top:14px"><div><span>Venta documentada</span><b>${clp(t.venta)}</b></div><div><span>Venta contado</span><b>${clp(t.contado)}</b></div><div><span>Crédito total</span><b>${clp(t.credito)}</b><small>${clp(t.creditoVenta)} a crédito · ${clp(t.creditoCheque)} en cheques</small></div>
       <div><span>Cobranza</span><b>${clp(t.cobranza)}</b></div><div><span>Gastos</span><b>${clp(t.gastos)}</b></div>
       <div class="cash"><span>Efectivo a recibir</span><b>${clp(t.efectivo)}</b></div></div>
     ${r.alertas.length ? `<div class="alert" id="avisos"><b>Antes de cerrar</b><ul>${r.alertas.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`
@@ -2651,8 +2677,9 @@ async function vResumen(m) {
       <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
     <div class="vcards">${r.porVendedor.map(v => `<div class="vcard clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(v.vendedor)}">
       <div class="row"><b class="grow" style="font-size:17px">${esc(v.vendedor)}</b>${v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar · Detallar ›</button>` : '<span class="chip ok">Detallado</span>'}</div>
-      <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.venta)}</dd><dt>Crédito</dt><dd>${clp(v.credito)}</dd>
-        <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>${v.CHEQUE ? `<dt>Cheques</dt><dd>${clp(v.CHEQUE)}</dd>` : ''}
+      <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.venta)}</dd><dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
+        ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
+        <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
         ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
         ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}
         ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}${v.depositoExceso ? ` <span class="chip bad">${clp(v.depositoExceso)} más que el efectivo</span>` : ''}</dd>` : ''}
@@ -2704,7 +2731,7 @@ async function vResumen(m) {
   const pv = $('#pv'); if (pv) pv.onclick = async () => {
     pv.disabled = true;
     try { const r2 = await api('vistaPreviaRendicion', S.sess.token, S.fecha);
-      enlace(r2.url, 'Borrador generado en la carpeta Resumen Rendición / Borradores. El día sigue abierto.'); }
+      enlace(r2.url, r2.cerrada ? 'Este día está cerrado: este es el archivo definitivo.' : 'Planilla del día al día con lo último. Es siempre el mismo archivo: se actualiza solo cuando hay cambios y, al cerrar el día, queda como el definitivo.'); }
     finally { pv.disabled = false; } };
   $$('select[data-fk]', m).forEach(s => s.onchange = async () => { if (!s.value) return;
     await api('asignarVendedor', S.sess.token, s.dataset.fk, s.value); toast('Asignado'); ir('resumen'); });
@@ -2871,28 +2898,57 @@ async function cobrarDesdeLista(box, alTerminar) {
     function abrir(i) {
       const f = c.facturas[i], d = $('.cfac[data-i="' + i + '"]', pan), fm = $('.cform', d);
       if (d.classList.contains('abierta')) { cerrar(); return; }
-      cerrar(); forma.value = 'EFECTIVO'; bancoSel.value = S.cat.bancos[0];
+      cerrar();
       d.classList.add('abierta'); fm.hidden = false; $('.bt', d).textContent = 'Cerrar';
-      fm.innerHTML = `<div class="csec" style="margin-top:4px">¿Cómo pagó?</div>
-        <div class="chips2" id="cforma">${[['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CHEQUE', 'Cheque']].map(([v, t], k) => `<button type="button" data-v="${v}" class="${k ? '' : 'on'}">${t}</button>`).join('')}</div>
-        <div id="cbancow" hidden style="margin-top:10px"><label class="f" for="cbanco">Banco</label><select class="in" id="cbanco">${S.cat.bancos.map(b => `<option value="${esc(b)}">${esc(b.charAt(0) + b.slice(1).toLowerCase())}</option>`).join('')}</select></div>
-        <div id="cch" hidden style="margin-top:10px">${camposCheque(null, 'cobro')}</div>
-        <div style="margin-top:10px"><label class="f" for="cmonto">Monto que paga</label><input class="in n" id="cmonto" inputmode="numeric" value="${f.saldo}"></div>
+      // Una o más formas de pago (pago mixto): cada línea con su forma, su banco (solo transferencia), sus datos de cheque y su monto.
+      const FORMAS_C = [['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CHEQUE', 'Cheque']];
+      let lineas = [{ forma: 'EFECTIVO', banco: S.cat.bancos[0], monto: f.saldo, ch: null }];
+      const total = () => lineas.reduce((a, l) => a + (Number(l.monto) || 0), 0);
+      const guardarChs = () => $$('.lc', fm).forEach(box => { const l = lineas[+box.dataset.i], c = $('.cheque', box); if (l && c) l.ch = leerCheque(c).datos; });
+      const estado = () => { const t = total(), dif = f.saldo - t, e = $('#cest', fm); if (!e) return;
+        e.className = 'cest ' + (t <= 0 ? '' : dif === 0 ? 'ok' : dif > 0 ? 'abono' : 'mas');
+        e.innerHTML = lineas.length > 1 || t !== f.saldo ? (t <= 0 ? 'Escribe el monto' : `Paga <b>${clp(t)}</b> · ${dif === 0 ? 'cuadra con la factura ✓' : dif > 0 ? 'queda debiendo ' + clp(dif) : 'son ' + clp(-dif) + ' más que la factura'}`) : '';
+        const b = $('#cok', fm); if (b) b.textContent = 'Registrar cobro ' + clp(t); };
+      const dibujar = () => {
+        $('#clin', fm).innerHTML = lineas.map((l, i) => `<div class="lc" data-i="${i}">
+          ${lineas.length > 1 ? `<div class="row" style="margin-bottom:6px"><b class="grow muted">Pago ${i + 1}</b><button type="button" class="x" data-del="${i}" aria-label="Quitar este pago">×</button></div>` : ''}
+          <div class="chips2" data-f="${i}">${FORMAS_C.map(([v, t]) => `<button type="button" data-v="${v}" class="${l.forma === v ? 'on' : ''}">${t}</button>`).join('')}</div>
+          ${l.forma === 'TRANSFERENCIA' ? `<div style="margin-top:10px"><label class="f">Banco</label><select class="in" data-bk="${i}">${S.cat.bancos.map(b => `<option value="${esc(b)}" ${b === l.banco ? 'selected' : ''}>${esc(b.charAt(0) + b.slice(1).toLowerCase())}</option>`).join('')}</select></div>` : ''}
+          ${l.forma === 'CHEQUE' ? `<div style="margin-top:10px">${camposCheque(l.ch, 'cobro' + i)}</div>` : ''}
+          <div style="margin-top:10px"><label class="f">Monto</label><input class="in n" data-mt="${i}" inputmode="numeric" value="${l.monto || ''}"></div></div>`).join('');
+        $$('.cheque', fm).forEach(avisoTipoCheque); estado(); };
+      fm.innerHTML = `<div class="csec" style="margin-top:4px">¿Cómo pagó?</div><div id="clin"></div>
+        <button type="button" class="btn ghost sm" id="cmas" style="margin-top:10px">+ Pagó una parte de otra forma</button>
+        <div id="cest" class="cest"></div>
         <button class="btn cu block" id="cok" type="button" style="margin-top:12px">Registrar cobro</button>`;
-      $('#cforma', fm).onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('button', e.currentTarget).forEach(x => x.classList.toggle('on', x === b)); forma.value = b.dataset.v;
-        $('#cbancow', fm).hidden = forma.value !== 'TRANSFERENCIA'; $('#cch', fm).hidden = forma.value !== 'CHEQUE'; if (forma.value === 'CHEQUE') avisoTipoCheque($('.cheque', fm)); };
-      $('#cbanco', fm).onchange = e => { bancoSel.value = e.target.value; };
+      dibujar();
+      $('#clin', fm).addEventListener('click', e => {
+        const bf = e.target.closest('.chips2 button'), del = e.target.closest('[data-del]');
+        if (bf) { guardarChs(); const l = lineas[+bf.parentNode.dataset.f]; l.forma = bf.dataset.v; dibujar(); }
+        else if (del) { guardarChs(); lineas.splice(+del.dataset.del, 1); dibujar(); }
+      });
+      $('#clin', fm).addEventListener('input', e => { const i = e.target.dataset.mt; if (i !== undefined) { lineas[+i].monto = soloDigitos(e.target.value); estado(); } });
+      $('#clin', fm).addEventListener('change', e => { const i = e.target.dataset.bk; if (i !== undefined) lineas[+i].banco = e.target.value; });
+      $('#cmas', fm).onclick = () => { guardarChs(); const resto = Math.max(0, f.saldo - total());
+        if (lineas.length === 1 && resto === 0) lineas[0].monto = Math.round(f.saldo / 2);       // pagó todo en una línea: se parte para repartir
+        lineas.push({ forma: lineas.some(l => l.forma === 'EFECTIVO') ? 'TRANSFERENCIA' : 'EFECTIVO', banco: S.cat.bancos[0], monto: Math.max(0, f.saldo - total()), ch: null });
+        if (lineas.length > 4) { lineas.pop(); return toast('Máximo 4 formas de pago.', true); }
+        dibujar(); };
       $('#cok', fm).onclick = async () => {
-        const m = soloDigitos($('#cmonto', fm).value);
-        if (!m) return toast('Escribe el monto que paga.', true);
-        if (m > f.saldo && !confirm('Paga más de lo que debe (' + clp(m) + ' de ' + clp(f.saldo) + '). ¿Registrar igual?')) return;
-        const pago = { forma: forma.value };
-        if (forma.value === 'TRANSFERENCIA') pago.banco = bancoSel.value;
-        if (forma.value === 'CHEQUE') { const ch = leerCheque($('.cheque', fm)); if (ch.error) return toast(ch.error, true); Object.assign(pago, ch.datos); }
+        guardarChs();
+        const t = total();
+        if (!(t > 0)) return toast('Escribe el monto que paga.', true);
+        if (lineas.some(l => !(Number(l.monto) > 0))) return toast('Hay un pago sin monto.', true);
+        if (t > f.saldo && !confirm('Paga más de lo que debe (' + clp(t) + ' de ' + clp(f.saldo) + '). ¿Registrar igual?')) return;
+        const pagos = [];
+        for (let i = 0; i < lineas.length; i++) { const l = lineas[i], p = { forma: l.forma, monto: Number(l.monto) };
+          if (l.forma === 'TRANSFERENCIA') p.banco = l.banco;
+          if (l.forma === 'CHEQUE') { const c = $('.lc[data-i="' + i + '"] .cheque', fm), ch = leerCheque(c); if (ch.error) return toast((lineas.length > 1 ? 'Pago ' + (i + 1) + ': ' : '') + ch.error, true); Object.assign(p, ch.datos); }
+          pagos.push(p); }
         const b = $('#cok', fm); b.disabled = true;
         try {
-          const rr = await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pago, [{ folio_key: f.folio_key, folio: f.folio, monto: m }]);
-          toast((rr._pendiente ? 'Cobro guardado en el teléfono (sin conexión): ' : 'Cobro registrado: ') + clp(m));
+          const rr = await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pagos, [{ folio_key: f.folio_key, folio: f.folio, monto: t }]);
+          toast((rr._pendiente ? 'Cobro guardado en el teléfono (sin conexión): ' : 'Cobro registrado: ') + clp(t));
           await alTerminar();
         } finally { b.disabled = false; }
       };
@@ -2979,7 +3035,10 @@ async function vMov(m, tabla) {
     await api('borrarMov', S.sess.token, tabla, id); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); };
   // cobranza con cheque: se piden sus datos y el banco pasa a ser el del cheque
   const mf = $('#m_forma'), mch = $('#mch');
-  if (mf && mch) mf.onchange = () => { const ch = mf.value === 'CHEQUE'; mch.hidden = !ch; const mb = $('#m_banco'); if (mb) { mb.disabled = ch; if (ch) mb.value = ''; }
+  const mbW = $('#m_banco') ? $('#m_banco').parentNode : null;           // el banco solo se pregunta si es transferencia
+  const verBanco = () => { const tr = mf.value === 'TRANSFERENCIA' || mf.value === 'DEP_EFECTIVO', mb = $('#m_banco'); if (!mb) return; if (mbW) mbW.hidden = !tr; mb.disabled = !tr; if (!tr) mb.value = ''; };
+  if (mf && tabla === 'COBRANZA') verBanco();
+  if (mf && mch) mf.onchange = () => { const ch = mf.value === 'CHEQUE'; mch.hidden = !ch; verBanco();
     if (ch) avisoTipoCheque($('.cheque', mch)); };
   $('#ad').onclick = async () => {
     const o = {}; $$('[name]', $('#fm')).forEach(x => o[x.name] = x.value);
