@@ -472,9 +472,24 @@ setInterval(() => { if (!S.sess) return; if (pendActivos().length) sincronizar()
 /* ---------- refresco automático (v107) ----------
    Cada 15 s, con la app a la vista, se vuelve a pedir (UNA sola llamada) lo que muestra la pantalla actual. Si algo cambió porque otra
    persona registró algo, la pantalla se redibuja sola. No lo hace mientras alguien escribe, con una ventana abierta, con cambios sin enviar o en Importar. */
-let AUTO_BUSY = false;
+let AUTO_BUSY = false, ULTIMO_USO = Date.now();
+['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach(ev => window.addEventListener(ev, () => { ULTIMO_USO = Date.now(); }, { passive: true, capture: true }));
+/** Redibuja la pantalla actual sin que la persona pierda dónde estaba: mantiene el alto (la página no se achica y no salta arriba),
+    devuelve el scroll a donde estaba y vuelve a abrir los desplegables que tenía abiertos. */
+function redibujarQuieto() {
+  const main = $('#main'), y = window.scrollY, h = main.offsetHeight;
+  const abiertos = $$('details[open]', main).map(d => (($('summary', d) || {}).textContent || '').trim()).filter(Boolean);
+  main.style.minHeight = h + 'px';
+  ir(S.tab, true);
+  const volver = () => {
+    $$('details:not([open])', main).forEach(d => { if (abiertos.indexOf((($('summary', d) || {}).textContent || '').trim()) >= 0) d.open = true; });
+    if (Date.now() - ULTIMO_USO > 700 && Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y);
+  };
+  [0, 150, 400, 900, 1800].forEach(t => setTimeout(volver, t));
+  setTimeout(() => { main.style.minHeight = ''; }, 2200);
+}
 async function refrescoAuto() {
-  if (AUTO_BUSY || !S.sess || document.hidden || !EN_LINEA || S.tocado || $('.ov') || S.impPendiente || sincronizando || pendActivos().length) return;
+  if (AUTO_BUSY || !S.sess || document.hidden || !EN_LINEA || S.tocado || Date.now() - ULTIMO_USO < 5000 || $('.ov') || S.impPendiente || sincronizando || pendActivos().length) return;
   const a = document.activeElement; if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
   if (S.tab === 'importar' || !S.leidas || !S.leidas.size) return;
   const vista = S.vistaId, items = [...S.leidas.values()].filter(x => x[0] !== 'catalogo' && CACHE.has(claveApi(x[0], x[1])));
@@ -484,7 +499,7 @@ async function refrescoAuto() {
     const antes = items.map(x => JSON.stringify(CACHE.get(claveApi(x[0], x[1])).d));
     await pedirLote(items);
     const cambio = items.some((x, i) => { const e = CACHE.get(claveApi(x[0], x[1])); return e && JSON.stringify(e.d) !== antes[i]; });
-    if (cambio && vista === S.vistaId && !S.tocado && !$('.ov') && !pendActivos().length) ir(S.tab, true);
+    if (cambio && vista === S.vistaId && !S.tocado && !$('.ov') && !pendActivos().length) redibujarQuieto();
   } catch (e) { /* sin red o servidor viejo: se intenta en el próximo ciclo */ }
   finally { AUTO_BUSY = false; }
 }
