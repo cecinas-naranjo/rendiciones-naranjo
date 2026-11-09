@@ -549,3 +549,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - La píldora del día muestra siempre qué día es («Hoy · lun 9 nov» o «jue 5 nov», ámbar si no es hoy) y el aviso naranjo pasó a «⚠ Estás viendo otro día: <fecha>» en letra más grande (con «Volver a hoy»).
 - El día mirado se guarda en `localStorage rn_fecha` ({u: usuario, f: fecha}) desde `pintarDia()` (`guardarFecha`); al abrir la app `iniciar` usa `fechaGuardada()` (solo del mismo usuario y anterior a hoy; hoy = se borra la clave). «Volver a hoy» o cambiar a hoy lo olvida; «Salir» (cerrar sesión a propósito) también; una sesión expirada lo conserva. Un día pasado recordado nunca avanza solo: queda así hasta que la persona lo cambie.
 - Sin probar en teléfono; solo verificada la sintaxis.
+
+## v113 — Aviso del día sin alerta (solo frontend)
+- El aviso naranjo dice «Estás viendo viernes 6 de noviembre» (sin «⚠ otro día»).

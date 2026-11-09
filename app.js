@@ -801,7 +801,7 @@ async function iniciar() {
   const cambiarFecha = f => {       // la fecha y la pantalla cambian juntas: al instante se ve "cargando" y las respuestas del día anterior se descartan
     S.fecha = f; pintarDia();
     S.vistaId++; const mm = $('#main'); mm.onclick = null; mm.replaceChildren(); const sk = document.createElement('div'); sk.className = 'vm'; sk.innerHTML = skeleton(4); mm.appendChild(sk);
-    const od = $('#otrodia'); if (od) { od.hidden = f === hoyCL(); if (f !== hoyCL()) $('span', od).innerHTML = `⚠ Estás viendo otro día: <b>${fechaLarga(f)}</b>`; }
+    const od = $('#otrodia'); if (od) { od.hidden = f === hoyCL(); if (f !== hoyCL()) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(f)}</b>`; }
     clearTimeout(tFecha); tFecha = setTimeout(() => ir(S.tab), 200);
   };
   const mb = $('#menub');
@@ -861,7 +861,7 @@ function ir(t, silencioso) {
     const on = $('#sub .on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   } else $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   const od = $('#otrodia'), hoy = hoyCL();
-  if (od) { od.hidden = S.fecha === hoy; if (S.fecha !== hoy) $('span', od).innerHTML = `⚠ Estás viendo otro día: <b>${fechaLarga(S.fecha)}</b>`; }
+  if (od) { od.hidden = S.fecha === hoy; if (S.fecha !== hoy) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(S.fecha)}</b>`; }
   const main = $('#main');
   if (silencioso && main.firstElementChild && main.firstElementChild.classList.contains('sale')) return;      // está saliendo la pantalla anterior: la nueva ya viene
   main.onclick = null;
