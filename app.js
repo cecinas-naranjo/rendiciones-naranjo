@@ -2354,23 +2354,35 @@ function libroOrdenado(l) {
 }
 /* ===== FIN ORDENAR ===== */
 
+/** Encabezado sin tildes, símbolos ni espacios dobles; acepta variantes habituales ("N° Folio", "Tipo documento", "Monto total"…). */
+function encabezado(h) {
+  let t = norm(h).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (/^(n|nro|num|numero)? ?folio( documento)?$/.test(t)) return 'folio';
+  if (/^(tipo (de )?(documento|doc)|tipo|nombre documento)$/.test(t) && t !== 'tipo') return 'documento';
+  if (/^(monto )?total( documento| venta)?$/.test(t) && t !== 'total') return 'total';
+  if (/^(descripcion|detalle|producto|nombre producto)( producto)?$/.test(t)) return 'descripcion';
+  if (/^cant(idad)?$/.test(t)) return 'cantidad';
+  return t;
+}
 function leerLibro(buf) {
   const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+  const vistos = [];
   for (const nombre of wb.SheetNames) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, raw: true, defval: '' });
-    const hi = rows.findIndex(r => r.some(c => norm(c) === 'folio'));
-    if (hi < 0) continue;
+    const hi = rows.findIndex(r => r.some(c => encabezado(c) === 'folio'));
+    if (hi < 0) { const r0 = rows.find(r => r.some(c => String(c).trim() !== '')); if (r0) vistos.push(nombre + ': ' + r0.map(c => String(c).trim()).filter(Boolean).slice(0, 8).join(' | ')); continue; }
     const head = rows[hi].map(h => norm(h));
     if (head.includes('cliente') && head.includes('monto') && head.some(h => /^¿?pag[oó]\??$/.test(h)))
       return { tipo: 'creditos', filas: leerCreditos(rows, hi, head) };
-    const tipo = head.includes('descripcion') && head.includes('cantidad') ? 'detalle' : head.includes('documento') && head.includes('total') ? 'dte' : null;
-    if (!tipo) continue;
-    const keys = head.map(h => h === 'total' ? (tipo === 'dte' ? 'Total' : 'TOTAL') : CANON[h] || h);
+    const h2 = rows[hi].map(h => encabezado(h));
+    const tipo = h2.includes('descripcion') && h2.includes('cantidad') ? 'detalle' : h2.includes('documento') && h2.includes('total') ? 'dte' : null;
+    if (!tipo) { vistos.push(nombre + ': ' + rows[hi].map(c => String(c).trim()).filter(Boolean).slice(0, 10).join(' | ')); continue; }
+    const keys = h2.map(h => h === 'total' ? (tipo === 'dte' ? 'Total' : 'TOTAL') : CANON[h] || h);
     const filas = rows.slice(hi + 1).map(r => { const o = {}; keys.forEach((k, j) => { let v = r[j]; if (k === 'Fecha' && typeof v === 'number') { o._fo = v; v = serialAFecha(v); } o[k] = v; }); return o; })
       .filter(o => o.Folio !== '' && (tipo === 'dte' ? o.Documento : o.Descripcion));
     return { tipo, filas };
   }
-  throw new Error('No reconozco este archivo. Debe ser "Ventas Diarias" o "Informe de ventas" de Mi DTE.');
+  throw new Error('No reconozco este archivo. Debe ser "Ventas Diarias" (con Folio, Documento y Total) o "Informe de ventas" (con Folio, Descripcion y Cantidad) de Mi DTE.' + (vistos.length ? ' Encabezados que encontré → ' + vistos.join(' ; ') : ' No encontré una columna "Folio".'));
 }
 
 async function vImportar(m) {
