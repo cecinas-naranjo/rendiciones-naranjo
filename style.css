@@ -1111,3 +1111,10 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .cest.abono { color: #B45309; }
 .cest.mas { color: #B91C1C; }
 .vcard dt.sub, .vcard dd.sub { color: var(--mut); font-size: .9em; }
+
+/* Aviso de importación terminada (v117) */
+.impp .listo{display:flex;gap:12px;align-items:center;margin-top:12px;padding:12px 14px;border-radius:12px;background:#E6F3EA;border:1px solid #BFE0CB;color:#1F5A37;font-size:16px}
+.impp .listo .okdot{flex:none}
+.impp .listo b{display:block;font-size:17px}
+.impp .listo .muted{color:#3d6b50;font-size:14px;margin-top:2px}
+.impp .listo.mal{background:#FBEFD9;border-color:#EBCF9A;color:#7a4a08;display:block}

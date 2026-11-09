@@ -562,3 +562,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v116 — Ventas Diarias en el formato nuevo de Mi DTE (solo frontend)
 - Mi DTE entrega ahora "Ventas Diarias" con otros encabezados: Tributario (= Documento), Nombre (= Nombre Cliente), Pago (= Condicion), RUT y Digito en columnas separadas, más Domicilio, Comuna, Neto, Exento, Iva, Total, Caja. `leerLibro` lo detecta por la columna Tributario y lo traduce al formato de siempre (RUT queda "77161028-5"). Verificado leyendo los archivos reales del 5 y 6 de noviembre (Ventas Diarias y Informe de ventas) con Node; no probado en el teléfono.
+
+## v117 — Aviso claro al terminar de importar (solo frontend)
+- Al terminar la importación el panel `.impp` muestra una franja verde «Listo: ya puedes cambiar de pantalla y seguir trabajando» (los datos ya están guardados; los Excel ordenados siguen subiendo al Drive y no hay que esperarlos) y un aviso emergente. Con errores, franja ámbar «Terminó, pero hubo errores». Antes solo cambiaba el título y no era claro cuándo se podía salir.
