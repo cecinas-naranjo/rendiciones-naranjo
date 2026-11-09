@@ -1869,7 +1869,7 @@ async function vUsuarios(m) {
   render(m, `<h2>Usuarios</h2><p class="lead" style="margin:0 0 12px">Cada persona entra con su RUT o correo y su propia clave; el rol lo asignas tú aquí. Al crear a alguien o restablecer su clave se genera una clave temporal que debes entregarle en privado: la cambia al entrar.</p>
     <div class="row" style="margin-bottom:10px"><button class="btn cu sm" id="un">+ Nuevo usuario</button></div>
     <div id="ul">${us.map(u => `<div class="cfac"><div class="row" style="gap:10px"><span class="grow"><b>${esc(u.nombre)}</b> <span class="chip">${ROL[u.rol] || u.rol}</span>
-        ${u.activo ? '' : '<span class="chip bad">Desactivado</span>'}${u.bloqueado ? '<span class="chip bad">Bloqueado</span>' : ''}${!u.tieneClave ? '<span class="chip warn">Sin clave</span>' : u.debeCambiar ? '<span class="chip warn">Clave temporal pendiente</span>' : ''}
+        ${u.activo ? '' : '<span class="chip bad">Desactivado</span>'}${u.bloqueado ? '<span class="chip bad">Bloqueado</span>' : ''}${u.rindeAntes ? '<span class="chip">Rinde con el día anterior: ' + esc(u.rindeAntes) + '</span>' : ''}${!u.tieneClave ? '<span class="chip warn">Sin clave</span>' : u.debeCambiar ? '<span class="chip warn">Clave temporal pendiente</span>' : ''}
         <div class="muted">${esc([u.rut, u.correo].filter(Boolean).join(' · ') || 'Sin RUT ni correo: no puede ingresar')} · código ${esc(u.usuario)}${u.terminales ? ' · terminales ' + esc(u.terminales) : ''}</div></span>
         <button class="btn ghost sm" data-e="${esc(u.usuario)}">Editar</button><button class="btn ghost sm" data-r="${esc(u.usuario)}">Restablecer clave</button></div></div>`).join('')}</div>`);
   const mostrarClave = (nombre, temporal) => {
@@ -1887,14 +1887,16 @@ async function vUsuarios(m) {
       <label class="f" for="u3" style="margin-top:10px">RUT</label><input class="in" id="u3" value="${esc(u.rut)}" placeholder="12.345.678-5" autocomplete="off">
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
       <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
-      </div>
+      <div id="u7w" style="margin-top:12px"><div class="f">Rinde con el día anterior</div>
+        <div class="muted" style="margin:2px 0 6px">Marca los días en que su rendición incluye también lo del día anterior (folios, cobranza, gastos, salida y retorno). Ej.: si carga el jueves y rinde el viernes, marca Vie. Ese día anterior no aparece suelto.</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap" id="u7">${[['LU','Lun'],['MA','Mar'],['MI','Mié'],['JU','Jue'],['VI','Vie'],['SA','Sáb'],['DO','Dom']].map(([k, n]) => `<label class="chip" style="cursor:pointer"><input type="checkbox" value="${k}" ${String(u.rindeAntes || '').split(',').indexOf(k) >= 0 ? 'checked' : ''}> ${n}</label>`).join('')}</div></div>
       <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="u6" ${u.activo ? 'checked' : ''}> Activo (si lo desactivas, no puede ingresar)</label></div>
       <div class="foot"><button class="btn ghost" id="ux">Cancelar</button><span class="grow"></span><button class="btn cu" id="ug">Guardar</button></div></div>`;
     document.body.appendChild(ov);
-    const rolCh = () => { $('#u5w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
+    const rolCh = () => { $('#u5w', ov).hidden = $('#u7w', ov).hidden = $('#u2', ov).value !== 'VENDEDOR'; }; $('#u2', ov).onchange = rolCh; rolCh();
     $('#ux', ov).onclick = () => cerrarHoja(ov);
     $('#ug', ov).onclick = async () => {
-      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, emiteAntes: false };
+      const o = { usuario: u.usuario, nombre: $('#u1', ov).value.trim(), rol: $('#u2', ov).value, rut: $('#u3', ov).value.trim(), correo: $('#u4', ov).value.trim(), terminales: $('#u5', ov).value.trim(), activo: $('#u6', ov).checked, rindeAntes: [...ov.querySelectorAll('#u7 input:checked')].map(x => x.value).join(',') };
       if (!o.nombre) return toast('Escribe el nombre.', true);
       if (!o.rut && !o.correo) return toast('Indica el RUT o el correo.', true);
       const r = await api('guardarUsuario', S.sess.token, o); cerrarHoja(ov);

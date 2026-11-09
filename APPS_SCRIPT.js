@@ -482,7 +482,7 @@ function read_(name) {
     return o;
   });
 }
-function byFecha_(name, fecha) {
+function byFechaRaw_(name, fecha) {
   if (FRESCO_ || !POR_DIA_[name]) return read_(name).filter(r => r.fecha === fecha);
   const k = name + '|' + fecha;
   if (!SLICE_[k]) {
@@ -490,6 +490,53 @@ function byFecha_(name, fecha) {
     try { const j = JSON.stringify(SLICE_[k]); if (j.length < 95000) CacheService.getScriptCache().put('d|' + name + '|' + versiones_([name])[name] + '|' + fecha, j, TTL_DIA_); } catch (e) {}
   }
   return SLICE_[k].map(r => Object.assign({}, r));
+}
+
+/* ===== Rinden con el día anterior (v110): p. ej. Javier carga el jueves y rinde el viernes con los folios de jueves + viernes =====
+   Config por vendedor en USUARIOS.emite_antes (texto con días, p. ej. "VI" o "MA,JU"): en esos días de la semana su rendición
+   incluye también lo del día anterior; y el día anterior ese vendedor NO aparece (así no se cuenta dos veces). Solo cambia lo que se
+   LEE por día (byFecha_); lo guardado sigue con su fecha real. DESPACHO se suma (salida del jueves + retorno del viernes). */
+const DIAS_RA_ = ['DO','LU','MA','MI','JU','VI','SA'];
+let RA_ = null;
+function parseDiasRA_(v) {
+  const out = []; String(v || '').toUpperCase().replace(/[^A-Z,]/g, '').split(',').forEach(t => { const i = DIAS_RA_.indexOf(t); if (i >= 0 && out.indexOf(i) < 0) out.push(i); });
+  return out;
+}
+function rindeAntes_() {
+  if (RA_) return RA_;
+  const map = {}; let hay = false;
+  read_('USUARIOS').forEach(u => { if (u.rol !== 'VENDEDOR') return; const d = parseDiasRA_(u.emite_antes); if (d.length) { map[u.usuario] = d; hay = true; } });
+  return (RA_ = { map, hay });
+}
+function diaSem_(iso) { return new Date(String(iso) + 'T12:00:00').getDay(); }
+/** {ocultas: {vendedor:1}, trae: {vendedor:1}} para esa fecha. */
+function ventanaRA_(fecha) {
+  const ra = rindeAntes_(), ocultas = {}, trae = {}; let n = 0;
+  if (ra.hay) { const dm = diaSem_(sumarDias_(fecha, 1)), dh = diaSem_(fecha);
+    Object.keys(ra.map).forEach(v => { if (ra.map[v].indexOf(dm) >= 0) { ocultas[v] = 1; n++; } if (ra.map[v].indexOf(dh) >= 0) { trae[v] = 1; n++; } }); }
+  return { ocultas, trae, hay: n > 0 };
+}
+const REMAP_ = { DOCUMENTOS: 'vendedor', PAGOS: 'vendedor', DESCUENTOS: 'vendedor', VENTAS_DETALLE: 'vendedor', COBRANZA: 'vendedor', DEPOSITOS: 'vendedor', GASTOS: 'responsable', DESPACHO: 'vendedor' };
+function sumaVacia_(a, b) { return (a === '' || a === undefined || a === null) && (b === '' || b === undefined || b === null) ? '' : num_(a) + num_(b); }
+function mezclarDesp_(own, prev) {
+  const m = {}, orden = [];
+  own.concat(prev).forEach(r => { const k = r.vendedor + '|' + codeKey_(r.codigo);
+    if (!m[k]) { m[k] = Object.assign({}, r); orden.push(k); return; }
+    const e = m[k]; ['salida','retorno','salida_un','retorno_un'].forEach(c => e[c] = sumaVacia_(e[c], r[c])); });
+  return orden.map(k => m[k]);
+}
+function byFecha_(name, fecha) {
+  const col = REMAP_[name];
+  if (!col) return byFechaRaw_(name, fecha);
+  const w = ventanaRA_(fecha);
+  if (!w.hay) return byFechaRaw_(name, fecha);
+  let filas = byFechaRaw_(name, fecha).filter(r => !w.ocultas[r[col]]);
+  if (Object.keys(w.trae).length) {
+    const prev = byFechaRaw_(name, sumarDias_(fecha, -1)).filter(r => w.trae[r[col]]);
+    if (name === 'DESPACHO') { const own = filas.filter(r => w.trae[r.vendedor]); filas = filas.filter(r => !w.trae[r.vendedor]).concat(mezclarDesp_(own, prev)); }
+    else filas = filas.concat(prev);
+  }
+  return filas;
 }
 
 function append_(name, objs) {
@@ -708,7 +755,7 @@ function asegurarColUsuarios_(col) {
 }
 function listarUsuariosAdmin(token) {
   auth_(token, ['ADMIN']);
-  return read_('USUARIOS').map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol, rut: u.rut ? rutFmt_(u.rut) : '', correo: u.correo || '', terminales: u.terminales || '', emiteAntes: esSi_(u.emite_antes), deposita: esSi_(u.deposita),
+  return read_('USUARIOS').map(u => ({ usuario: u.usuario, nombre: u.nombre, rol: u.rol, rut: u.rut ? rutFmt_(u.rut) : '', correo: u.correo || '', terminales: u.terminales || '', rindeAntes: parseDiasRA_(u.emite_antes).map(i => DIAS_RA_[i]).join(','), deposita: esSi_(u.deposita),
     activo: activo_(u), tieneClave: !!String(u.clave_hash || ''), debeCambiar: String(u.cambiar_clave).toUpperCase() === 'TRUE',
     bloqueado: !!(u.bloqueado_hasta && new Date(u.bloqueado_hasta) > new Date()) }));
 }
@@ -734,7 +781,7 @@ function guardarUsuario(token, o) {
     if (ex && ex.rol === 'ADMIN' && (rol !== 'ADMIN' || !activo) && !us.some(u => u.usuario !== ex.usuario && u.rol === 'ADMIN' && activo_(u))) throw new Error('Debe quedar al menos un administrador activo.');
     const fila = Object.assign({}, ex || { usuario: codigo, pin: '', clave_hash: '', sal: '', cambiar_clave: 'TRUE', intentos: 0, bloqueado_hasta: '' },
       { nombre, rol, rut: rut ? rutFmt_(rut) : '', correo, terminales: rol === 'VENDEDOR' ? String(o.terminales || '').trim() : (ex ? ex.terminales : ''), activo,
-        emite_antes: rol === 'VENDEDOR' && (o.emiteAntes === true || String(o.emiteAntes).toUpperCase() === 'TRUE') ? 'TRUE' : '',
+        emite_antes: rol === 'VENDEDOR' ? parseDiasRA_(Array.isArray(o.rindeAntes) ? o.rindeAntes.join(',') : o.rindeAntes).map(i => DIAS_RA_[i]).join(',') : '',   // v110: días en que rinde con el día anterior ("VI" o "MA,JU")
         deposita: rol === 'VENDEDOR' && (o.deposita === true || String(o.deposita).toUpperCase() === 'TRUE') ? 'TRUE' : '' });
     asegurarColUsuarios_('deposita');
     let temporal = '';
@@ -763,7 +810,7 @@ function catalogo(token) {
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA')
       .sort((a, b) => (a.orden || 999) - (b.orden || 999))
       .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p) })),
-    vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, emiteAntes: esSi_(v.emite_antes), deposita: esSi_(v.deposita) || conDeposito[v.usuario] === 1 })),
+    vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, rindeAntes: parseDiasRA_(v.emite_antes).map(i => DIAS_RA_[i]).join(','), deposita: esSi_(v.deposita) || conDeposito[v.usuario] === 1 })),
     formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
   };
 }
@@ -781,7 +828,8 @@ function assertAbierta_(fecha) {
 function getDespacho(token, fecha, vendedor) {
   auth_(token, ['BODEGA','RENDICION','SUPERVISOR']);
   cargarDia_(fecha, ['VENTAS_DETALLE', 'DESPACHO']);
-  const det = byFecha_('VENTAS_DETALLE', fecha).filter(r => r.vendedor === vendedor);
+  const oculto = !!ventanaRA_(fecha).ocultas[vendedor];   // v110: el día antes de rendir con el siguiente, el bodeguero ve lo suyo tal cual
+  const det = (oculto ? byFechaRaw_ : byFecha_)('VENTAS_DETALLE', fecha).filter(r => r.vendedor === vendedor);
   const facturado = {}, guias = {};
   det.forEach(r => {
     const c = codeKey_(r.codigo);
@@ -791,7 +839,7 @@ function getDespacho(token, fecha, vendedor) {
   anulKg_(fecha).filter(x => x.vendedor === vendedor).forEach(x => { facturado[x.codigo] = (facturado[x.codigo] || 0) - x.kg; });     // folios anulados no cuentan como vendidos
   return {
     vuelven: anulVuelve_(fecha).filter(x => x.vendedor === vendedor),
-    filas: byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor)
+    filas: (oculto ? byFechaRaw_ : byFecha_)('DESPACHO', fecha).filter(r => r.vendedor === vendedor)
       .map(r => ({ codigo: codeKey_(r.codigo), salida: r.salida, retorno: r.retorno, salidaUn: r.salida_un === undefined ? '' : r.salida_un, retornoUn: r.retorno_un === undefined ? '' : r.retorno_un, obs: r.obs })),
     facturado, hayDetalle: det.length > 0,
     guias: Object.keys(guias).map(f => ({ folio: f, lineas: guias[f] }))
@@ -813,15 +861,18 @@ function saveDespacho(token, fecha, vendedor, filas) {
   return withLock_(() => {
     asegurarColsDespacho_();
     const prods = {}; read_('PRODUCTOS').forEach(p => prods[codeKey_(p.codigo)] = p);
-    const exist = byFecha_('DESPACHO', fecha).filter(r => r.vendedor === vendedor);
+    const exist = byFechaRaw_('DESPACHO', fecha).filter(r => r.vendedor === vendedor);
     const map = {}; exist.forEach(r => map[codeKey_(r.codigo)] = r);
+    const prevMap = {}; if (ventanaRA_(fecha).trae[vendedor]) byFechaRaw_('DESPACHO', sumarDias_(fecha, -1)).filter(r => r.vendedor === vendedor).forEach(r => prevMap[codeKey_(r.codigo)] = r);   // v110: la pantalla muestra salida+retorno de los dos días; aquí se guarda solo lo de este día
+    const resta = (v, prev) => { if (v === '' || v === undefined || v === null || !prev) return v; const r = num_(v) - num_(prev); return r > 0 ? Math.round(r * 1000) / 1000 : ''; };
     const nuevos = [];
     filas.forEach(f => {
-      const salida = f.salida === '' ? '' : num_(f.salida);
-      const retorno = f.retorno === '' ? '' : num_(f.retorno);
+      const pv = prevMap[f.codigo] || null;
+      const salida = f.salida === '' ? '' : resta(num_(f.salida), pv && pv.salida);
+      const retorno = f.retorno === '' ? '' : resta(num_(f.retorno), pv && pv.retorno);
       const e = map[f.codigo];
       const un = (nuevo, previo) => nuevo === undefined ? (previo === undefined ? '' : previo) : (nuevo === '' || nuevo === null ? '' : num_(nuevo));   // unidades (v77): si el cliente no las manda, se conserva lo guardado
-      const salida_un = un(f.salidaUn, e && e.salida_un), retorno_un = un(f.retornoUn, e && e.retorno_un);
+      const salida_un = pv && f.salidaUn !== undefined ? resta(un(f.salidaUn, ''), pv.salida_un) : un(f.salidaUn, e && e.salida_un), retorno_un = pv && f.retornoUn !== undefined ? resta(un(f.retornoUn, ''), pv.retorno_un) : un(f.retornoUn, e && e.retorno_un);
       if (e) {
         if (salida === '' && retorno === '' && salida_un === '' && retorno_un === '') return;
         Object.assign(e, { salida, retorno, salida_un, retorno_un, obs: f.obs || '', actualizado_por: u.usuario, actualizado: now_() });
@@ -1079,7 +1130,12 @@ function asegurarAnulaciones_() {
   }
   MEMO_.__anul = true;
 }
-function anulacionesDe_(fecha) { asegurarAnulaciones_(); return read_('ANULACIONES').filter(a => !fecha || a.fecha === fecha); }
+function anulacionesDe_(fecha) {
+  asegurarAnulaciones_(); const todas = read_('ANULACIONES');
+  if (!fecha) return todas;
+  const w = ventanaRA_(fecha), ayer = w.hay ? sumarDias_(fecha, -1) : '';
+  return todas.filter(a => w.hay ? ((a.fecha === fecha && !w.ocultas[a.vendedor]) || (a.fecha === ayer && w.trae[a.vendedor])) : a.fecha === fecha);
+}
 function lineasAnul_(a) { try { const l = JSON.parse(a.lineas || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } }
 /** Monto anulado y aprobado por folio_key de ese día. */
 function ncAprobDe_(fecha) {

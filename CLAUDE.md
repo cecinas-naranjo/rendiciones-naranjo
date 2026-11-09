@@ -531,3 +531,11 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v109 — El refresco automático ya no te lleva al inicio (solo frontend)
 - `refrescoAuto` solo actúa si la persona no tocó/escribió/scrolleó en los últimos 5 s (`ULTIMO_USO`). Si hubo cambios, `redibujarQuieto()`: fija el alto de `#main` (la página no se achica), redibuja, devuelve el scroll a donde estaba (varios intentos durante ~2 s, porque algunas pantallas completan contenido después) y reabre los `details` que estaban abiertos.
+
+## v110 — Vendedores que rinden con el día anterior (Javier, José) (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Caso: Javier carga el jueves, vende jueves y viernes y devuelve el viernes; se rinde el viernes con los folios del jueves + viernes (salida del jueves, retorno del viernes). José igual, pero otros días → es configurable por vendedor.
+- Config: Usuarios → vendedor → «Rinde con el día anterior» (casillas Lun…Dom). Se guarda en `USUARIOS.emite_antes` (columna que ya existía; ahora texto de días `VI` o `MA,JU`; los `TRUE` antiguos se ignoran). `parseDiasRA_`, `rindeAntes_()`.
+- Servidor: `byFecha_` ahora aplica la regla al LEER (`byFechaRaw_` es la lectura sin regla). Para DOCUMENTOS, PAGOS, DESCUENTOS, VENTAS_DETALLE, COBRANZA, DEPOSITOS, GASTOS y DESPACHO: en un día marcado se suman las filas del vendedor del día anterior, y el día anterior ese vendedor no aparece (no se cuenta dos veces). DESPACHO se suma por producto (`mezclarDesp_`). `anulacionesDe_` igual. Lo guardado conserva su fecha real; inventario lee DESPACHO por su día real (la salida sale el jueves, el retorno entra el viernes).
+- Despacho (bodeguero): el jueves ve y anota la salida normal; el viernes ve salida (jueves) + retorno y `saveDespacho` guarda solo lo de ese día (resta lo del jueves, `ventanaRA_().trae`).
+- Efecto para el vendedor: sus folios del jueves se detallan el viernes (el jueves su lista sale vacía). Efectivo contado/CONTEO_EFECTIVO queda por fecha de rendición (viernes).
+- Sin probar en teléfono; solo verificada la sintaxis.
