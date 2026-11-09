@@ -841,6 +841,7 @@ function getDespacho(token, fecha, vendedor) {
     vuelven: anulVuelve_(fecha).filter(x => x.vendedor === vendedor),
     filas: (oculto ? byFechaRaw_ : byFecha_)('DESPACHO', fecha).filter(r => r.vendedor === vendedor)
       .map(r => ({ codigo: codeKey_(r.codigo), salida: r.salida, retorno: r.retorno, salidaUn: r.salida_un === undefined ? '' : r.salida_un, retornoUn: r.retorno_un === undefined ? '' : r.retorno_un, obs: r.obs })),
+    retornoBloqueado: oculto,   // v113: vendedor que rinde con el día siguiente: el retorno se anota ese día, no hoy
     facturado, hayDetalle: det.length > 0,
     guias: Object.keys(guias).map(f => ({ folio: f, lineas: guias[f] }))
   };
@@ -863,16 +864,17 @@ function saveDespacho(token, fecha, vendedor, filas) {
     const prods = {}; read_('PRODUCTOS').forEach(p => prods[codeKey_(p.codigo)] = p);
     const exist = byFechaRaw_('DESPACHO', fecha).filter(r => r.vendedor === vendedor);
     const map = {}; exist.forEach(r => map[codeKey_(r.codigo)] = r);
+    const bloqRet = !!ventanaRA_(fecha).ocultas[vendedor];   // v113: el día antes de rendir, el retorno no se puede anotar
     const prevMap = {}; if (ventanaRA_(fecha).trae[vendedor]) byFechaRaw_('DESPACHO', sumarDias_(fecha, -1)).filter(r => r.vendedor === vendedor).forEach(r => prevMap[codeKey_(r.codigo)] = r);   // v110: la pantalla muestra salida+retorno de los dos días; aquí se guarda solo lo de este día
     const resta = (v, prev) => { if (v === '' || v === undefined || v === null || !prev) return v; const r = num_(v) - num_(prev); return r > 0 ? Math.round(r * 1000) / 1000 : ''; };
     const nuevos = [];
     filas.forEach(f => {
       const pv = prevMap[f.codigo] || null;
-      const salida = f.salida === '' ? '' : resta(num_(f.salida), pv && pv.salida);
-      const retorno = f.retorno === '' ? '' : resta(num_(f.retorno), pv && pv.retorno);
       const e = map[f.codigo];
+      const salida = f.salida === '' ? '' : resta(num_(f.salida), pv && pv.salida);
+      const retorno = bloqRet ? (e ? e.retorno : '') : (f.retorno === '' ? '' : resta(num_(f.retorno), pv && pv.retorno));
       const un = (nuevo, previo) => nuevo === undefined ? (previo === undefined ? '' : previo) : (nuevo === '' || nuevo === null ? '' : num_(nuevo));   // unidades (v77): si el cliente no las manda, se conserva lo guardado
-      const salida_un = pv && f.salidaUn !== undefined ? resta(un(f.salidaUn, ''), pv.salida_un) : un(f.salidaUn, e && e.salida_un), retorno_un = pv && f.retornoUn !== undefined ? resta(un(f.retornoUn, ''), pv.retorno_un) : un(f.retornoUn, e && e.retorno_un);
+      const salida_un = pv && f.salidaUn !== undefined ? resta(un(f.salidaUn, ''), pv.salida_un) : un(f.salidaUn, e && e.salida_un), retorno_un = bloqRet ? (e && e.retorno_un !== undefined ? e.retorno_un : '') : (pv && f.retornoUn !== undefined ? resta(un(f.retornoUn, ''), pv.retorno_un) : un(f.retornoUn, e && e.retorno_un));
       if (e) {
         if (salida === '' && retorno === '' && salida_un === '' && retorno_un === '') return;
         Object.assign(e, { salida, retorno, salida_un, retorno_un, obs: f.obs || '', actualizado_por: u.usuario, actualizado: now_() });

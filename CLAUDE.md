@@ -552,3 +552,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v113 — Aviso del día sin alerta (solo frontend)
 - El aviso naranjo dice «Estás viendo viernes 6 de noviembre» (sin «⚠ otro día»).
+
+## v114 — El retorno del día antes de rendir queda bloqueado (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Para vendedores que rinden con el día siguiente (v110): el jueves solo se anota la salida; el retorno se anota el viernes. `getDespacho` devuelve `retornoBloqueado` (= día «víspera», `ventanaRA_().ocultas`); en Despacho, paso Retorno, se muestra «El retorno de X se anota el viernes…» con botón «Ir a la salida» y no hay campos. `saveDespacho` también lo impone en el servidor: ese día conserva el retorno que ya hubiera (no lo cambia aunque llegue uno).
+- Sin probar en teléfono; solo verificada la sintaxis.

@@ -1598,13 +1598,15 @@ async function vDespacho(m) {
     const modo = S.dmod; let vis = 0;
     filas.forEach(el => {
       const s = S0(el), rt = R0(el), tieneS = s !== '' && dec(s) > 0;
-      const rel = modo === 'salida' ? (s !== '' || rt !== '' || el.dataset.sg !== undefined || guiaTiene(el)) : (tieneS || rt !== '');
+      const rel = r.retornoBloqueado && modo === 'retorno' ? false : modo === 'salida' ? (s !== '' || rt !== '' || el.dataset.sg !== undefined || guiaTiene(el)) : (tieneS || rt !== '');
       el.classList.toggle('oc', !rel); if (rel) vis++;
     });
     const ocultos = filas.length - vis, mas = $('#mas', m), todos = dt.classList.contains('todos');
     mas.hidden = !ocultos && !todos; mas.textContent = todos ? 'Mostrar solo los productos del día' : `Agregar otro producto (${ocultos} más)`;
+    const bloq = modo === 'retorno' && !!r.retornoBloqueado, sig = new Date(S.fecha + 'T12:00:00'); sig.setDate(sig.getDate() + 1);
     const vacio = modo === 'retorno' && !filas.some(el => { const s = S0(el); return s !== '' && dec(s) > 0; });
-    const vac = $('#vac', m); vac.hidden = !vacio || todos;
+    const vac = $('#vac', m); vac.hidden = !(vacio || bloq) || (todos && !bloq);
+    if (bloq) { mas.hidden = true; vac.hidden = false; vac.innerHTML = `<b>El retorno de ${esc(nomDe(S.vend))} se anota el ${sig.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}.</b><p>Este vendedor rinde con el día siguiente: hoy solo se anota la salida.</p><button type="button" class="btn cu sm" id="airs">Ir a la salida</button>`; } else
     vac.innerHTML = vacio ? `<b>${esc(nomDe(S.vend))} todavía no tiene salida anotada.</b><p>Para registrar un retorno primero hay que anotar lo que se llevó.</p><button type="button" class="btn cu sm" id="airs">Anotar la salida</button>` : '';
     const ai = $('#airs', m); if (ai) ai.onclick = () => poner('salida');
   }
