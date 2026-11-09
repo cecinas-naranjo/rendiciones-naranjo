@@ -1118,3 +1118,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .impp .listo b{display:block;font-size:17px}
 .impp .listo .muted{color:#3d6b50;font-size:14px;margin-top:2px}
 .impp .listo.mal{background:#FBEFD9;border-color:#EBCF9A;color:#7a4a08;display:block}
+
+/* Lista de clientes del registro de cobranza: dentro del flujo de la página para que se pueda desplazar (v119) */
+.cpick .cpl{position:static;margin-top:6px;max-height:min(420px,52vh);box-shadow:0 2px 10px rgba(0,0,0,.08)}
+#m_cliente_q{scroll-margin-top:96px}

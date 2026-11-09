@@ -568,3 +568,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v118 — Registro de cobranza a mano: clientes con deuda y «Usar otro nombre» (solo frontend)
 - El selector de cliente del registro a mano (`vMov('COBRANZA')`) ahora suma a la lista de razones sociales del DTE (`listarClientes`) los clientes con deuda de `porCobrar` (p. ej. cargados desde la planilla de crédito y que aún no salen en ninguna Ventas Diarias), sin duplicar por nombre. Si lo escrito no está, aparece la opción «Usar «<texto>» — cliente que no está en la lista» (guarda el nombre en mayúsculas sin RUT). Sin probar en teléfono; solo sintaxis.
+
+## v119 — Lista de clientes de Cobranza ya no se corta en la tablet (solo frontend)
+- `.cpick .cpl` pasó de `position:absolute` a dentro del flujo de la página (alto máx. 52 vh): antes quedaba tapada por la barra inferior y no se podía ver más allá de 2–3 clientes. Al enfocar el buscador la página sube para dejarlo arriba (`scroll-margin-top`). Sin probar en la tablet; solo sintaxis.

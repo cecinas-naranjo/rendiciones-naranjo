@@ -3101,7 +3101,7 @@ async function vMov(m, tabla) {
       cl.innerHTML = (xs.length ? xs.map((c, i) => `<button type="button" class="cli" data-i="${i}"><span class="grow"><b>${esc(c.nombre)}</b><small>${esc(c.rut || 'Sin RUT')}</small></span></button>`).join('') : '<div class="muted" style="padding:8px">Ningún cliente coincide.</div>')
         + (txt.length >= 3 ? `<button type="button" class="cli" data-otro="1"><span class="grow"><b>Usar «${esc(txt)}»</b><small>Cliente que no está en la lista</small></span></button>` : '');
       cl.hidden = false; cl._xs = xs; };
-    cq.oninput = () => { elegir(null); pintar(); }; cq.onfocus = pintar;
+    cq.oninput = () => { elegir(null); pintar(); }; cq.onfocus = () => { pintar(); setTimeout(() => { try { cq.scrollIntoView({ block: 'start' }); } catch (e) {} }, 120); };
     cl.onclick = e => { const o = e.target.closest('[data-otro]'); if (o) return elegir({ nombre: cq.value.trim().toUpperCase(), rut: '' }); const b = e.target.closest('[data-i]'); if (b) elegir(cl._xs[+b.dataset.i]); };
   }
   $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
