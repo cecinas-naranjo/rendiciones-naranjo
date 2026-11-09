@@ -565,3 +565,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v117 — Aviso claro al terminar de importar (solo frontend)
 - Al terminar la importación el panel `.impp` muestra una franja verde «Listo: ya puedes cambiar de pantalla y seguir trabajando» (los datos ya están guardados; los Excel ordenados siguen subiendo al Drive y no hay que esperarlos) y un aviso emergente. Con errores, franja ámbar «Terminó, pero hubo errores». Antes solo cambiaba el título y no era claro cuándo se podía salir.
+
+## v118 — Registro de cobranza a mano: clientes con deuda y «Usar otro nombre» (solo frontend)
+- El selector de cliente del registro a mano (`vMov('COBRANZA')`) ahora suma a la lista de razones sociales del DTE (`listarClientes`) los clientes con deuda de `porCobrar` (p. ej. cargados desde la planilla de crédito y que aún no salen en ninguna Ventas Diarias), sin duplicar por nombre. Si lo escrito no está, aparece la opción «Usar «<texto>» — cliente que no está en la lista» (guarda el nombre en mayúsculas sin RUT). Sin probar en teléfono; solo sintaxis.

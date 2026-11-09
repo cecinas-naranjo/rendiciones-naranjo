@@ -3045,7 +3045,14 @@ async function vMov(m, tabla) {
     : `<input class="in ${c[2] === 'n' ? 'n' : ''}" name="${c[0]}" id="m_${c[0]}" ${c[2] === 'n' ? 'inputmode="numeric"' : ''}>`;
   const rows = await api('listarMov', S.sess.token, tabla, S.fecha);
   const conAdj = !!ADJ[tabla] && tabla !== 'COBRANZA';        // la cobranza ya no lleva foto (se registra también sin internet)
-  let clientesLista = []; if (tabla === 'COBRANZA') { try { clientesLista = await api('listarClientes', S.sess.token) || []; } catch (e) {} }
+  let clientesLista = [];
+  if (tabla === 'COBRANZA') {
+    try { clientesLista = (await api('listarClientes', S.sess.token) || []).slice(); } catch (e) {}
+    // también los clientes con deuda cargada (planilla de crédito) que aún no aparecen en las Ventas Diarias
+    try { const pc = await api('porCobrar', S.sess.token); const vistos = new Set(clientesLista.map(c => normBus(c.nombre)));
+      ((pc && pc.clientes) || []).forEach(c => { if (c.cliente && !vistos.has(normBus(c.cliente))) { vistos.add(normBus(c.cliente)); clientesLista.push({ rut: c.rut || '', nombre: c.cliente }); } });
+      clientesLista.sort((x, y) => String(x.nombre).localeCompare(String(y.nombre), 'es')); } catch (e) {}
+  }
   const simple = tabla === 'COBRANZA' && esV;
   render(m, `<h2>${cfg.t}</h2>${simple ? '' : `<p class="lead">${cfg.d}</p>`}
     ${tabla === 'COBRANZA' ? '<div id="cbx" style="margin-bottom:14px"></div>' + (simple ? '<div id="ml" style="margin-top:6px"></div>' : '') + '<details class="manual"><summary>' + (simple ? 'Registrar un pago sin la lista' : 'Registrar un pago a mano (sin usar la lista)') + '</summary>' : ''}
@@ -3090,10 +3097,12 @@ async function vMov(m, tabla) {
   if (cq) {
     const cl = $('#m_cliente_l'), elegir = c => { $('#m_cliente').value = c ? c.nombre : ''; $('#m_rut').value = c ? c.rut : ''; cq.value = c ? c.nombre : cq.value; cl.hidden = true; cq.classList.toggle('okc', !!c); };
     const pintar = () => { const n = normBus(cq.value); const xs = (n ? clientesLista.filter(c => normBus(c.nombre).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0) : clientesLista).slice(0, 8);
-      cl.innerHTML = xs.length ? xs.map((c, i) => `<button type="button" class="cli" data-i="${i}"><span class="grow"><b>${esc(c.nombre)}</b><small>${esc(c.rut || 'Sin RUT')}</small></span></button>`).join('') : '<div class="muted" style="padding:8px">Ningún cliente coincide.</div>';
+      const txt = cq.value.trim();
+      cl.innerHTML = (xs.length ? xs.map((c, i) => `<button type="button" class="cli" data-i="${i}"><span class="grow"><b>${esc(c.nombre)}</b><small>${esc(c.rut || 'Sin RUT')}</small></span></button>`).join('') : '<div class="muted" style="padding:8px">Ningún cliente coincide.</div>')
+        + (txt.length >= 3 ? `<button type="button" class="cli" data-otro="1"><span class="grow"><b>Usar «${esc(txt)}»</b><small>Cliente que no está en la lista</small></span></button>` : '');
       cl.hidden = false; cl._xs = xs; };
     cq.oninput = () => { elegir(null); pintar(); }; cq.onfocus = pintar;
-    cl.onclick = e => { const b = e.target.closest('[data-i]'); if (b) elegir(cl._xs[+b.dataset.i]); };
+    cl.onclick = e => { const o = e.target.closest('[data-otro]'); if (o) return elegir({ nombre: cq.value.trim().toUpperCase(), rut: '' }); const b = e.target.closest('[data-i]'); if (b) elegir(cl._xs[+b.dataset.i]); };
   }
   $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
     await api('borrarMov', S.sess.token, tabla, id); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); };
