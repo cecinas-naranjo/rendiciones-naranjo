@@ -559,3 +559,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v115 — Importar Mi DTE reconoce más variantes de encabezado (solo frontend)
 - `leerLibro` ya no exige nombres exactos: `encabezado()` acepta "N° Folio", "Tipo documento", "Monto total", "Detalle/Producto", "Cant"… Si el archivo no se reconoce, el error ahora lista los encabezados que encontró en cada hoja (para ver qué trae el archivo). Sin probar con el archivo real; solo sintaxis.
+
+## v116 — Ventas Diarias en el formato nuevo de Mi DTE (solo frontend)
+- Mi DTE entrega ahora "Ventas Diarias" con otros encabezados: Tributario (= Documento), Nombre (= Nombre Cliente), Pago (= Condicion), RUT y Digito en columnas separadas, más Domicilio, Comuna, Neto, Exento, Iva, Total, Caja. `leerLibro` lo detecta por la columna Tributario y lo traduce al formato de siempre (RUT queda "77161028-5"). Verificado leyendo los archivos reales del 5 y 6 de noviembre (Ventas Diarias y Informe de ventas) con Node; no probado en el teléfono.

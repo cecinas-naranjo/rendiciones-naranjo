@@ -2375,10 +2375,13 @@ function leerLibro(buf) {
     if (head.includes('cliente') && head.includes('monto') && head.some(h => /^¿?pag[oó]\??$/.test(h)))
       return { tipo: 'creditos', filas: leerCreditos(rows, hi, head) };
     const h2 = rows[hi].map(h => encabezado(h));
+    // Formato nuevo de Mi DTE para Ventas Diarias: "Tributario" = Documento, "Nombre" = Nombre Cliente, "Pago" = Condicion, RUT y Digito separados.
+    if (h2.includes('tributario') && !h2.includes('documento') && !h2.includes('descripcion'))
+      h2.forEach((h, j) => { if (h === 'tributario') h2[j] = 'documento'; else if (h === 'nombre') h2[j] = 'nombre cliente'; else if (h === 'pago') h2[j] = 'condicion'; });
     const tipo = h2.includes('descripcion') && h2.includes('cantidad') ? 'detalle' : h2.includes('documento') && h2.includes('total') ? 'dte' : null;
     if (!tipo) { vistos.push(nombre + ': ' + rows[hi].map(c => String(c).trim()).filter(Boolean).slice(0, 10).join(' | ')); continue; }
     const keys = h2.map(h => h === 'total' ? (tipo === 'dte' ? 'Total' : 'TOTAL') : CANON[h] || h);
-    const filas = rows.slice(hi + 1).map(r => { const o = {}; keys.forEach((k, j) => { let v = r[j]; if (k === 'Fecha' && typeof v === 'number') { o._fo = v; v = serialAFecha(v); } o[k] = v; }); return o; })
+    const filas = rows.slice(hi + 1).map(r => { const o = {}; keys.forEach((k, j) => { let v = r[j]; if (k === 'Fecha' && typeof v === 'number') { o._fo = v; v = serialAFecha(v); } o[k] = v; }); if (o.digito !== undefined && o.RUT !== '' && o.RUT != null) o.RUT = String(o.RUT) + '-' + o.digito; delete o.digito; return o; })
       .filter(o => o.Folio !== '' && (tipo === 'dte' ? o.Documento : o.Descripcion));
     return { tipo, filas };
   }
