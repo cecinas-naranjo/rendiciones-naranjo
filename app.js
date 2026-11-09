@@ -2021,6 +2021,7 @@ const textoPago = p => p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO'
   : FL[p.forma] || p.forma;
 
 /** Al tocar un vendedor en la Rendición: todo lo que detalló, ordenado como lo revisa la encargada. */
+const fechaCortaTxt = f => { const d = new Date(f + 'T12:00:00'); return ['dom','lun','mar','mié','jue','vie','sáb'][d.getDay()] + ' ' + f.split('-').reverse().slice(0, 2).join('-'); };
 async function abrirVendedor(usuario) {
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet ancha" role="dialog" aria-modal="true" aria-label="Detalle del vendedor"><div class="grip"></div>
@@ -2052,6 +2053,9 @@ async function abrirVendedor(usuario) {
           ${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
           ${Object.keys(v.transf).filter(b => v.transf[b].length).map(b => fila('Transf. ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0))).join('')}
           ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}</div></div>
+      ${v.porDia && v.porDia.length ? `<div class="dsec"><div class="dtit"><b>Por día</b><span>todo se rinde ${fechaCortaTxt(r.fecha)}</span></div>
+        ${v.porDia.map(x => fila(fechaCortaTxt(x.fecha) + ' · ' + x.documentos + ' docs', 'efectivo ' + clp(x.efVentas + x.efCob - x.gastos) + (x.credito ? ' · crédito ' + clp(x.credito) : ''), x.venta)).join('')}
+        ${fila('Total (los días juntos)', '', v.porDia.reduce((a, x) => a + x.venta, 0))}</div>` : ''}
       ${(() => { const trV = Object.keys(v.transf).reduce((a, b) => a + v.transf[b].filter(x => x.tipo === 'Venta').reduce((c, x) => c + x.monto, 0), 0),
           ef0 = t.contado - trV, dV = t.efVentas - ef0, cont = t.efContado, dif = cont === null || cont === undefined ? null : cont - t.entregar;
         return `<div class="dsec"><div class="dtit"><b>Cuenta del efectivo</b><span>solo aviso</span></div>
@@ -2164,6 +2168,7 @@ async function imprimirInspeccion(usuario) {
     return `<section class="ins">
       <div class="hd"><div><b class="n">${esc(v.nombre)}</b><small>Inspección de rendición · Cecinas Naranjo</small></div>
         <div class="r"><b>${fc}</b><small>${v.terminal ? 'Terminal ' + esc(v.terminal) : ''}</small></div></div>
+      ${v.porDia && v.porDia.length ? `<table class="s sp">${v.porDia.map(x => suma(fechaCortaTxt(x.fecha), x.documentos + ' docs · efectivo ' + clp(x.efVentas + x.efCob - x.gastos), x.venta, false)).join('')}${suma('Total de los días', 'se rinde junto', v.porDia.reduce((a, x) => a + x.venta, 0), false, 'tot')}</table>` : ''}
       <h3>RESUMEN</h3><table class="s">${resumen}</table>
       <h3>DETALLE</h3>
       ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${depHtml}

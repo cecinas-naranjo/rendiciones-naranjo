@@ -1420,7 +1420,7 @@ function docsDelDia_(fecha, vendedor) {
     const pg = completo ? [] : p;
     const pagado = pg.reduce((a, x) => a + num_(x.monto), 0);
     return {
-      folio_key: d.folio_key, tipo: d.tipo, folio: d.folio, cliente: d.cliente, rut: d.rut, total: num_(d.total),
+      folio_key: d.folio_key, fecha: d.fecha, tipo: d.tipo, folio: d.folio, cliente: d.cliente, rut: d.rut, total: num_(d.total),
       condicion_dte: d.condicion_dte, terminal: d.terminal, vendedor: d.vendedor, estado: completo ? 'DETALLADO' : d.estado,
       pagos: pg.map(x => ({ forma: x.forma, banco: x.banco, monto: num_(x.monto), referencia: x.referencia,
         cheque_numero: x.cheque_numero || '', cheque_fecha: x.cheque_fecha || '', cheque_titular: x.cheque_titular || '' })),
@@ -2758,6 +2758,15 @@ function getResumen(token, fecha) {
  * Inspección final por vendedor: todo lo que la encargada revisa antes de recibir el efectivo.
  * Mismas cuentas que la hoja del vendedor en el archivo de rendición. vendedor = '' → todos los que tuvieron movimiento.
  */
+/** v110: desglose por día real cuando una rendición junta varios días (vendedor que rinde con el día anterior). Devuelve [] si es un solo día. */
+function porDia_(ds, cs, gs) {
+  const m = {}; const o = f => m[f] = m[f] || { fecha: f, documentos: 0, venta: 0, efVentas: 0, credito: 0, efCob: 0, gastos: 0 };
+  ds.forEach(d => { const x = o(d.fecha); x.documentos++; x.venta += num_(d.total) - num_(d.descAprob); (d.pagos || []).forEach(p => { if (p.forma === 'EFECTIVO') x.efVentas += p.monto; else if (p.forma === 'CREDITO' || p.forma === 'CHEQUE') x.credito += p.monto; }); });
+  cs.forEach(c => { if (c.forma === 'EFECTIVO') o(c.fecha).efCob += num_(c.monto); else o(c.fecha); });
+  gs.forEach(g => { o(g.fecha).gastos += num_(g.monto); });
+  const l = Object.keys(m).sort().map(k => m[k]);
+  return l.length > 1 ? l : [];
+}
 function getInspeccion(token, fecha, vendedor) {
   auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
   cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO', 'VENTAS_DETALLE']);
@@ -2808,7 +2817,7 @@ function getInspeccion(token, fecha, vendedor) {
       docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
       totales: { venta, credito, nc, descuentos: desc, contado: venta - credito - nc - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         entregar: efVentas + efCob - tGas - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
-      transf, cheques, cobranza, gastos, depositos, creditos,
+      transf, cheques, cobranza, gastos, depositos, creditos, porDia: porDia_(ds, cs, gs),
       kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
       folios: ds.map(d => ({ folio_key: d.folio_key, folio: d.folio, tipo: d.tipo.replace(' Electrónica', ''), cliente: d.cliente, rut: d.rut || '',
         total: num_(d.total), estado: d.estado, descAprob: num_(d.descAprob), detalladoPor: d.detalladoPor || '',
@@ -2907,6 +2916,7 @@ Hoja_.prototype.escribir = function (anchos) {
 };
 
 /** Rendición de un vendedor: cuadratura arriba, luego kilos, ventas, cobranza, gastos y depósitos. */
+function fechaLargaTxt_(f) { const d = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][diaSem_(f)]; return d + ' ' + f.split('-').reverse().join('-'); }
 function hojaVendedor_(ss, fecha, t, u, datos) {
   const H = new Hoja_(ss, t.vendedor, 15);
   const fechaTxt = fecha.split('-').reverse().join('-');
@@ -2918,6 +2928,10 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
   for (let i = 0; i < CUAD; i++) H.fila([]);
   H.fila([]);
 
+  // DESGLOSE POR DÍA (v110): solo si la rendición junta varios días
+  { const pd = porDia_(datos.docs.filter(d => d.vendedor === t.vendedor), datos.cob.filter(c => c.vendedor === t.vendedor), datos.gas.filter(x => x.responsable === t.vendedor));
+    if (pd.length) { H.tabla('DESGLOSE POR DÍA (todo se rinde hoy)', [{ h: 'DÍA' }, { h: 'DOCUMENTOS', sum: 1 }, { h: 'VENTA', t: '$', sum: 1 }, { h: 'EFECTIVO VENTAS', t: '$', sum: 1 }, { h: 'CRÉDITO + CHEQUES', t: '$', sum: 1 }, { h: 'COBRANZA EFECTIVO', t: '$', sum: 1 }, { h: 'GASTOS', t: '$', sum: 1 }],
+      pd.map(x => [fechaLargaTxt_(x.fecha), x.documentos, x.venta, x.efVentas, x.credito, x.efCob, x.gastos])); H.fila([]); } }
   // KILOS
   const kil = datos.kilos.filter(k => k.vendedor === t.vendedor);
   if (kil.length) {

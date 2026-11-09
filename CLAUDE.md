@@ -539,3 +539,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Despacho (bodeguero): el jueves ve y anota la salida normal; el viernes ve salida (jueves) + retorno y `saveDespacho` guarda solo lo de ese día (resta lo del jueves, `ventanaRA_().trae`).
 - Efecto para el vendedor: sus folios del jueves se detallan el viernes (el jueves su lista sale vacía). Efectivo contado/CONTEO_EFECTIVO queda por fecha de rendición (viernes).
 - Sin probar en teléfono; solo verificada la sintaxis.
+
+## v111 — Desglose por día en la rendición que junta varios días (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Para vendedores con «Rinde con el día anterior» (v110): todo sigue yendo a la rendición del día de rendir y los totales son los de los dos días juntos; ahora además se distingue cuánto fue cada día. `porDia_(ds, cs, gs)` agrupa por fecha real (documentos, venta, efectivo de ventas, crédito+cheques, cobranza en efectivo, gastos); devuelve [] si es un solo día. `docsDelDia_` ahora trae `fecha` en cada documento.
+- `getInspeccion` → `vendedores[].porDia`. Pantalla `abrirVendedor`: bloque «Por día» con total. Impresión: tabla corta con cada día y «Total de los días» sobre el RESUMEN. Archivo de rendición: tabla «DESGLOSE POR DÍA» en la hoja del vendedor (antes de KILOS). El formato del resto no cambia.
+- Sin probar en teléfono; solo verificada la sintaxis.
