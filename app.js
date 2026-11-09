@@ -623,9 +623,9 @@ function salir(expirada) {
   if (S_ADMIN) { if (!expirada) api('logout', S_ADMIN.token).catch(() => {}); S_ADMIN = null; }
   LOCAL.clear();
   const pb = $('#probar'); if (pb) pb.remove();
-  S.sess = null; S.cat = null; S.tab = null;
+  S.sess = null; S.cat = null; S.tab = null; S.fecha = '';
   olvidarCache(false);
-  try { localStorage.removeItem('rn_sess'); localStorage.removeItem('rn_admin'); } catch (e) {}
+  try { localStorage.removeItem('rn_sess'); localStorage.removeItem('rn_admin'); if (!expirada) localStorage.removeItem('rn_fecha'); } catch (e) {}
   document.body.classList.remove('has-bottom');
   pantallaLogin();
 }
@@ -708,8 +708,18 @@ function abrirMiClave() {
 function pintarDia() {
   const f = S.fecha, hoy = hoyCL(), dt = $('#dtxt'), p = $('#dpill'), inp = $('#fecha');
   if (inp) inp.value = f;
-  if (dt) dt.textContent = f === hoy ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
+  const corta = new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
+  if (dt) dt.textContent = f === hoy ? 'Hoy · ' + corta : corta;      // v112: siempre se ve qué día es
   if (p) p.classList.toggle('otro', f !== hoy);
+  guardarFecha();
+}
+/** v112: el día que se está mirando se recuerda (por usuario) para que recargar la app no vuelva a hoy. */
+function guardarFecha() {
+  try { if (!S.sess) return; if (S.fecha === hoyCL()) localStorage.removeItem('rn_fecha'); else localStorage.setItem('rn_fecha', JSON.stringify({ u: S.sess.usuario, f: S.fecha })); } catch (e) {}
+}
+function fechaGuardada() {
+  try { const o = JSON.parse(localStorage.getItem('rn_fecha') || 'null'); if (o && S.sess && o.u === S.sess.usuario && /^\d{4}-\d{2}-\d{2}$/.test(o.f) && o.f < hoyCL()) return o.f; } catch (e) {}
+  return '';
 }
 function abrirFecha(cambiar) {
   const ya = $('#fpop'); if (ya) { ya.remove(); return; }
@@ -745,7 +755,7 @@ async function iniciar() {
   const app = $('#app');
   app.innerHTML = `<main>${skeleton(4)}</main>`;
   S.cat = await api('catalogo', S.sess.token);
-  S.fecha = S.fecha || hoyCL();
+  S.fecha = S.fecha || fechaGuardada() || hoyCL();
   const tabs = tabsRol();
   S.tab = S.tab && tabs.some(t => t[0] === S.tab) ? S.tab : tabs[0][0];
   const unica = tabs.length === 1;          // una sola pantalla, sin menú
@@ -791,7 +801,7 @@ async function iniciar() {
   const cambiarFecha = f => {       // la fecha y la pantalla cambian juntas: al instante se ve "cargando" y las respuestas del día anterior se descartan
     S.fecha = f; pintarDia();
     S.vistaId++; const mm = $('#main'); mm.onclick = null; mm.replaceChildren(); const sk = document.createElement('div'); sk.className = 'vm'; sk.innerHTML = skeleton(4); mm.appendChild(sk);
-    const od = $('#otrodia'); if (od) { od.hidden = f === hoyCL(); if (f !== hoyCL()) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(f)}</b>`; }
+    const od = $('#otrodia'); if (od) { od.hidden = f === hoyCL(); if (f !== hoyCL()) $('span', od).innerHTML = `⚠ Estás viendo otro día: <b>${fechaLarga(f)}</b>`; }
     clearTimeout(tFecha); tFecha = setTimeout(() => ir(S.tab), 200);
   };
   const mb = $('#menub');
@@ -851,7 +861,7 @@ function ir(t, silencioso) {
     const on = $('#sub .on'); if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   } else $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   const od = $('#otrodia'), hoy = hoyCL();
-  if (od) { od.hidden = S.fecha === hoy; if (S.fecha !== hoy) $('span', od).innerHTML = `Estás viendo <b>${fechaLarga(S.fecha)}</b>`; }
+  if (od) { od.hidden = S.fecha === hoy; if (S.fecha !== hoy) $('span', od).innerHTML = `⚠ Estás viendo otro día: <b>${fechaLarga(S.fecha)}</b>`; }
   const main = $('#main');
   if (silencioso && main.firstElementChild && main.firstElementChild.classList.contains('sale')) return;      // está saliendo la pantalla anterior: la nueva ya viene
   main.onclick = null;

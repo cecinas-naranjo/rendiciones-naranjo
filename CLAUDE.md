@@ -544,3 +544,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Para vendedores con «Rinde con el día anterior» (v110): todo sigue yendo a la rendición del día de rendir y los totales son los de los dos días juntos; ahora además se distingue cuánto fue cada día. `porDia_(ds, cs, gs)` agrupa por fecha real (documentos, venta, efectivo de ventas, crédito+cheques, cobranza en efectivo, gastos); devuelve [] si es un solo día. `docsDelDia_` ahora trae `fecha` en cada documento.
 - `getInspeccion` → `vendedores[].porDia`. Pantalla `abrirVendedor`: bloque «Por día» con total. Impresión: tabla corta con cada día y «Total de los días» sobre el RESUMEN. Archivo de rendición: tabla «DESGLOSE POR DÍA» en la hoja del vendedor (antes de KILOS). El formato del resto no cambia.
 - Sin probar en teléfono; solo verificada la sintaxis.
+
+## v112 — El día elegido se nota y no se pierde al recargar (solo frontend)
+- La píldora del día muestra siempre qué día es («Hoy · lun 9 nov» o «jue 5 nov», ámbar si no es hoy) y el aviso naranjo pasó a «⚠ Estás viendo otro día: <fecha>» en letra más grande (con «Volver a hoy»).
+- El día mirado se guarda en `localStorage rn_fecha` ({u: usuario, f: fecha}) desde `pintarDia()` (`guardarFecha`); al abrir la app `iniciar` usa `fechaGuardada()` (solo del mismo usuario y anterior a hoy; hoy = se borra la clave). «Volver a hoy» o cambiar a hoy lo olvida; «Salir» (cerrar sesión a propósito) también; una sesión expirada lo conserva. Un día pasado recordado nunca avanza solo: queda así hasta que la persona lo cambie.
+- Sin probar en teléfono; solo verificada la sintaxis.

@@ -48,7 +48,8 @@ nav.sub::-webkit-scrollbar{display:none}
 nav.sub[hidden]{display:none}
 nav.sub button{background:#3A2D26;border:0;color:#E6DAD2;border-radius:99px;padding:7px 14px;font-weight:600;font-size:14px;white-space:nowrap;transition:background var(--t),color var(--t)}
 nav.sub button.on{background:#fff;color:var(--ink)}
-.otrodia{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;background:var(--cu);color:#fff;font-size:14px;padding:7px 14px}
+.otrodia{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;background:var(--cu);color:#fff;font-size:16px;padding:10px 14px}
+.otrodia b{font-size:17px;text-transform:capitalize}
 .otrodia[hidden]{display:none}
 .otrodia button{background:#fff;color:var(--cu-2);border:0;border-radius:99px;padding:4px 12px;font-weight:700;font-size:13px}
 nav.bottom{position:fixed;left:0;right:0;bottom:0;z-index:10;background:#fff;border-top:1px solid var(--line);
