@@ -598,3 +598,4 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v126 — Carpeta madre en el Drive de la cuenta de Naranjo (requiere pegar APPS_SCRIPT.js COMPLETO)
 - `CFG.RENDICIONES_FOLDER_ID` queda vacío: `carpetaBase_()` busca o crea «Resumen Rendición» en la raíz del Drive de la cuenta que publica el Web App y guarda su id en la propiedad `RENDICIONES_ID`. Si se pone un ID válido en CFG, se usa ese. Antes el ID fijo (de otra cuenta/inexistente) hacía caer a la raíz sin avisar. Archivos ya creados en otro lugar no se mueven.
+- v126b: estructura en Drive: `Cecinas Naranjo/Rendiciones/AAAA/MM nombre-del-mes/Rendición dd-mm-aaaa` y borradores en `Cecinas Naranjo/Rendiciones/Borradores`; al lado `Informes Mi DTE`, `Respaldos`, `Cuentas por cobrar`, `Inventario`.
