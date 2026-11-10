@@ -1122,3 +1122,18 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 /* Lista de clientes del registro de cobranza: dentro del flujo de la página para que se pueda desplazar (v119) */
 .cpick .cpl{position:static;margin-top:6px;max-height:min(420px,52vh);box-shadow:0 2px 10px rgba(0,0,0,.08)}
 #m_cliente_q{scroll-margin-top:96px}
+
+
+/* Precios de lista (v122) */
+.pr-bar{gap:8px;flex-wrap:wrap}
+.pr-h{margin:16px 0 6px;font-size:15px}
+.pr-t{width:100%}
+.pr-t td{padding:6px 8px;border-bottom:1px solid #E6E3DE;white-space:normal}
+.pr-u{color:#6b625b;font-size:13px;white-space:nowrap}
+.pr-in{width:130px;text-align:right}
+.pr-t tr.pr-chg td{background:#FBF0E6}
+.pr-t tr.pr-chg .pr-in{border-color:#C2571A}
+.pr-foot{position:sticky;bottom:0;display:flex;gap:8px;align-items:center;background:#fff;border-top:1px solid #D9D5CF;padding:10px 4px;margin-top:12px}
+.aviso{background:#EEF3EC;border:1px solid #C9D9C4;border-radius:10px;padding:10px 12px;margin:8px 0}
+.aviso.mal{background:#FBEFD9;border-color:#EBCF9A;color:#7a4a08}
+.aviso.ok{background:#EEF3EC}

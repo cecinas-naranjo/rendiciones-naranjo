@@ -257,7 +257,7 @@ function setup() {
 
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
-  getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
+  listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
   listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
@@ -2636,6 +2636,35 @@ function kilosDe_(v, desp, detV, unidad, precios, anul) {
   const salida = L.reduce((a, o) => a + o.salida, 0), retorno = L.reduce((a, o) => a + o.retorno, 0), fact = L.reduce((a, o) => a + o.facturado, 0);
   return { salida: r2(salida), retorno: r2(retorno), vendido: r2(salida - retorno), facturado: r2(fact), diferencia: r2(salida - retorno - fact),
     diferenciaPesos: detalle.reduce((a, d) => a + d.monto, 0), detalle: detalle.filter(d => Math.abs(d.diferencia) >= 0.005) };
+}
+
+/* ============================ PRECIOS DE LISTA (v122) ============================ */
+// Precio de lista de cada producto (hoja PRODUCTOS, columna precio). Lo usa la diferencia de kilos en plata (preciosKg_).
+function listarPrecios(token) {
+  auth_(token, ['ADMIN', 'SUPERVISOR']);
+  return read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA' && p.categoria !== 'REVISAR')
+    .sort((a, b) => (a.orden || 999) - (b.orden || 999))
+    .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria || '', unidad: p.unidad === 'KG' ? 'KG' : 'UN', precio: num_(p.precio) }));
+}
+/** cambios: [{codigo, precio}]. Solo cambia el precio de los productos indicados. */
+function guardarPrecios(token, cambios) {
+  const u = auth_(token, ['ADMIN', 'SUPERVISOR']);
+  cambios = (cambios || []).slice(0, 500);
+  if (!cambios.length) throw new Error('No hay cambios para guardar.');
+  return withLock_(() => {
+    const por = {}; read_('PRODUCTOS').forEach(p => por[codeKey_(p.codigo)] = p);
+    let n = 0; const log = [];
+    cambios.forEach(c => {
+      const p = por[codeKey_(c.codigo)]; if (!p) return;
+      const v = Math.round(Number(String(c.precio).replace(',', '.')) * 100) / 100;
+      if (!(v >= 0) || v > 100000000) throw new Error('Precio no válido en ' + p.nombre + '.');
+      if (num_(p.precio) === v) return;
+      log.push(p.nombre + ': ' + num_(p.precio) + ' → ' + v); p.precio = v; updateRow_('PRODUCTOS', p._row, p); n++;
+    });
+    if (log.length) Logger.log('Precios cambiados por ' + u.usuario + ' (' + now_() + '): ' + log.join(' | '));
+    limpiarCache_('PRODUCTOS');
+    return { cambiados: n };
+  });
 }
 
 /* ============================ CONTEO DE EFECTIVO Y DEPÓSITO ============================ */
