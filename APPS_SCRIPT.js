@@ -3038,6 +3038,8 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
 
   // CUADRATURA con fórmulas hacia los totales de cada tabla
   const ref = (T, i) => T.tot ? colL_(i + 1) + T.tot : '0';
+  const cxEf = datos.conteo && datos.conteo[t.vendedor];   // v124: lo contado en la pestaña Efectivo llena «Efectivo recibido»
+  const contEf = cxEf ? BILLETES.reduce((a, b) => a + b * num_(cxEf['b' + b]), 0) + num_(cxEf.monedas) : null;
   const lineas = [
     ['Venta documentada', '=' + ref(V, 4)],
     ['(−) Crédito', '=' + ref(V, 11)],
@@ -3053,7 +3055,7 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     ['(−) Gastos', '=' + ref(G, 2)],
     ['(−) Depositado a la empresa', '=' + ref(D, 2)],
     ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{11}-D{12}'],
-    ['Efectivo recibido', ''],
+    ['Efectivo recibido', contEf == null ? '' : contEf],
     ['DIFERENCIA', '=IF(D{14}="","",D{14}-D{13})'],
     ['Firma vendedor: ____________________        Firma recibe: ____________________', '']
   ];
@@ -3065,7 +3067,7 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     H.op(r, 1, 1, 3, g => g.merge());
     H.op(r, 4, 1, 1, g => g.setNumberFormat(EST.dinero));
     if ([4, 13, 15].indexOf(i) >= 0) H.op(r, 1, 1, 4, g => g.setFontWeight('bold').setBackground(i === 13 ? EST.gris : EST.grisClaro));
-    if (i === 14) H.op(r, 4, 1, 1, g => g.setBackground(EST.amarillo).setNote('Anotar el efectivo contado al recibir la rendición'));
+    if (i === 14) H.op(r, 4, 1, 1, g => g.setBackground(EST.amarillo).setNote('Se llena con el conteo de la pestaña Efectivo; si no hay conteo, anotar el efectivo contado al recibir la rendición'));
   });
   H.op(cuadIni, 1, 16, 4, g => g.setBorder(true, true, true, true, null, true, EST.borde, SpreadsheetApp.BorderStyle.SOLID));
   H.op(cuadIni + 16, 1, 1, 1, g => g.setFontSize(10));
