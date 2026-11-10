@@ -54,7 +54,7 @@ const SCHEMA = {
   COBRANZA:    ['id','fecha','vendedor','cliente','folio','monto','forma','banco','referencia','registrado_por','registrado','adjuntos','cheque_numero','cheque_fecha','cheque_titular','rut','folio_key'],
   PROVEEDORES: ['id','fecha','proveedor','documento','folio','monto','forma','obs','registrado_por','registrado','adjuntos'],
   CONSUMO:     ['id','fecha','cliente','folio','monto','forma','obs','registrado_por','registrado'],
-  CONTEO_EFECTIVO: ['key','fecha','vendedor','b20000','b10000','b5000','b2000','b1000','monedas','caja_chica','obs','registrado_por','registrado'],
+  CONTEO_EFECTIVO: ['key','fecha','vendedor','b20000','b10000','b5000','b2000','b1000','monedas','m500','m100','m50','m10','caja_chica','obs','registrado_por','registrado'],
   CLIENTES:    ['rut','razon_social','condicion','vendedor','alias','actualizado'],
   CREDITOS_CARGA: ['folio_key','rut','cliente_excel','tipo','folio','fecha','monto','condicion','vendedor','estado','recepcion','metodo','obs','cargado'],
   DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','nota_credito','motivo','obs','registrado_por','registrado','adjuntos','monto'],
@@ -2760,16 +2760,23 @@ function guardarPrecios(token, cambios) {
 }
 
 /* ============================ CONTEO DE EFECTIVO Y DEPÓSITO ============================ */
-// La encargada cuenta el efectivo de cada vendedor: billetes por denominación y monedas (un total; no se depositan).
+// La encargada cuenta el efectivo de cada vendedor: billetes y monedas por denominación (las monedas no se depositan).
 // A depositar = billetes contados − caja chica. Esperado = efectivo de ventas + cobranza − gastos − lo que el vendedor ya depositó.
 const BILLETES = [20000, 10000, 5000, 2000, 1000];
+const MONEDAS = [500, 100, 50, 10];   // v132: monedas por denominación; `monedas` sigue siendo el total en $ (lo usan todos los cálculos)
+function asegurarColsConteo_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('CONTEO_EFECTIVO'); if (!sh) return;
+  const h = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]; let n = h.filter(String).length, hecho = false;
+  MONEDAS.forEach(m => { const c = 'm' + m; if (h.indexOf(c) < 0) { sh.getRange(1, ++n).setValue(c).setFontWeight('bold'); hecho = true; } });
+  if (hecho) { MEMO_.CONTEO_EFECTIVO = null; SLICE_ = {}; }
+}
 
 function getConteoEfectivo(token, fecha) {
   auth_(token, ['RENDICION','SUPERVISOR']);
   const r = resumen_(fecha);
   const nombres = {}; read_('USUARIOS').forEach(u => nombres[u.usuario] = u.nombre);
   const guardado = {}; byFecha_('CONTEO_EFECTIVO', fecha).forEach(x => guardado[x.vendedor] = x);
-  const fila = x => { const o = {}; BILLETES.forEach(b => o['b' + b] = Math.round(num_((x || {})['b' + b]))); o.monedas = Math.round(num_((x || {}).monedas)); return o; };
+  const fila = x => { const o = {}; BILLETES.forEach(b => o['b' + b] = Math.round(num_((x || {})['b' + b]))); o.monedas = Math.round(num_((x || {}).monedas)); let cm = 0; MONEDAS.forEach(m => { o['m' + m] = Math.round(num_((x || {})['m' + m])); cm += o['m' + m] * m; }); o.monedasOtras = Math.max(0, o.monedas - cm); return o; };
   const g = guardado.GENERAL || {};
   return { fecha, estado: r.estado,
     vendedores: r.porVendedor.map(t => Object.assign({ usuario: t.vendedor, nombre: nombres[t.vendedor] || t.vendedor, esperado: t.efectivoEntregar, guardado: !!guardado[t.vendedor] }, fila(guardado[t.vendedor]))),
@@ -2782,12 +2789,14 @@ function guardarConteoEfectivo(token, fecha, datos) {
   assertAbierta_(fecha);
   const n = x => { const v = Math.round(num_(x)); if (v < 0) throw new Error('Las cantidades no pueden ser negativas.'); return v; };
   return withLock_(() => {
+    asegurarColsConteo_();
     const previo = {}; read_('CONTEO_EFECTIVO').filter(x => x.fecha === fecha).forEach(x => previo[x.vendedor] = x);
     const nuevas = [];
     const poner = o => { const p = previo[o.vendedor]; o.key = fecha + '|' + o.vendedor; o.fecha = fecha; o.registrado_por = u.usuario; o.registrado = now_();
       if (p) updateRow_('CONTEO_EFECTIVO', p._row, o); else nuevas.push(o); };
-    (datos.filas || []).forEach(f => { const o = { vendedor: String(f.vendedor), monedas: n(f.monedas), caja_chica: '', obs: '' }; BILLETES.forEach(b => o['b' + b] = n(f['b' + b])); poner(o); });
-    const g = { vendedor: 'GENERAL', monedas: 0, caja_chica: n(datos.cajaChica), obs: String(datos.obs || '').trim() }; BILLETES.forEach(b => g['b' + b] = 0); poner(g);
+    (datos.filas || []).forEach(f => { const o = { vendedor: String(f.vendedor), caja_chica: '', obs: '' }; BILLETES.forEach(b => o['b' + b] = n(f['b' + b]));
+      let mt = n(f.monedasOtras); MONEDAS.forEach(m => { o['m' + m] = n(f['m' + m]); mt += o['m' + m] * m; }); o.monedas = mt; poner(o); });
+    const g = { vendedor: 'GENERAL', monedas: 0, m500: 0, m100: 0, m50: 0, m10: 0, caja_chica: n(datos.cajaChica), obs: String(datos.obs || '').trim() }; BILLETES.forEach(b => g['b' + b] = 0); poner(g);
     if (nuevas.length) append_('CONTEO_EFECTIVO', nuevas);
     return true;
   });

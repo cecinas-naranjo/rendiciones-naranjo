@@ -617,3 +617,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v131 — Venta con nota de crédito, en tres líneas (solo frontend: app.js, sw.js)
 - «Venta (N docs)» bruta → «− Notas de crédito» → «Venta neta» (antes mostraba solo el neto con «ya sin notas de crédito», que confundía). Sin NC queda la línea única. El KPI del Resumen del día se llama «Venta neta» y aclara «bruta − NC».
+
+## v132 — Billetes y monedas por denominación en Efectivo del día (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, style.css, sw.js)
+- Cada billete ($20.000…$1.000) muestra su monto ("= $200.000") y las monedas se cuentan por tipo ($500, $100, $50, $10), también con su monto. CONTEO_EFECTIVO agrega columnas `m500,m100,m50,m10` (cantidades; `asegurarColsConteo_` las crea sola al guardar). `monedas` sigue siendo el TOTAL en $ (Σ cantidad × valor), así resumen, Excel y KPI no cambian. Conteos antiguos con solo `monedas` salen como "Monedas (conteo anterior)" (`monedasOtras`) y se conservan. Las monedas siguen sin depositarse. El Excel "EFECTIVO A DEPOSITAR" sigue con la columna MONEDAS total.
