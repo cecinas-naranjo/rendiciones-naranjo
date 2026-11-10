@@ -2618,7 +2618,7 @@ function preciosKg_(detV) {
   const t = {}, q = {};
   detV.forEach(x => { const c = codeKey_(x.codigo); t[c] = (t[c] || 0) + num_(x.total); q[c] = (q[c] || 0) + num_(x.cantidad); });
   const p = {};
-  read_('PRODUCTOS').forEach(x => { const c = codeKey_(x.codigo); p[c] = q[c] > 0 ? t[c] / q[c] : num_(x.precio); });
+  read_('PRODUCTOS').forEach(x => { const c = codeKey_(x.codigo); p[c] = num_(x.precio) > 0 ? num_(x.precio) : (q[c] > 0 ? t[c] / q[c] : 0); });   // v121: precio de LISTA (como la planilla manual); si no tiene, el promedio facturado
   Object.keys(q).forEach(c => { if (!(c in p)) p[c] = q[c] > 0 ? t[c] / q[c] : 0; });
   return p;
 }
@@ -2941,6 +2941,21 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
       { h: 'FACTURADO', t: 'kg', sum: 1 }, { h: 'DIFERENCIA', t: 'kg', sum: 1 }, { h: 'PRECIO KG', t: '$' }, { h: 'DIFERENCIA $', t: '$', sum: 1 }],
       kil.map(k => [k.producto, k.salida, k.retorno, '=ROUND(B{r}-C{r},2)', k.facturado, '=ROUND(D{r}-E{r},2)', k.precio, '=ROUND(F{r}*G{r},0)']));
   }
+  // LIQUIDACIÓN como la planilla manual (v121): venta por kilos a precio de lista + cobranza = lo que debería haber; contra el dinero recibido + crédito
+  if (kil.length) {
+    const ventaKilos = Math.round(kil.reduce((a, k) => a + (k.salida - k.retorno) * k.precio, 0));
+    const cobV = datos.cob.filter(c => c.vendedor === t.vendedor), cobT = cobV.reduce((a, c) => a + num_(c.monto), 0);
+    const cobTr = cobV.filter(c => c.forma === 'TRANSFERENCIA').reduce((a, c) => a + num_(c.monto), 0), cobCh = cobV.filter(c => c.forma === 'CHEQUE').reduce((a, c) => a + num_(c.monto), 0);
+    const trV = (t.bancos.BICE || 0) + (t.bancos.ESTADO || 0) + (t.bancos.SANTANDER || 0);
+    const esperado = ventaKilos + cobT, cx = datos.conteo[t.vendedor];
+    const cont = cx ? BILLETES.reduce((a, b) => a + b * num_(cx['b' + b]), 0) + num_(cx.monedas) : null;
+    const recibido = cont == null ? null : cont + trV + cobTr + cobCh + t.credito;
+    H.tabla('LIQUIDACIÓN (como la planilla manual)', [{ h: 'CONCEPTO' }, { h: 'MONTO', t: '$' }], [
+      ['Venta por kilos (salida − retorno, a precio de lista)', ventaKilos], ['(+) Cobranza', cobT], ['TOTAL ESPERADO', esperado],
+      ['Efectivo contado (billetes + monedas)', cont == null ? 'sin contar' : cont], ['(+) Transferencias (ventas + cobranza)', trV + cobTr], ['(+) Cheques de cobranza', cobCh], ['(+) Crédito total del día', t.credito],
+      ['TOTAL RECIBIDO + CRÉDITO', recibido == null ? 'sin contar' : recibido], ['DIFERENCIA (recibido − esperado; negativo = falta)', recibido == null ? 'sin contar' : recibido - esperado]]);
+    H.fila([]);
+  }
   // VENTAS
   const docs = datos.docs.filter(d => d.vendedor === t.vendedor);
   const s = (d, f, b) => d.pagos.filter(p => p.forma === f && (!b || p.banco === b)).reduce((a, p) => a + p.monto, 0);
@@ -3068,7 +3083,8 @@ function generarArchivo_(fecha, r, borrador) {
   const rutFolio = {}, rutNombre = {};
   read_('DOCUMENTOS').forEach(d => { if (!d.rut) return; rutFolio[String(d.folio).replace(/\D/g, '')] = d.rut; rutNombre[normTxt_(d.cliente)] = d.rut; });
   cob.forEach(c => c.rut = rutFolio[String(c.folio || '').replace(/\D/g, '')] || rutNombre[normTxt_(c.cliente)] || '');
-  const datos = { docs, cob, gas, deps, depDe, kilos };
+  const conteo = {}; byFecha_('CONTEO_EFECTIVO', fecha).forEach(x => { if (x.vendedor !== 'GENERAL') conteo[x.vendedor] = x; });
+  const datos = { docs, cob, gas, deps, depDe, kilos, conteo };
 
   // 1) Una hoja por vendedor
   r.porVendedor.forEach(t => hojaVendedor_(ss, fecha, t, usuarios[t.vendedor], datos));
