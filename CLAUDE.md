@@ -595,3 +595,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v125 — Se quitó «a descontar de la liquidación» (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Por pedido del dueño ya no se habla de descontar del sueldo. Excel: columna «DIF. KILOS $». App: «faltante / sobrante» en lugar de «a descontar / a favor». Los cálculos no cambian.
+
+## v126 — Carpeta madre en el Drive de la cuenta de Naranjo (requiere pegar APPS_SCRIPT.js COMPLETO)
+- `CFG.RENDICIONES_FOLDER_ID` queda vacío: `carpetaBase_()` busca o crea «Resumen Rendición» en la raíz del Drive de la cuenta que publica el Web App y guarda su id en la propiedad `RENDICIONES_ID`. Si se pone un ID válido en CFG, se usa ese. Antes el ID fijo (de otra cuenta/inexistente) hacía caer a la raíz sin avisar. Archivos ya creados en otro lugar no se mueven.

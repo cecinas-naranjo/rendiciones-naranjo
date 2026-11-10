@@ -13,7 +13,7 @@
 const CFG = {
   TZ: 'America/Santiago',
   // Carpeta "Resumen Rendición" en el Drive de la empresa (donde se guardan las rendiciones cerradas)
-  RENDICIONES_FOLDER_ID: '1Osm3OciOJQFgvuFil4s9ZfXd4XUMni3B',
+  RENDICIONES_FOLDER_ID: '',   // v126: vacío = la carpeta «Resumen Rendición» se crea sola en el Drive de la cuenta que publica el script (ver carpetaBase_)
   // Carpeta donde se guardan fotos y archivos de respaldo. Vacío = se crea "Respaldos" junto a la carpeta de rendiciones.
   RESPALDOS_FOLDER_ID: '',
   APP_NAME: 'Rendiciones Naranjo',
@@ -1289,8 +1289,7 @@ function carpetaInformes_(fecha, tipo) {
   if (CFG.INFORMES_FOLDER_ID) base = DriveApp.getFolderById(CFG.INFORMES_FOLDER_ID);
   else {
     let padre;
-    try { padre = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID); }
-    catch (e) { padre = DriveApp.getRootFolder(); }
+    padre = carpetaBase_();
     base = sub_(padre, 'Informes Mi DTE');
   }
   const f = String(fecha).split('-');
@@ -1616,8 +1615,7 @@ function adjuntosDe_(r) {
 function carpetaRespaldos_() {
   if (CFG.RESPALDOS_FOLDER_ID) return DriveApp.getFolderById(CFG.RESPALDOS_FOLDER_ID);
   let base;
-  try { base = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID); }
-  catch (e) { base = DriveApp.getRootFolder(); }
+  base = carpetaBase_();
   return sub_(base, 'Respaldos');
 }
 const limpiarNombre_ = t => String(t || '').replace(/[\\/:*?"<>|#\n\r]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
@@ -1873,8 +1871,7 @@ function agregarProductoInv(token, p) {
 function carpetaInventario_() {
   if (CFG.INVENTARIO_FOLDER_ID) return DriveApp.getFolderById(CFG.INVENTARIO_FOLDER_ID);
   let base;
-  try { base = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID); }
-  catch (e) { base = DriveApp.getRootFolder(); }
+  base = carpetaBase_();
   return sub_(base, 'Inventario');
 }
 const MESES_ = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
@@ -2280,7 +2277,7 @@ function generarPlanillaPorCobrar(token) {
     const nombre = 'Por cobrar ' + ft;
     const ss = SpreadsheetApp.create(nombre), file = DriveApp.getFileById(ss.getId());
     try {
-      const root = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), dest = sub_(root, 'Cuentas por cobrar');
+      const root = carpetaBase_(), dest = sub_(root, 'Cuentas por cobrar');
       const prev = dest.getFilesByName(nombre); while (prev.hasNext()) prev.next().setTrashed(true);
       file.moveTo(dest);
     } catch (e) { /* queda en Mi unidad */ }
@@ -2326,7 +2323,7 @@ function planillaSucia_() { try { PropertiesService.getScriptProperties().setPro
 function planillaCreditos_() {
   const props = PropertiesService.getScriptProperties(), id = props.getProperty('PLANILLA_CREDITOS_ID');
   if (id) { try { if (!DriveApp.getFileById(id).isTrashed()) return SpreadsheetApp.openById(id); } catch (e) {} }
-  const dest = sub_(DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID), 'Cuentas por cobrar');
+  const dest = sub_(carpetaBase_(), 'Cuentas por cobrar');
   const it = dest.getFilesByName(PLANILLA_NOMBRE_); let ss;
   if (it.hasNext()) ss = SpreadsheetApp.openById(it.next().getId());
   else { ss = SpreadsheetApp.create(PLANILLA_NOMBRE_); DriveApp.getFileById(ss.getId()).moveTo(dest); }
@@ -3080,7 +3077,7 @@ function generarArchivo_(fecha, r, borrador) {
   const ss = SpreadsheetApp.create(nombre);
   const file = DriveApp.getFileById(ss.getId());
   try {
-    const root = DriveApp.getFolderById(CFG.RENDICIONES_FOLDER_ID);
+    const root = carpetaBase_();
     let destino;
     if (borrador) {            // los borradores van aparte y se reemplazan: solo queda el último de cada día
       destino = sub_(root, 'Borradores');
@@ -3210,6 +3207,18 @@ function generarArchivo_(fecha, r, borrador) {
   return ss.getUrl();
 }
 function etiquetaForma_(f) { return ({ EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', DEP_EFECTIVO: 'Depósito en efectivo', CHEQUE: 'Cheque', CREDITO: 'Crédito', NOTA_CREDITO: 'Nota de crédito' })[f] || f || ''; }
+
+/** Carpeta madre «Resumen Rendición» (v126). Si CFG.RENDICIONES_FOLDER_ID tiene un ID válido se usa; si no, se busca/crea en el Drive de quien publica
+ *  el script y se recuerda el ID en la propiedad RENDICIONES_ID. Todo lo demás (Borradores, Informes, Respaldos, Inventario, Cuentas por cobrar) cuelga de ella. */
+function carpetaBase_() {
+  const P = PropertiesService.getScriptProperties();
+  const ids = [CFG.RENDICIONES_FOLDER_ID, P.getProperty('RENDICIONES_ID')].filter(Boolean);
+  for (const id of ids) { try { return DriveApp.getFolderById(id); } catch (e) { /* no existe o sin acceso: se sigue */ } }
+  const it = DriveApp.getRootFolder().getFoldersByName('Resumen Rendición');
+  const f = it.hasNext() ? it.next() : DriveApp.getRootFolder().createFolder('Resumen Rendición');
+  P.setProperty('RENDICIONES_ID', f.getId());
+  return f;
+}
 
 function sub_(folder, name) {
   const it = folder.getFoldersByName(name);
