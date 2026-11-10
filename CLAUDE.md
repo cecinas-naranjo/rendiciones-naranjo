@@ -623,3 +623,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v133 — Efectivo del día: se anota el MONTO de cada billete/moneda (solo frontend: app.js, sw.js)
 - Como en la rendición manual: en cada recuadro se escribe cuánto suma ese tipo (p. ej. $200.000 en billetes de $20.000; monedas de $500/$100/$50/$10 igual). El cliente lo convierte a cantidad al guardar (monto ÷ valor) y avisa si no es múltiplo; el servidor y la hoja no cambian (siguen guardando cantidades).
+
+## v134 — Puntos de miles al escribir montos, en toda la app (solo frontend: app.js, sw.js)
+- Listener global (captura) en `input` + MutationObserver: los `input.in.n[inputmode=numeric]` muestran 123.456 mientras se escribe y al dibujarse con valor. Excluidos folios (#adF, #anF), N° de NC (`data-nc`) y N° de cheque (`data-c`); los decimales (kilos, cantidades) no se tocan. Todo el código lee con `soloDigitos`, así que los puntos no afectan. Si se agrega un campo de monto nuevo: `class="in n" inputmode="numeric"`; si es un N° (no plata), excluirlo en `MONTO_SEL`.

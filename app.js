@@ -12,6 +12,24 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 const soloDigitos = v => Number(String(v).replace(/\D/g, '')) || 0;
 const nk = n => String(Math.round((Number(String(n).replace(',', '.')) || 0) * 100) / 100).replace('.', ',');
 const dec = v => Number(String(v).replace(',', '.')) || 0;
+
+/* v134: los campos de monto muestran puntos de miles mientras se escribe (123456 → 123.456), en toda la app.
+   Solo inputs "in n" con inputmode numeric; se excluyen folios y N° de cheque/NC. Todo el código lee con soloDigitos, así que los puntos no molestan. */
+const MONTO_SEL = 'input.in.n[inputmode="numeric"]:not(#adF):not(#anF):not([data-nc]):not([data-c])';
+const conPuntos = v => { const d = String(v).replace(/\D/g, '').replace(/^0+(?=\d)/, ''); return d.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); };
+document.addEventListener('input', e => {
+  const i = e.target; if (!i.matches || !i.matches(MONTO_SEL)) return;
+  const antes = i.value, pos = i.selectionStart, dig = (antes.slice(0, pos).match(/\d/g) || []).length, nuevo = conPuntos(antes);
+  if (nuevo === antes) return;
+  i.value = nuevo;
+  let c = 0, k = 0; while (k < nuevo.length && c < dig) { if (/\d/.test(nuevo[k])) c++; k++; }
+  try { i.setSelectionRange(k, k); } catch (_) {}
+}, true);
+// valores que ya vienen puestos al dibujar una pantalla u hoja
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(nd => {
+  if (nd.nodeType !== 1) return;
+  (nd.matches(MONTO_SEL) ? [nd] : Array.from(nd.querySelectorAll(MONTO_SEL))).forEach(i => { if (i.value && /^\d+$/.test(i.value)) i.value = conPuntos(i.value); });
+}))).observe(document.documentElement, { childList: true, subtree: true });
 const fechaLarga = iso => { const d = new Date(iso + 'T12:00:00'); return d.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' }); };
 const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
