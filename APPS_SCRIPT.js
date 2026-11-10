@@ -3055,6 +3055,15 @@ function generarArchivo_(fecha, r, borrador) {
     const k = x.vendedor + '|' + codeKey_(x.codigo); fact[k] = (fact[k] || 0) + num_(x.cantidad); });
   const kilos = byFecha_('DESPACHO', fecha).map(k => ({ vendedor: k.vendedor, producto: k.producto, salida: num_(k.salida), retorno: num_(k.retorno),
     facturado: Math.round((fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0) * 100) / 100, precio: Math.round(preciosK[codeKey_(k.codigo)] || 0) }));
+  // Productos facturados por kilo que NO tienen salida anotada en Despacho: también van en la tabla (salida 0), para que cuadre con el RESUMEN
+  { const vistos = {}; kilos.forEach(k => vistos[k.vendedor + '|' + k.producto] = 1);
+    const uni = {}; read_('PRODUCTOS').forEach(p => uni[codeKey_(p.codigo)] = p.unidad);
+    const vistoC = {}; byFecha_('DESPACHO', fecha).forEach(k => vistoC[k.vendedor + '|' + codeKey_(k.codigo)] = 1);
+    const sinSalida = {};
+    byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia) && uni[codeKey_(x.codigo)] !== 'UN').forEach(x => {
+      const k = x.vendedor + '|' + codeKey_(x.codigo); if (!vistoC[k]) sinSalida[k] = { vendedor: x.vendedor, producto: x.producto, codigo: codeKey_(x.codigo) }; });
+    Object.keys(sinSalida).forEach(k => { const o = sinSalida[k];
+      kilos.push({ vendedor: o.vendedor, producto: o.producto + ' (sin salida anotada)', salida: 0, retorno: 0, facturado: Math.round((fact[k] || 0) * 100) / 100, precio: Math.round(preciosK[o.codigo] || 0) }); }); }
   // RUT de los clientes de cobranza: por el folio que pagan y, si no, por el nombre del cliente
   const rutFolio = {}, rutNombre = {};
   read_('DOCUMENTOS').forEach(d => { if (!d.rut) return; rutFolio[String(d.folio).replace(/\D/g, '')] = d.rut; rutNombre[normTxt_(d.cliente)] = d.rut; });

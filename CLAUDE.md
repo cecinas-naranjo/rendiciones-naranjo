@@ -571,3 +571,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v119 — Lista de clientes de Cobranza ya no se corta en la tablet (solo frontend)
 - `.cpick .cpl` pasó de `position:absolute` a dentro del flujo de la página (alto máx. 52 vh): antes quedaba tapada por la barra inferior y no se podía ver más allá de 2–3 clientes. Al enfocar el buscador la página sube para dejarlo arriba (`scroll-margin-top`). Sin probar en la tablet; solo sintaxis.
+
+## v120 — Hoja KILOS del vendedor incluye productos facturados sin salida (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Caso Javier 06-11: RESUMEN mostraba DIF. KILOS $ −13.263 y su hoja 11.836. `kilosDe_` (RESUMEN) cuenta lo facturado aunque el producto no tenga fila en DESPACHO (P.LAM-ARROLLADO 150G, 2 kg, el bodeguero no anotó la salida), pero la tabla KILOS de la hoja salía solo de DESPACHO. Ahora la hoja agrega esas filas como "<producto> (sin salida anotada)" con salida 0.
+- Comparación con la planilla manual de Javier: venta, crédito, cobranza y efectivo cuadran; diferencias solo de $3 en transferencias (la manual anotó 45.260 y 45.000, Mi DTE trae 45.264 y 44.999), y la manual valoriza kilos a precio de lista (costillar 7.000, app promedio facturado 7.500).
