@@ -62,6 +62,7 @@ const SCHEMA = {
   DEPOSITOS:   ['id','fecha','vendedor','banco','monto','referencia','folios','cobranzas','obs','registrado_por','registrado','adjuntos'],
   OPERACIONES: ['op','fn','fecha'],
   CHEQUES_ESTADO: ['clave','estado','fecha','registrado_por','registrado','obs'],
+  NC_EMITIDAS: ['clave','nc_folio','fecha','registrado_por','registrado'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
   ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos'],
@@ -262,7 +263,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarNotasCredito, marcarNotaEmitida, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -2515,6 +2516,62 @@ function marcarCheque(token, claves, estado, fecha, obs) {
     });
     if (nuevos.length) append_('CHEQUES_ESTADO', nuevos);
     if (borrar.length) deleteRows_('CHEQUES_ESTADO', borrar);
+    return { ok: true, cantidad: claves.length };
+  });
+}
+
+
+/* ============ NOTAS DE CRÉDITO POR EMITIR (v127) ============
+ * Las notas de crédito se anotan por monto en el detalle del folio (línea «Nota de crédito») y se emiten en Mi DTE a fin de mes.
+ * Esta lista junta todas las líneas NOTA_CREDITO de PAGOS del período, por razón social y folio, para saber cuáles emitir.
+ * La clave es estable aunque el folio se vuelva a detallar: folio_key|monto|n° de repetición. */
+function asegurarNcEmitidas_() {
+  if (MEMO_.__ncem) return;
+  const ss = SpreadsheetApp.getActive();
+  if (!ss.getSheetByName('NC_EMITIDAS')) {
+    const sh = ss.insertSheet('NC_EMITIDAS'), head = SCHEMA.NC_EMITIDAS;
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
+    MEMO_.NC_EMITIDAS = null;
+  }
+  MEMO_.__ncem = true;
+}
+function listarNotasCredito(token, desde, hasta) {
+  auth_(token, ['RENDICION', 'SUPERVISOR', 'ADMIN', 'GERENCIA']);
+  desde = normFecha_(desde); hasta = normFecha_(hasta);
+  if (!desde || !hasta || desde > hasta) throw new Error('Elige un período válido.');
+  if (sumarDias_(desde, 400) < hasta) throw new Error('El período puede ser de hasta 13 meses.');
+  asegurarNcEmitidas_();
+  const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
+  const nom = {}; read_('USUARIOS').forEach(u => nom[u.usuario] = u.nombre || u.usuario);
+  const em = {}; read_('NC_EMITIDAS').forEach(e => em[e.clave] = e);
+  const rep = {}, filas = [];
+  read_('PAGOS').filter(p => p.forma === 'NOTA_CREDITO').forEach(p => {
+    const f = normFecha_(p.fecha), monto = Math.round(num_(p.monto));
+    const base = p.folio_key + '|' + monto, n = rep[base] = (rep[base] || 0) + 1;      // n-ésima línea igual del mismo folio
+    if (f < desde || f > hasta) return;
+    const d = docs[p.folio_key] || {}, clave = 'NC|' + base + '|' + n, e = em[clave];
+    filas.push({ clave, fecha: f, vendedor: nom[p.vendedor] || p.vendedor || '', documento: d.tipo || '', folio: d.folio || '', rut: d.rut || '',
+      cliente: d.cliente || '(sin cliente)', monto, nota: p.referencia || '', estado: e ? 'EMITIDA' : 'POR_EMITIR', ncFolio: e ? String(e.nc_folio || '') : '', fechaEmision: e ? normFecha_(e.fecha) : '' });
+  });
+  filas.sort((a, b) => String(a.cliente).localeCompare(String(b.cliente)) || a.fecha.localeCompare(b.fecha) || String(a.folio).localeCompare(String(b.folio)));
+  return { desde, hasta, filas };
+}
+/** Marca notas de crédito como emitidas en Mi DTE (con el N° de la NC) o las devuelve a «por emitir» (ncFolio vacío). */
+function marcarNotaEmitida(token, claves, ncFolio, fecha) {
+  const u = auth_(token, ['RENDICION', 'SUPERVISOR', 'ADMIN']);
+  claves = (claves || []).map(String).filter(String); if (!claves.length) throw new Error('Marca al menos una nota de crédito.');
+  ncFolio = String(ncFolio || '').replace(/\D/g, '').replace(/^0+/, '');
+  return withLock_(() => {
+    asegurarNcEmitidas_();
+    const ex = {}; read_('NC_EMITIDAS').forEach(e => ex[e.clave] = e);
+    const nuevos = [], borrar = [];
+    claves.forEach(k => {
+      if (!ncFolio) { if (ex[k]) borrar.push(ex[k]._row); return; }
+      const fila = { clave: k, nc_folio: ncFolio, fecha: normFecha_(fecha) || hoy_(), registrado_por: u.usuario, registrado: now_() };
+      if (ex[k]) updateRow_('NC_EMITIDAS', ex[k]._row, fila); else nuevos.push(fila);
+    });
+    if (nuevos.length) append_('NC_EMITIDAS', nuevos);
+    if (borrar.length) deleteRows_('NC_EMITIDAS', borrar);
     return { ok: true, cantidad: claves.length };
   });
 }

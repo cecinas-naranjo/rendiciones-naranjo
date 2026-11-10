@@ -814,7 +814,7 @@ body.has-bottom #probar{bottom:84px}
 .adln select.in{width:100%}
 
 /* Gerencia: solo lectura (v76) */
-body.solo-leer #pv, body.solo-leer #cl, body.solo-leer #re, body.solo-leer #dDet, body.solo-leer [data-detallar], body.solo-leer #chb, body.solo-leer #pl, body.solo-leer #sr,
+body.solo-leer #pv, body.solo-leer #cl, body.solo-leer #re, body.solo-leer #dDet, body.solo-leer [data-detallar], body.solo-leer #chb, body.solo-leer #ncb, body.solo-leer #pl, body.solo-leer #sr,
 body.solo-leer #plan, body.solo-leer .sticky-foot:has(#gi), body.solo-leer #npN, body.solo-leer #npU, body.solo-leer #npA, body.solo-leer [data-otras], body.solo-leer select[data-fk], body.solo-leer .ordenar { display: none !important; }
 body.solo-leer .invl input, body.solo-leer .invl select { pointer-events: none; background: transparent; border-color: transparent; }
 body.solo-leer .ordenar, body.solo-leer .pasos button { pointer-events: none; }

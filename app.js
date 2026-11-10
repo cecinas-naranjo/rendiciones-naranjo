@@ -557,16 +557,16 @@ const TABS = {
   BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
   RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
     ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
-    ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'],
+    ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'],
     ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['precios', 'Precios', 'receipt'], ['usuarios', 'Usuarios', 'users']]);
 TABS.SUPERVISOR = TABS.SUPERVISOR.concat([['precios', 'Precios', 'receipt']]);
-TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['inventario', 'Inventario', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
+TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'], ['inventario', 'Inventario', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
-  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques'], 'cash'],
+  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques', 'notascred'], 'cash'],
   ['g-caja', 'Caja', ['depositos', 'GASTOS', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'precios', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
@@ -876,7 +876,7 @@ function ir(t, silencioso) {
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
   const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
-  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, usuarios: vUsuarios, precios: vPrecios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, usuarios: vUsuarios, precios: vPrecios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
     if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -1346,7 +1346,7 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
       <button type="button" class="btn cu" id="chOk" style="width:100%;margin-top:10px">Guardar cheque</button></div>
     <div id="bz" hidden><div class="pregunta" id="bzT">¿A qué banco llegó?</div>
       <div class="bancos">${S.cat.bancos.map(b => `<button type="button" data-b="${esc(b)}" class="${b === ((d.pagos[0] || {}).banco || bancoPref) ? 'sug' : ''}">${esc(b)}</button>`).join('')}</div></div>
-    <button type="button" class="link" id="mix">Pagó de dos formas, abonó una parte o hubo descuento</button>
+    <button type="button" class="link" id="mix">Pagó de dos formas, abonó una parte, hubo descuento o nota de crédito</button>
     </div><div class="foot"><span class="muted grow" id="qd"></span><button class="btn ghost" id="cx">Cerrar</button></div></div>`;
   if (!ovPrevio) document.body.appendChild(ov);
   const quedan = siguiente ? siguiente.cuantos() : 0;
@@ -3471,4 +3471,65 @@ function guardarPrecios(token, cambios) {
     limpiarCache_('PRODUCTOS');
     return { cambiados: n };
   });
+}
+
+
+/* ============ NOTAS DE CRÉDITO POR EMITIR (v127) ============ */
+async function vNotasCredito(m) {
+  const hoy = hoyCL(), mes0 = hoy.slice(0, 7);
+  let mes = S.ncMes || mes0, fil = S.ncFil || 'pend', q = '';
+  const rango = ym => { const [y, mm] = ym.split('-').map(Number), ult = new Date(y, mm, 0).getDate(); return [ym + '-01', ym + '-' + String(ult).padStart(2, '0')]; };
+  const [d0, d1] = rango(mes);
+  const r = await api('listarNotasCredito', S.sess.token, d0, d1);
+  const todos = r.filas, pend = todos.filter(x => x.estado === 'POR_EMITIR'), emi = todos.filter(x => x.estado === 'EMITIDA');
+  const suma = xs => xs.reduce((a, x) => a + x.monto, 0), norm = t => normBus(t || '');
+  const nombreMes = new Date(+mes.slice(0, 4), +mes.slice(5) - 1, 1).toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+  const FIL = { pend: ['Por emitir', x => x.estado === 'POR_EMITIR'], emi: ['Ya emitidas', x => x.estado === 'EMITIDA'], todas: ['Todas', () => true] };
+  render(m, `<h2>Notas de crédito</h2><p class="lead" style="margin:0 0 12px">Las notas de crédito se anotan por su monto en el detalle de cada folio (línea «Nota de crédito»). Aquí se juntan por cliente para emitirlas en Mi DTE a fin de mes.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px"><label class="muted" style="display:flex;gap:6px;align-items:center">Mes <input type="month" class="in" id="ncm" value="${mes}" max="${mes0}" style="width:auto"></label>
+      <button class="btn ghost" id="ncx">Descargar Excel</button></div>
+    <div class="kpis"><div><span>Por emitir</span><b>${clp(suma(pend))}</b><small>${pend.length} nota${pend.length === 1 ? '' : 's'} · ${new Set(pend.map(x => x.rut || x.cliente)).size} cliente(s)</small></div>
+      <div><span>Ya emitidas</span><b>${clp(suma(emi))}</b><small>${emi.length} nota${emi.length === 1 ? '' : 's'}</small></div></div>
+    <div class="row" style="margin:14px 0 8px;flex-wrap:wrap"><div class="seg" id="ncf">${Object.keys(FIL).map(k => `<button type="button" data-f="${k}" class="${k === fil ? 'on' : ''}">${FIL[k][0]} <small>${todos.filter(FIL[k][1]).length}</small></button>`).join('')}</div>
+      <input class="in grow" id="ncq" placeholder="Buscar cliente, RUT, folio o vendedor" style="min-width:200px"></div>
+    <div id="ncl"></div>
+    <div class="sticky-foot" id="ncb" hidden><div class="card"><div><div class="muted"><span id="ncn">0</span> seleccionadas</div><b id="nct" style="font-size:20px"></b></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><input class="in" id="ncf2" inputmode="numeric" placeholder="N° de la nota en Mi DTE" style="width:190px">
+      <button class="btn cu" id="nce">Marcar emitida</button><button class="btn ghost" id="ncv" hidden>Devolver a «por emitir»</button></div></div></div>`);
+  const sel = new Set();
+  const lista = () => {
+    const xs = todos.filter(FIL[fil][1]).filter(x => !q || [x.cliente, x.rut, x.folio, x.vendedor].some(t => norm(t).indexOf(norm(q)) >= 0));
+    const por = new Map(); xs.forEach(x => { const k = x.rut || x.cliente; if (!por.has(k)) por.set(k, []); por.get(k).push(x); });
+    $('#ncl').innerHTML = xs.length ? [...por.values()].map(g => `<div class="cfac" style="display:block;margin-bottom:10px">
+      <div class="row" style="gap:10px"><span class="grow"><b>${esc(g[0].cliente)}</b> <span class="muted">${esc(g[0].rut)}</span></span><b>${clp(suma(g))}</b></div>
+      ${g.map(x => `<label class="row" style="gap:10px;padding:6px 0;border-top:1px solid var(--line,#e5e2de)"><input type="checkbox" data-k="${esc(x.clave)}" ${sel.has(x.clave) ? 'checked' : ''}>
+        <span class="grow">${esc(x.documento)} ${esc(x.folio)} <span class="muted">· ${fcorta(x.fecha)} · ${esc(x.vendedor)}</span>${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}</span>
+        ${x.estado === 'EMITIDA' ? `<span class="chip ok">NC ${esc(x.ncFolio)}</span>` : '<span class="chip warn">Por emitir</span>'}<b>${clp(x.monto)}</b></label>`).join('')}</div>`).join('')
+      : `<div class="empty">${fil === 'pend' ? 'No hay notas de crédito por emitir en ' + esc(nombreMes) + '.' : 'Nada en esta lista.'}</div>`;
+    barra();
+  };
+  const barra = () => { const xs = todos.filter(x => sel.has(x.clave)); $('#ncb').hidden = !xs.length; $('#ncn').textContent = xs.length; $('#nct').textContent = clp(suma(xs));
+    const hay = xs.some(x => x.estado === 'EMITIDA'); $('#ncv').hidden = !hay; $('#nce').hidden = false; };
+  $('#ncf').onclick = e => { const b = e.target.closest('[data-f]'); if (!b) return; fil = S.ncFil = b.dataset.f; sel.clear(); $$('#ncf button').forEach(x => x.classList.toggle('on', x === b)); lista(); };
+  $('#ncq').oninput = e => { q = e.target.value; lista(); };
+  $('#ncl').onchange = e => { const k = e.target.dataset.k; if (k === undefined) return; e.target.checked ? sel.add(k) : sel.delete(k); barra(); };
+  $('#ncm').onchange = e => { if (!e.target.value) return; S.ncMes = e.target.value; ir('notascred', true); };
+  const marcar = async folio => {
+    const xs = [...sel]; if (!xs.length) return;
+    if (folio !== '' && !/^\d+$/.test(folio)) return toast('Escribe el N° de la nota de crédito (solo números).', true);
+    const bs = [$('#nce'), $('#ncv')]; bs.forEach(b => b.disabled = true);
+    try { await api('marcarNotaEmitida', S.sess.token, xs, folio, hoy);
+      toast(folio ? 'Marcadas como emitidas' : 'Devueltas a «por emitir»'); olvidarCache(true); ir('notascred', true); } finally { bs.forEach(b => b.disabled = false); }
+  };
+  $('#nce').onclick = () => marcar($('#ncf2').value.trim());
+  $('#ncv').onclick = () => marcar('');
+  $('#ncx').onclick = async () => {
+    if (!todos.length) return toast('No hay notas de crédito en este mes.', true);
+    await cargarXLSX(); const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([['Razón social', 'RUT', 'Documento', 'Folio', 'Fecha', 'Vendedor', 'Monto NC', 'Motivo', 'Estado', 'N° NC emitida']]
+      .concat(todos.map(x => [x.cliente, x.rut, x.documento, x.folio, x.fecha, x.vendedor, x.monto, x.nota, x.estado === 'EMITIDA' ? 'Emitida' : 'Por emitir', x.ncFolio])));
+    ws['!cols'] = [{ wch: 40 }, { wch: 13 }, { wch: 20 }, { wch: 9 }, { wch: 11 }, { wch: 18 }, { wch: 11 }, { wch: 30 }, { wch: 11 }, { wch: 13 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Notas de crédito'); XLSX.writeFile(wb, 'Notas de credito ' + mes + '.xlsx');
+  };
+  lista();
 }
