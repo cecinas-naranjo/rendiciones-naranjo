@@ -2663,12 +2663,12 @@ async function vEfectivo(m) {
   const r = await api('getConteoEfectivo', S.sess.token, S.fecha), cerrada = r.estado === 'CERRADA';
   if (!r.vendedores.length) return render(m, `<h2>Efectivo del día</h2><div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>`);
   const n = el => soloDigitos(el.value);
-  render(m, `<h2>Efectivo del día</h2><p class="lead">Cuenta el efectivo de cada vendedor: cuántos billetes y monedas de cada tipo (las monedas no se depositan). Abajo queda cuánto hay que depositar.</p>
+  render(m, `<h2>Efectivo del día</h2><p class="lead">Cuenta el efectivo de cada vendedor: cuánto suma cada tipo de billete y de moneda, por ejemplo $200.000 en billetes de $20.000 (las monedas no se depositan). Abajo queda cuánto hay que depositar.</p>
     ${r.vendedores.map((v, i) => `<div class="card efv" data-u="${esc(v.usuario)}" data-esp="${v.esperado}" style="margin-bottom:10px">
       <button type="button" class="efh" aria-expanded="false"><span class="grow"><b>${esc(v.nombre)}</b><small>Debe entregar ${clp(v.esperado)}</small></span><span data-hdf></span><i class="dcar" aria-hidden="true"></i></button>
       <div class="efb" hidden>
-      <div class="bill">${BILLETES.map(b => `<label><span>${clp(b)}</span><input class="in n" inputmode="numeric" data-b="${b}" value="${v['b' + b] || ''}" ${cerrada ? 'disabled' : ''} aria-label="Billetes de ${clp(b)} de ${esc(v.nombre)}" placeholder="0"><em class="sub" data-sb="${b}"></em></label>`).join('')}</div>
-      <div class="bill mons">${MONEDAS.map(b => `<label><span>Monedas ${clp(b)}</span><input class="in n" inputmode="numeric" data-m="${b}" value="${v['m' + b] || ''}" ${cerrada ? 'disabled' : ''} aria-label="Monedas de ${clp(b)} de ${esc(v.nombre)}" placeholder="0"><em class="sub" data-sm="${b}"></em></label>`).join('')}
+      <div class="bill">${BILLETES.map(b => `<label><span>${clp(b)}</span><input class="in n" inputmode="numeric" data-b="${b}" value="${v['b' + b] ? v['b' + b] * b : ''}" ${cerrada ? 'disabled' : ''} aria-label="Total en billetes de ${clp(b)} de ${esc(v.nombre)}" placeholder="0"><em class="sub" data-sb="${b}"></em></label>`).join('')}</div>
+      <div class="bill mons">${MONEDAS.map(b => `<label><span>Monedas de ${clp(b)}</span><input class="in n" inputmode="numeric" data-m="${b}" value="${v['m' + b] ? v['m' + b] * b : ''}" ${cerrada ? 'disabled' : ''} aria-label="Total en monedas de ${clp(b)} de ${esc(v.nombre)}" placeholder="0"><em class="sub" data-sm="${b}"></em></label>`).join('')}
         ${v.monedasOtras ? `<label><span>Monedas (conteo anterior)</span><b class="sub2" data-mo="${v.monedasOtras}">${clp(v.monedasOtras)}</b></label>` : ''}</div>
       <div class="row efr"><span class="muted">Billetes <b data-bt></b> · contado <b data-ct></b></span><span class="grow"></span><span data-df></span></div>
       </div></div>`).join('')}
@@ -2685,8 +2685,8 @@ async function vEfectivo(m) {
   function calc() {
     let esp = 0, bil = 0, mon = 0; const por = {}; BILLETES.forEach(b => por[b] = 0);
     filas.forEach(f => {
-      let b = 0; $$('[data-b]', f).forEach(i => { const q = n(i), t = q * Number(i.dataset.b); b += t; por[i.dataset.b] += q; $('[data-sb="' + i.dataset.b + '"]', f).textContent = q ? '= ' + clp(t) : ''; });
-      let mo = Number(($('[data-mo]', f) || {dataset: {}}).dataset.mo || 0); $$('[data-m]', f).forEach(i => { const q = n(i), t = q * Number(i.dataset.m); mo += t; $('[data-sm="' + i.dataset.m + '"]', f).textContent = q ? '= ' + clp(t) : ''; });
+      let b = 0; $$('[data-b]', f).forEach(i => { const t = n(i), d = Number(i.dataset.b); b += t; por[d] += t; $('[data-sb="' + d + '"]', f).innerHTML = t % d ? '<span style="color:var(--bad,#b3261e)">Debe ser múltiplo de ' + clp(d) + '</span>' : ''; });
+      let mo = Number(($('[data-mo]', f) || {dataset: {}}).dataset.mo || 0); $$('[data-m]', f).forEach(i => { const t = n(i), d = Number(i.dataset.m); mo += t; $('[data-sm="' + d + '"]', f).innerHTML = t % d ? '<span style="color:var(--bad,#b3261e)">Debe ser múltiplo de ' + clp(d) + '</span>' : ''; });
       const e = Number(f.dataset.esp), dif = b + mo - e;
       $('[data-bt]', f).textContent = clp(b); $('[data-ct]', f).textContent = clp(b + mo);
       $('[data-hdf]', f).innerHTML = b + mo === 0 ? '<span class="chip">Por contar</span>' : dif === 0 ? '<span class="chip ok">Cuadra</span>' : `<span class="chip ${dif < 0 ? 'bad' : 'warn'}">${dif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(dif))}</span>`;
@@ -2695,7 +2695,7 @@ async function vEfectivo(m) {
     });
     const cc = n($('#cc')), dif = bil + mon - esp;
     $('#s_esp').textContent = clp(esp); $('#s_bil').textContent = clp(bil); $('#s_mon').textContent = clp(mon);
-    $('#s_det').textContent = BILLETES.filter(b => por[b]).map(b => por[b] + ' × ' + clp(b)).join(' · ') || 'Sin billetes contados todavía';
+    $('#s_det').textContent = BILLETES.filter(b => por[b]).map(b => clp(b) + ': ' + clp(por[b])).join(' · ') || 'Sin billetes contados todavía';
     $('#s_dif').innerHTML = bil + mon === 0 ? '—' : dif === 0 ? '<span class="chip ok">Cuadra</span>' : `<span class="chip ${dif < 0 ? 'bad' : 'warn'}">${dif < 0 ? 'Faltan ' : 'Sobran '}${clp(Math.abs(dif))}</span>`;
     $('#s_dep').textContent = clp(bil - cc);
     return { esp, bil, mon, cc };
@@ -2711,8 +2711,10 @@ async function vEfectivo(m) {
   });
   calc();
   if ($('#efg')) $('#efg').onclick = async () => {
+    const mal = $$('[data-b],[data-m]', m).find(i => n(i) % Number(i.dataset.b || i.dataset.m));
+    if (mal) { toast('Revisa los montos: cada uno debe ser múltiplo de su billete o moneda'); mal.focus(); return; }
     const b = $('#efg'); b.disabled = true;
-    const datos = { cajaChica: n($('#cc')), obs: $('#cco').value.trim(), filas: filas.map(f => { const o = { vendedor: f.dataset.u, monedasOtras: Number(($('[data-mo]', f) || {dataset: {}}).dataset.mo || 0) }; $$('[data-b]', f).forEach(i => o['b' + i.dataset.b] = n(i)); $$('[data-m]', f).forEach(i => o['m' + i.dataset.m] = n(i)); return o; }) };
+    const datos = { cajaChica: n($('#cc')), obs: $('#cco').value.trim(), filas: filas.map(f => { const o = { vendedor: f.dataset.u, monedasOtras: Number(($('[data-mo]', f) || {dataset: {}}).dataset.mo || 0) }; $$('[data-b]', f).forEach(i => o['b' + i.dataset.b] = n(i) / Number(i.dataset.b)); $$('[data-m]', f).forEach(i => o['m' + i.dataset.m] = n(i) / Number(i.dataset.m)); return o; }) };
     try { await api('guardarConteoEfectivo', S.sess.token, S.fecha, datos); toast('Conteo guardado'); S.tocado = false; } finally { b.disabled = false; }
   };
 }

@@ -620,3 +620,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v132 — Billetes y monedas por denominación en Efectivo del día (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, style.css, sw.js)
 - Cada billete ($20.000…$1.000) muestra su monto ("= $200.000") y las monedas se cuentan por tipo ($500, $100, $50, $10), también con su monto. CONTEO_EFECTIVO agrega columnas `m500,m100,m50,m10` (cantidades; `asegurarColsConteo_` las crea sola al guardar). `monedas` sigue siendo el TOTAL en $ (Σ cantidad × valor), así resumen, Excel y KPI no cambian. Conteos antiguos con solo `monedas` salen como "Monedas (conteo anterior)" (`monedasOtras`) y se conservan. Las monedas siguen sin depositarse. El Excel "EFECTIVO A DEPOSITAR" sigue con la columna MONEDAS total.
+
+## v133 — Efectivo del día: se anota el MONTO de cada billete/moneda (solo frontend: app.js, sw.js)
+- Como en la rendición manual: en cada recuadro se escribe cuánto suma ese tipo (p. ej. $200.000 en billetes de $20.000; monedas de $500/$100/$50/$10 igual). El cliente lo convierte a cantidad al guardar (monto ÷ valor) y avisa si no es múltiplo; el servidor y la hoja no cambian (siguen guardando cantidades).
