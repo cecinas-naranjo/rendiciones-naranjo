@@ -2635,7 +2635,7 @@ function preciosKg_(detV) {
   return p;
 }
 /** Kilos de un vendedor: salida − retorno vs facturado, por producto, con 2 decimales, y la diferencia valorizada en pesos
- *  (positivo = salió y no volvió ni se facturó: se descuenta de su liquidación). */
+ *  (positivo = salió y no volvió ni se facturó: informativo). */
 function kilosDe_(v, desp, detV, unidad, precios, anul) {
   const m = {};
   const it = (c, nombre) => m[c] = m[c] || { codigo: c, producto: nombre, salida: 0, retorno: 0, facturado: 0 };
@@ -3139,7 +3139,7 @@ function generarArchivo_(fecha, r, borrador) {
   R.tabla('', [{ h: 'VENDEDOR' }, { h: 'DOCS', sum: 1 }, { h: 'VENTA', t: '$', sum: 1 }, { h: 'CRÉDITO', t: '$', sum: 1 }, { h: 'DESCUENTOS', t: '$', sum: 1 },
     { h: 'EFECTIVO', t: '$', sum: 1 }, { h: 'TRANSF. BICE', t: '$', sum: 1 }, { h: 'TRANSF. ESTADO', t: '$', sum: 1 }, { h: 'TRANSF. SANTANDER', t: '$', sum: 1 },
     { h: 'CHEQUE', t: '$', sum: 1 }, { h: 'COBRANZA', t: '$', sum: 1 }, { h: 'GASTOS', t: '$', sum: 1 }, { h: 'DEPÓSITOS', t: '$', sum: 1 },
-    { h: 'EFECTIVO A ENTREGAR', t: '$', sum: 1 }, { h: 'KG VENDIDOS', t: 'kg', sum: 1 }, { h: 'KG FACTURADOS', t: 'kg', sum: 1 }, { h: 'DIF. KILOS $ (A DESCONTAR)', t: '$', sum: 1 }],
+    { h: 'EFECTIVO A ENTREGAR', t: '$', sum: 1 }, { h: 'KG VENDIDOS', t: 'kg', sum: 1 }, { h: 'KG FACTURADOS', t: 'kg', sum: 1 }, { h: 'DIF. KILOS $', t: '$', sum: 1 }],
     r.porVendedor.map(t => [(usuarios[t.vendedor] || {}).nombre || t.vendedor, t.documentos, t.venta, t.credito, t.descuentos, t.EFECTIVO,
       t.bancos.BICE, t.bancos.ESTADO, t.bancos.SANTANDER, t.CHEQUE, t.cobranza, t.gastos, t.depositos, t.efectivoEntregar, t.kilos.vendido, t.kilos.facturado, t.kilos.diferenciaPesos]));
   const sumM = a => a.reduce((x, y) => x + num_(y.monto), 0);

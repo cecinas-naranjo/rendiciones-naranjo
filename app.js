@@ -2086,7 +2086,7 @@ async function abrirVendedor(usuario) {
           <div class="muted">${f.estado === 'DETALLADO' ? f.pagos.map(p => esc(textoPago(p)) + (f.pagos.length > 1 ? ' ' + clp(p.monto) : '')).join(' + ')
             + (f.descAprob ? ' · descuento ' + clp(f.descAprob) : '') + (f.detalladoPor ? ' · por ' + esc(f.detalladoPor.split(' ')[0]) : '')
             : f.descPend ? 'Descuento esperando autorización' : 'Por detallar'}</div></div>`).join('') : '<div class="muted" style="padding:6px 0">No hay folios en este filtro.</div>'}</div>
-      ${v.kilos && v.kilos.detalle.length ? `<div class="dsec"><div class="dtit"><b>Diferencia de kilos</b><span>${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)} kg · ${v.kilos.diferenciaPesos > 0 ? 'a descontar ' : 'a favor '}${clp(Math.abs(v.kilos.diferenciaPesos))}</span></div>
+      ${v.kilos && v.kilos.detalle.length ? `<div class="dsec"><div class="dtit"><b>Diferencia de kilos</b><span>${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)} kg · ${v.kilos.diferenciaPesos > 0 ? 'faltante ' : 'sobrante '}${clp(Math.abs(v.kilos.diferenciaPesos))}</span></div>
         ${v.sinRetorno ? `<p class="muted" style="margin:6px 0">Falta registrar el retorno de ${v.sinRetorno} producto(s): la diferencia es provisoria.</p>` : ''}
         ${v.kilos.detalle.map(d => fila(esc(d.producto), `sale ${kg(d.salida)} − vuelve ${kg(d.retorno)} − factura ${kg(d.facturado)} = ${d.diferencia > 0 ? '+' : ''}${kg(d.diferencia)} kg × ${clp(d.precio)}`, d.monto)).join('')}</div>` : ''}
       ${Object.keys(v.transf).map(b => sec('Transferencias ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0),
@@ -2187,7 +2187,7 @@ async function imprimirInspeccion(usuario) {
       ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${depHtml}
       <table class="s sp">${t.gastos ? suma('(−) Suma de gastos', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, -t.gastos, true) : ''}
         </table>
-      ${v.kilos && v.kilos.detalle.length ? `<div class="blk"><div class="bt"><span><b>Diferencia de kilos</b> <small>${v.kilos.diferencia > 0 ? 'a descontar de su liquidación' : 'a favor del vendedor'} · no entra al total</small></span><b class="m">${mm(v.kilos.diferenciaPesos)}</b><i></i></div>
+      ${v.kilos && v.kilos.detalle.length ? `<div class="blk"><div class="bt"><span><b>Diferencia de kilos</b> <small>${v.kilos.diferencia > 0 ? 'kilos faltantes' : 'kilos sobrantes'} · no entra al total</small></span><b class="m">${mm(v.kilos.diferenciaPesos)}</b><i></i></div>
         <table class="d"><colgroup><col><col style="width:2cm"><col style="width:2cm"><col style="width:2cm"><col style="width:2.3cm"><col style="width:2.6cm"><col style="width:15pt"></colgroup>
         <tr><td class="g">Producto</td><td class="m g">Sale − vuelve</td><td class="m g">Factura</td><td class="m g">Dif. kg</td><td class="m g">Precio kg</td><td class="m g">Monto</td>${SINCK}</tr>
         ${v.kilos.detalle.map(d => `<tr><td>${esc(d.producto)}</td><td class="m g">${kg(d.salida - d.retorno)}</td><td class="m g">${kg(d.facturado)}</td><td class="m">${kg(d.diferencia)}</td><td class="m g">${clp(d.precio)}</td><td class="m">${mm(d.monto)}</td>${CK}</tr>`).join('')}</table></div>` : ''}
@@ -2752,7 +2752,7 @@ async function vResumen(m) {
         ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
           <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
           ${r.hayDetalle ? `<dt>Diferencia kilos</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)}</dd>
-          ${v.kilos.diferenciaPesos ? `<dt>${v.kilos.diferenciaPesos > 0 ? 'A descontar de su liquidación' : 'A favor del vendedor'}</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${clp(Math.abs(v.kilos.diferenciaPesos))}</dd>` : ''}` : ''}` : ''}
+          ${v.kilos.diferenciaPesos ? `<dt>${v.kilos.diferenciaPesos > 0 ? 'Kilos faltantes' : 'Kilos sobrantes'}</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${clp(Math.abs(v.kilos.diferenciaPesos))}</dd>` : ''}` : ''}` : ''}
       </dl><div class="vermas">Ver detalle ›</div></div>`).join('')}</div>` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
     ${r.sinAsignar.length ? `<h3>Documentos sin vendedor</h3><div class="tw"><table><thead><tr><th>Documento</th><th>Cliente</th><th>Terminal</th><th class="r">Total</th><th>Asignar a</th></tr></thead><tbody>
       ${r.sinAsignar.map(d => `<tr><td>${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)}</td><td>${esc(d.cliente)}</td><td>${esc(d.terminal)}</td><td class="r">${clp(d.total)}</td>
@@ -3299,7 +3299,7 @@ async function vDatos(m) {
       <div class="dksimple"><b>En simple:</b> se facturaron <b>${kg(k.total)}</b>. ${k.faltante > 0 ? `Comparando lo que salió de bodega con lo que volvió y lo que se facturó, <b>faltan kilos por ${clp(k.faltante)}</b>: es producto que salió y no aparece vendido ni devuelto.` : 'No hay kilos faltantes en este período.'}
         Las mermas y reprocesos suman <b>${clp(me.monto)}</b> (${pct(me.pctVenta)} de la venta).</div>
       <div class="dkks">${kpi('Kilos facturados', kg(k.total), 'Solo productos que se venden por kilo.')}${kpi('Precio promedio por kilo', clp(k.precioPromedio), 'Venta de esos productos dividida en los kilos.')}
-        ${kpi('Kilos faltantes en plata', clp(k.faltante), 'Salió, no volvió y no se facturó. Se descuenta de la liquidación del vendedor.', pill(fPct >= 2 ? 'bad' : fPct >= 0.5 ? 'warn' : 'ok', pct(fPct) + ' de la venta'))}
+        ${kpi('Kilos faltantes en plata', clp(k.faltante), 'Salió, no volvió y no se facturó.', pill(fPct >= 2 ? 'bad' : fPct >= 0.5 ? 'warn' : 'ok', pct(fPct) + ' de la venta'))}
         ${kpi('Mermas y reprocesos', clp(me.monto), 'Producto que volvió y no se pudo vender (monto de las notas de crédito).', pill(me.pctVenta >= 4 ? 'bad' : me.pctVenta >= 2 ? 'warn' : 'ok', pct(me.pctVenta) + ' de la venta'))}</div>
       <div class="dkg"><div class="dkcard"><b>Productos que más se venden</b><small>En kilos, durante el período.</small>${ranking(k.productos.map(x => ({ l: x.producto, v: x.kilos, s: clp(x.monto) + ' vendidos' })), kg)}</div>
         <div class="dkcard"><b>Diferencia de kilos por vendedor</b><small>Rojo = faltan kilos (se descuenta). Verde = sobran a favor del vendedor.</small>

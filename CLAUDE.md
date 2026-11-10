@@ -592,3 +592,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v124 — «Efectivo recibido» de la cuadratura se llena con el conteo (requiere pegar APPS_SCRIPT.js COMPLETO)
 - En la hoja de cada vendedor, `Efectivo recibido` = billetes + monedas de CONTEO_EFECTIVO (antes quedaba vacío); DIFERENCIA se calcula sola (recibido − efectivo a entregar). Sin conteo sigue vacío y amarillo para anotarlo a mano.
+
+## v125 — Se quitó «a descontar de la liquidación» (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Por pedido del dueño ya no se habla de descontar del sueldo. Excel: columna «DIF. KILOS $». App: «faltante / sobrante» en lugar de «a descontar / a favor». Los cálculos no cambian.
