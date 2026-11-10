@@ -23,6 +23,8 @@ const CFG = {
   KG_POR_UNIDAD: { porDefecto: 3, porCodigo: { '7': 1.8 } },   // 7 = salchichón cervecero
   // Se sugieren por kilo, no por unidad (patés y longanizas)
   SOLO_KILOS: ['1', '1.1', '3'],
+  // v123: productos que Mi DTE factura con OTRO nombre que el de la bodega/inventario. [nombre en Mi DTE, nombre del producto en la app]. Las ventas (Informe de ventas) se leen como el producto de la app.
+  ALIAS_PRODUCTOS: [['PACK ENVASADO ARROLLADO HUASO 150G', 'P.LAM-ARROLLADO 150G']],
   VENTA_EN_KILOS: ['COSTILLAR'],   // productos que se venden y se pesan en kilos aunque la hoja PRODUCTOS diga UN (parte del nombre)
   INV_EN_KILOS: ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'COSTILLAR', 'LONGANIZA', 'PATE DE CERDO', 'COSTILLAR DE CERDO AHUMADO ENV.'],   // nombre en la planilla de inventario o nombre de venta   // productos terminados que el inventario lleva en kilos; el resto de terminados va en unidades
   // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
@@ -266,7 +268,7 @@ function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
 
 // Cuerpo: {"fn":"nombre","args":[...]} enviado como text/plain (evita el preflight CORS)
 function doPost(e) {
-  MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {};
+  MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {}; ALIAS_ = null;
   try {
     const req = JSON.parse(e.postData.contents);
     const fn = API[req.fn];
@@ -333,7 +335,7 @@ const TTL_DIA_ = 600;
 function calentar() {
   const h = Number(Utilities.formatDate(new Date(), CFG.TZ, 'H'));
   if (h < 6 || h >= 23) return;
-  MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {}; FRESCO_ = false;
+  MEMO_ = {}; SLICE_ = {}; VER_ = {}; TOCADAS_ = {}; FRESCO_ = false; ALIAS_ = null;
   const hoy = hoy_(), ayer = Utilities.formatDate(new Date(Date.now() - 864e5), CFG.TZ, 'yyyy-MM-dd');
   try { read_('USUARIOS'); read_('PRODUCTOS'); } catch (e) {}
   const tablas = Object.keys(POR_DIA_);
@@ -470,6 +472,14 @@ function valores_(name) {
   if (CACHEADAS_[name]) try { const j = JSON.stringify(vals); if (j.length < 90000) CacheService.getScriptCache().put('tbl_' + name, j, 600); } catch (e) {}
   return vals;
 }
+let ALIAS_ = null;
+/** nombre en Mi DTE (normalizado) -> {codigo, nombre} del producto de la app (CFG.ALIAS_PRODUCTOS). Una vez por petición. */
+function aliasProductos_() {
+  if (ALIAS_) return ALIAS_;
+  ALIAS_ = {}; const pp = {}; read_('PRODUCTOS').forEach(p => { if (!pp[claveInv_(p.nombre)] || String(p.codigo).charAt(0) !== '?' ) pp[claveInv_(p.nombre)] = p; });
+  (CFG.ALIAS_PRODUCTOS || []).forEach(([dte, app]) => { const p = pp[claveInv_(app)]; if (p) ALIAS_[claveInv_(dte)] = { codigo: codeKey_(p.codigo), nombre: p.nombre }; });
+  return ALIAS_;
+}
 function read_(name) {
   if (!MEMO_[name]) MEMO_[name] = valores_(name);
   const head = SCHEMA[name];
@@ -479,6 +489,7 @@ function read_(name) {
     head.forEach((h, j) => o[h] = r[j] instanceof Date && (h === 'fecha' || h === 'cheque_fecha') ? normFecha_(r[j]) : r[j]);
     if (o.fecha !== undefined) o.fecha = normFecha_(o.fecha);
     if (name === 'PRODUCTOS' && CFG.VENTA_EN_KILOS.some(k => normTxt_(o.nombre).indexOf(k) >= 0)) o.unidad = 'KG';
+    if (name === 'VENTAS_DETALLE') { const a = aliasProductos_()[claveInv_(o.producto)]; if (a) { o.codigo = a.codigo; o.producto = a.nombre; } }   // v123: mismo producto con otro nombre en Mi DTE
     return o;
   });
 }
