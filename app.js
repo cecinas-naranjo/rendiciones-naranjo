@@ -2064,7 +2064,7 @@ async function abrirVendedor(usuario) {
         <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
           <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)} − gastos ${clp(t.gastos)} − depositado ${clp(t.depositos)}</small></div>
         <div class="dres">
-          ${fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${fila('Venta contado', '', t.contado)}${t.creditoTotal ? fila('Crédito total', 'crédito ' + clp(t.credito) + ' · cheques ' + clp(t.chequesVenta), t.creditoTotal) : ''}
+          ${fila('Venta (' + v.documentos + ' docs)', t.nc ? 'ya sin notas de crédito por ' + clp(t.nc) : '', t.venta)}${fila('Venta contado', '', t.contado)}${t.creditoTotal ? fila('Crédito total', 'crédito ' + clp(t.credito) + ' · cheques ' + clp(t.chequesVenta), t.creditoTotal) : ''}
           ${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
           ${Object.keys(v.transf).filter(b => v.transf[b].length).map(b => fila('Transf. ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0))).join('')}
           ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}</div></div>
@@ -2732,7 +2732,7 @@ async function vResumen(m) {
       <span class="chip ${cerrada ? 'ok' : 'cu'}">${cerrada ? 'Cerrada' : 'Abierta'}</span></div>
     <ol class="pasos">${pasos.map((p, i) => `<li class="${p[2] ? 'ok' : i === actual ? 'now' : ''}"><button type="button" data-paso="${p[3]}">
       <i>${p[2] ? '✓' : i + 1}</i><b>${p[0]}</b><small>${esc(p[1])}</small></button></li>`).join('')}</ol>
-    <div class="kpis" style="margin-top:14px"><div><span>Venta documentada</span><b>${clp(t.venta)}</b></div><div><span>Venta contado</span><b>${clp(t.contado)}</b></div><div><span>Crédito total</span><b>${clp(t.credito)}</b><small>${clp(t.creditoVenta)} a crédito · ${clp(t.creditoCheque)} en cheques</small></div>
+    <div class="kpis" style="margin-top:14px"><div><span>Venta documentada</span><b>${clp(t.venta)}</b>${t.nc ? `<small>ya sin ${clp(t.nc)} en notas de crédito</small>` : ''}</div><div><span>Venta contado</span><b>${clp(t.contado)}</b></div><div><span>Crédito total</span><b>${clp(t.credito)}</b><small>${clp(t.creditoVenta)} a crédito · ${clp(t.creditoCheque)} en cheques</small></div>
       <div><span>Cobranza</span><b>${clp(t.cobranza)}</b></div><div><span>Gastos</span><b>${clp(t.gastos)}</b></div>
       <div class="cash"><span>Efectivo a recibir</span><b>${clp(t.efectivo)}</b></div></div>
     ${r.alertas.length ? `<div class="alert" id="avisos"><b>Antes de cerrar</b><ul>${r.alertas.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`
@@ -2743,7 +2743,7 @@ async function vResumen(m) {
       <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
     <div class="vcards">${r.porVendedor.map(v => `<div class="vcard clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(v.vendedor)}">
       <div class="row"><b class="grow" style="font-size:17px">${esc(v.vendedor)}</b>${v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar · Detallar ›</button>` : '<span class="chip ok">Detallado</span>'}</div>
-      <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.venta)}</dd><dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
+      <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.venta)}</dd>${v.nc ? `<dt class="sub">· ya sin notas de crédito</dt><dd class="sub">−${clp(v.nc)}</dd>` : ''}<dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
         ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
         ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>

@@ -2822,7 +2822,8 @@ function resumen_(fecha) {
     tot.bancos = {}; BANCOS.forEach(b => tot.bancos[b] = 0);
     ds.forEach(d => d.pagos.filter(p => p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO')
       .forEach(p => { const b = BANCOS.indexOf(p.banco) >= 0 ? p.banco : 'BICE'; tot.bancos[b] += p.monto; }));
-    tot.credito = tot.CREDITO; tot.contado = tot.venta - tot.CREDITO - tot.descuentos;
+    tot.credito = tot.CREDITO; tot.nc = tot.NOTA_CREDITO; tot.ventaDocs = tot.venta; tot.venta = tot.venta - tot.nc;     // v130: la venta documentada ya viene sin las notas de crédito
+    tot.contado = tot.venta - tot.CREDITO - tot.descuentos;
     const c = cob.filter(x => x.vendedor === v);
     tot.cobranza = c.reduce((a, x) => a + num_(x.monto), 0);
     tot.cobranzaEfectivo = c.filter(x => x.forma === 'EFECTIVO').reduce((a, x) => a + num_(x.monto), 0);
@@ -2852,7 +2853,7 @@ function resumen_(fecha) {
     fecha, estado: estadoDia_(fecha), porVendedor, hayDetalle,
     sinAsignar: sinAsignar.map(d => ({ folio_key: d.folio_key, tipo: d.tipo, folio: d.folio, cliente: d.cliente, total: d.total, terminal: d.terminal })),
     totales: {
-      venta: porVendedor.reduce((a, t) => a + t.venta, 0),
+      venta: porVendedor.reduce((a, t) => a + t.venta, 0), nc: porVendedor.reduce((a, t) => a + t.nc, 0),
       credito: porVendedor.reduce((a, t) => a + t.credito, 0),
       efectivo: porVendedor.reduce((a, t) => a + t.efectivoEntregar, 0),
       devoluciones: devs.length,
@@ -2938,7 +2939,7 @@ function getInspeccion(token, fecha, vendedor) {
       usuario: v.usuario, nombre: v.nombre, terminal: v.terminales || '',
       documentos: ds.length, detallados: ds.filter(d => d.estado === 'DETALLADO').length,
       docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
-      totales: { venta, credito, nc, descuentos: desc, contado: venta - credito - nc - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
+      totales: { venta: venta - nc, ventaDocs: venta, credito, nc, descuentos: desc, contado: venta - nc - credito - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         entregar: efVentas + efCob - tGas - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, creditos, porDia: porDia_(ds, cs, gs),
       kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
@@ -3122,8 +3123,8 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
   const contEf = cxEf ? BILLETES.reduce((a, b) => a + b * num_(cxEf['b' + b]), 0) + num_(cxEf.monedas) : null;
   const lineas = [
     ['Venta documentada', '=' + ref(V, 4)],
-    ['(−) Crédito', '=' + ref(V, 11)],
     ['(−) Notas de crédito', '=' + ref(V, 12)],
+    ['(−) Crédito', '=' + ref(V, 11)],
     ['(−) Descuentos autorizados', '=' + ref(V, 13)],
     ['Venta contado', '=D{0}-D{1}-D{2}-D{3}'],
     ['Transferencias BICE', '=' + ref(V, 7) + '+' + ref(C, 4)],
