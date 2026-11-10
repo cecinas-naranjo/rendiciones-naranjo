@@ -263,7 +263,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarNotasCredito, marcarNotaEmitida, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -1000,7 +1000,7 @@ function cruzarAdelantos_() {
     }
     else if (d.estado === 'DETALLADO') { estado = 'APLICADO'; nota = 'El folio ya estaba detallado.'; }
     else if (d.vendedor !== a.vendedor) { estado = 'REVISAR'; nota = 'Mi DTE lo asignó a otro terminal/vendedor.'; }
-    else if (Math.round(num_(d.total)) !== Math.round(num_(a.monto))) { estado = 'REVISAR'; nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + '.'; }
+    else if (Math.round(num_(d.total)) !== Math.round(num_(a.monto))) { estado = 'REVISAR'; nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + '.' + (num_(d.total) > num_(a.monto) ? ' Si la diferencia es una nota de crédito por hacer, tócalo y queda como nota de crédito.' : ''); }
     else if (desc.some(x => x.folio_key === d.folio_key && (x.estado === 'PENDIENTE' || x.estado === 'APROBADO'))) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
     else if (anulacionesDe_(d.fecha).some(x => x.folio_key === d.folio_key && x.estado !== 'RECHAZADA')) { estado = 'REVISAR'; nota = 'Tiene una anulación o nota de crédito: detállalo normal.'; }
     else { aplicarAdelanto_(a, d); estado = 'APLICADO'; aplicados++; }
@@ -1008,6 +1008,32 @@ function cruzarAdelantos_() {
     if (a.estado !== estado || a.nota !== nota) { a.estado = estado; a.nota = nota; a.resuelto = now_(); updateRow_('ADELANTOS', a._row, a); }
   });
   return { aplicados, revisar, sinLlegar };
+}
+/** v128: el vendedor anotó un monto menor al de Mi DTE porque había una nota de crédito por hacer. Aplica el adelanto y deja la diferencia
+    como línea NOTA_CREDITO (queda en «Notas de crédito por emitir»). Solo si el folio llegó, es del mismo vendedor y el monto anotado es menor. */
+function aplicarAdelantoConNC(token, id) {
+  const u = auth_(token);
+  return withLock_(() => {
+    asegurarAdelantos_();
+    const a = read_('ADELANTOS').find(x => x.id === String(id));
+    if (!a) throw new Error('No encontré ese folio anotado.');
+    if (u.rol === 'VENDEDOR' && a.vendedor !== u.usuario) throw new Error('Este folio no es tuyo.');
+    if (a.estado === 'APLICADO') return { estado: 'APLICADO', diferencia: 0 };
+    const d = read_('DOCUMENTOS').find(x => keyNorm_(x.folio_key) === keyNorm_(a.folio_key));
+    if (!d) throw new Error('Ese folio aún no llega de Mi DTE.');
+    if (d.vendedor !== a.vendedor) throw new Error('Mi DTE lo asignó a otro vendedor.');
+    assertAbierta_(d.fecha);
+    const dif = Math.round(num_(d.total)) - Math.round(num_(a.monto));
+    if (!(dif > 0)) throw new Error('El monto anotado no es menor al de Mi DTE.');
+    if (d.estado === 'DETALLADO') throw new Error('El folio ya está detallado.');
+    if (read_('DESCUENTOS').some(x => x.folio_key === d.folio_key && (x.estado === 'PENDIENTE' || x.estado === 'APROBADO'))) throw new Error('Tiene un descuento: detállalo normal.');
+    const lineas = lineasDe_(a).concat([{ forma: 'NOTA_CREDITO', banco: '', monto: dif }]);
+    a.pagos = JSON.stringify(lineas);
+    aplicarAdelanto_(a, d);
+    a.estado = 'APLICADO'; a.nota = 'Diferencia de $' + dif + ' registrada como nota de crédito por emitir.'; a.resuelto = now_();
+    updateRow_('ADELANTOS', a._row, a);
+    return { estado: 'APLICADO', diferencia: dif };
+  });
 }
 /** Vuelve a cruzar los adelantos a mano (por si Mi DTE se cargó antes o se corrigió algo). */
 function reintentarAdelantos(token) {
