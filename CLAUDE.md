@@ -614,3 +614,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v130 — La venta documentada ya viene sin las notas de crédito (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Pedido: restar enseguida la NC a la venta documentada para no confundir. `resumen_` y `getInspeccion`: `venta` = suma de documentos − líneas NOTA_CREDITO; `ventaDocs` = suma bruta; `nc` = notas de crédito; `contado` = venta − crédito − descuentos (mismo valor de antes en la inspección; en `resumen_` antes no restaba la NC y ahora sí). Pantallas (Resumen, tarjeta del vendedor, abrirVendedor) muestran «ya sin notas de crédito por $X». Excel: en la cuadratura la línea «(−) Notas de crédito» va justo bajo «Venta documentada» (la hoja VENTA Y CREDITO y la columna NC no cambian); la columna VENTA del RESUMEN pasa a ser neta.
+
+## v131 — Venta con nota de crédito, en tres líneas (solo frontend: app.js, sw.js)
+- «Venta (N docs)» bruta → «− Notas de crédito» → «Venta neta» (antes mostraba solo el neto con «ya sin notas de crédito», que confundía). Sin NC queda la línea única. El KPI del Resumen del día se llama «Venta neta» y aclara «bruta − NC».
