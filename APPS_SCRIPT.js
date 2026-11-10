@@ -3060,7 +3060,7 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     ['Firma vendedor: ____________________        Firma recibe: ____________________', '']
   ];
   lineas.forEach((l, i) => {
-    const f = String(l[1]).replace(/\{(\d+)\}/g, (_, k) => cuadIni + Number(k));
+    const f = typeof l[1] === 'number' ? l[1] : String(l[1]).replace(/\{(\d+)\}/g, (_, k) => cuadIni + Number(k));
     H.g[cuadIni - 1 + i] = [l[0], '', '', f].concat(Array(H.W - 4).fill(''));
     const r = cuadIni + i;
     if (i === 16) { H.op(r, 1, 1, 8, g => g.merge().setFontColor('#595959').setVerticalAlignment('bottom')); return; }
