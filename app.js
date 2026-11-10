@@ -1254,7 +1254,8 @@ function abrirDetalleCompleto(d, estadoDia, alGuardar) {
   }
   function saldo() {
     const dif = d.total - lineas.reduce((a, l) => a + soloDigitos(l.monto), 0) - descMonto();
-    $('#sal', ov).innerHTML = `<div class="saldo ${dif === 0 ? 'ok' : 'no'}"><span>${dif === 0 ? 'Cuadra con el documento' : dif > 0 ? 'Falta asignar' : 'Te pasaste por'}</span><span>${clp(Math.abs(dif))}</span></div>`;
+    $('#sal', ov).innerHTML = `<div class="saldo ${dif === 0 ? 'ok' : 'no'}"><span>${dif === 0 ? 'Cuadra con el documento' : dif > 0 ? 'Falta asignar' : 'Te pasaste por'}</span><span>${clp(Math.abs(dif))}</span></div>${dif > 0 && !cerrada && S.cat.formas.indexOf('NOTA_CREDITO') >= 0 ? '<button class="btn ghost sm" type="button" id="ncq" style="margin-top:6px">Dejar la diferencia como nota de crédito</button>' : ''}`;
+    const nq = $('#ncq', ov); if (nq) nq.onclick = () => { lineas.push({ forma: 'NOTA_CREDITO', banco: '', monto: dif }); dibujar(); };
     const ok = $('#ok', ov); if (ok) ok.disabled = dif !== 0;
     return dif;
   }

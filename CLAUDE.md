@@ -608,3 +608,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v128 — Folio adelantado con nota de crédito pendiente (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Caso folio 57443: el vendedor anotó $323.982 porque había una NC por hacer y Mi DTE trae $337.162 → quedaba REVISAR. Ahora, si el monto anotado es MENOR al de Mi DTE (mismo vendedor, folio sin detallar, sin descuento), el adelanto muestra el botón «Registrar $X como nota de crédito» (API `aplicarAdelantoConNC(token, id)`): aplica las líneas anotadas + una línea NOTA_CREDITO por la diferencia, deja el folio DETALLADO y el adelanto APLICADO. La diferencia aparece en «Notas de crédito» (v127). No es automático a propósito: un error de tipeo no debe convertirse solo en NC.
+
+## v129 — Detalle completo: botón «Dejar la diferencia como nota de crédito» (solo frontend: app.js, sw.js)
+- En `abrirDetalleCompleto`, si faltan montos por asignar aparece ese botón: agrega una línea NOTA_CREDITO por la diferencia. Se llega al editor completo desde el enlace «Pagó de dos formas, abonó una parte, hubo descuento o nota de crédito» del detalle rápido (un folio con una sola línea, p. ej. cheque por el total, abre el rápido).
