@@ -163,6 +163,7 @@ function limpiarTodo_() {
       resumen.push(n + ': ' + Math.max(filas, 0) + ' filas borradas');
     });
     try { const pr = PropertiesService.getScriptProperties(); pr.deleteProperty('PLANILLA_CREDITOS_ID'); pr.deleteProperty('PLANILLA_SUCIA'); resumen.push('Planilla única de créditos soltada (el archivo viejo queda en Drive)'); } catch (e) {}
+    try { const pr = PropertiesService.getScriptProperties(), ps = pr.getProperties(); Object.keys(ps).filter(k => /^ARCH_/.test(k)).forEach(k => pr.deleteProperty(k)); } catch (e) {}
     Object.keys(CACHEADAS_).forEach(limpiarCache_);
     invalidarTodo_();
   } finally { lock.releaseLock(); }
@@ -347,7 +348,18 @@ function calentar() {
   try { conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_()); } catch (e) {}
   try { conCache_('inv|' + hoy, ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(hoy)); } catch (e) {}
   FRESCO_ = true;
+  try { const c = CacheService.getScriptCache(); if (c.get('arch_sucio')) { c.remove('arch_sucio'); actualizarArchivosAbiertos_(); } } catch (e) { Logger.log('actualizarArchivosAbiertos_: ' + e); }
 }
+/** v107: rearma las planillas de rendición (las que ya se generaron con «Ver cómo quedaría») de los días que no están cerrados. Máx. 2, las más recientes. */
+function actualizarArchivosAbiertos_() {
+  const props = PropertiesService.getScriptProperties().getProperties();
+  const fechas = Object.keys(props).filter(k => /^ARCH_\d{4}-\d{2}-\d{2}$/.test(k)).map(k => k.slice(5)).sort().reverse();
+  const cerradas = {}; read_('RENDICIONES').forEach(x => { if (x.estado === 'CERRADA') cerradas[x.fecha] = 1; });
+  fechas.filter(f => !cerradas[f]).slice(0, 2).forEach(f => {
+    try { withLock_(() => generarArchivo_(f, resumen_(f), true)); } catch (e) { Logger.log('Archivo ' + f + ': ' + e); }
+  });
+}
+const ARCH_TABLAS_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, VENTAS_DETALLE: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, DEVOLUCIONES: 1, CONTEO_EFECTIVO: 1 };
 function activarPrecalentamiento() {
   try { if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'calentar')) ScriptApp.newTrigger('calentar').timeBased().everyMinutes(5).create(); } catch (e) { Logger.log('No se pudo crear el disparador: ' + e); }
 }
@@ -388,6 +400,7 @@ function cerrarPeticion_() {
   const t = Object.keys(TOCADAS_); if (!t.length) return;
   try { SpreadsheetApp.flush(); } catch (e) {}
   const v = {}; t.forEach(n => v['v_' + n] = nuevaVersion_());
+  if (t.some(n => ARCH_TABLAS_[n])) v['arch_sucio'] = '1';
   try { CacheService.getScriptCache().putAll(v, 21600); } catch (e) {}
   TOCADAS_ = {};
 }
@@ -2092,11 +2105,15 @@ function saldosClientes_() {
   // 1) facturas a crédito
   const cred = {};
   read_('PAGOS').filter(p => p.forma === 'CREDITO').forEach(p => cred[p.folio_key] = (cred[p.folio_key] || 0) + num_(p.monto));
+  // v107: un cheque de venta sigue siendo deuda hasta marcarlo COBRADO (PROTESTADO sigue como deuda)
+  const estCh = {}; read_('CHEQUES_ESTADO').forEach(e => estCh[e.clave] = String(e.estado));
+  const conCheque = {};
+  read_('PAGOS').filter(p => p.forma === 'CHEQUE' && estCh['V|' + p.id] !== 'COBRADO').forEach(p => { cred[p.folio_key] = (cred[p.folio_key] || 0) + num_(p.monto); conCheque[p.folio_key] = 1; });
   const porFolio = {};
   Object.keys(cred).forEach(fk => {
     const d = docs[fk]; if (!d || cred[fk] <= 0) return;
     const c = cli(d.rut, d.cliente);
-    const f = { folio_key: fk, fecha: d.fecha, tipo: d.tipo, folio: String(d.folio), total: num_(d.total), credito: cred[fk], pagado: 0,
+    const f = { folio_key: fk, fecha: d.fecha, tipo: d.tipo, folio: String(d.folio), total: num_(d.total), credito: cred[fk], pagado: 0, cheque: !!conCheque[fk],
       vendedor: d.vendedor, vendedorNombre: nombres[d.vendedor] || d.vendedor, pagos: [] };
     c.facturas.push(f); c.vendedores[f.vendedorNombre] = 1;
     (porFolio[String(d.folio).trim()] = porFolio[String(d.folio).trim()] || []).push({ c, f });
@@ -2820,6 +2837,15 @@ function guardarConteoEfectivo(token, fecha, datos) {
 
 /* ============================ RESUMEN / RENDICIÓN ============================ */
 
+/** v108: efectivo contado por vendedor (billetes + monedas de CONTEO_EFECTIVO). Solo incluye a quien ya tiene conteo. */
+function contadoPorVendedor_(fecha) {
+  const m = {};
+  byFecha_('CONTEO_EFECTIVO', fecha).forEach(x => {
+    if (!x.vendedor || x.vendedor === 'GENERAL') return;
+    m[x.vendedor] = BILLETES.reduce((a, b) => a + b * num_(x['b' + b]), 0) + num_(x.monedas);
+  });
+  return m;
+}
 function resumen_(fecha) {
   cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'DESPACHO', 'VENTAS_DETALLE', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'PROVEEDORES', 'CONSUMO', 'DEVOLUCIONES']);
   const docs = docsDelDia_(fecha);
@@ -2834,6 +2860,7 @@ function resumen_(fecha) {
   const vend = vendedores_().map(v => v.usuario);
   docs.forEach(d => { if (d.vendedor && vend.indexOf(d.vendedor) < 0) vend.push(d.vendedor); });
 
+  const contados = contadoPorVendedor_(fecha);
   const porVendedor = vend.map(v => {
     const ds = docs.filter(d => d.vendedor === v);
     const tot = { vendedor: v, documentos: ds.length, pendientes: ds.filter(d => d.estado !== 'DETALLADO').length,
@@ -2847,8 +2874,10 @@ function resumen_(fecha) {
     tot.bancos = {}; BANCOS.forEach(b => tot.bancos[b] = 0);
     ds.forEach(d => d.pagos.filter(p => p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO')
       .forEach(p => { const b = BANCOS.indexOf(p.banco) >= 0 ? p.banco : 'BICE'; tot.bancos[b] += p.monto; }));
-    tot.credito = tot.CREDITO; tot.nc = tot.NOTA_CREDITO; tot.ventaDocs = tot.venta; tot.venta = tot.venta - tot.nc;     // v130: la venta documentada ya viene sin las notas de crédito
-    tot.contado = tot.venta - tot.CREDITO - tot.descuentos;
+    tot.nc = tot.NOTA_CREDITO; tot.ventaDocs = tot.venta; tot.venta = tot.venta - tot.nc;     // v130: la venta documentada ya viene sin las notas de crédito
+    // v107: un cheque de venta es crédito hasta que se cobra
+    tot.creditoVenta = tot.CREDITO; tot.creditoCheque = tot.CHEQUE; tot.credito = tot.creditoVenta + tot.creditoCheque;
+    tot.contado = tot.venta - tot.credito - tot.descuentos;
     const c = cob.filter(x => x.vendedor === v);
     tot.cobranza = c.reduce((a, x) => a + num_(x.monto), 0);
     tot.cobranzaEfectivo = c.filter(x => x.forma === 'EFECTIVO').reduce((a, x) => a + num_(x.monto), 0);
@@ -2864,6 +2893,9 @@ function resumen_(fecha) {
       tot.depositoDif = dvF.reduce((a, x) => a + num_(x.monto), 0) - incl;
     } else tot.depositoDif = 0;
     tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.depositos;   // v136: los gastos se registran aparte y no bajan lo que se entrega
+    // v108: lo contado en la pestaña Efectivo contra lo que debe entregar (solo aviso)
+    tot.efectivoContado = contados[v] === undefined ? null : contados[v];
+    tot.efectivoDif = tot.efectivoContado === null ? 0 : tot.efectivoContado - tot.efectivoEntregar;
     const k = desp.filter(x => x.vendedor === v);
     tot.kilos = kilosDe_(v, desp, detV, unidad, precios, anulKg_(fecha));
     tot.sinRetorno = k.filter(x => x.salida !== '' && x.retorno === '').length;
@@ -2891,6 +2923,8 @@ function resumen_(fecha) {
       .concat(porVendedor.filter(t => t.depositoDif).map(t => t.vendedor + ': el depósito ' + (t.depositoDif > 0 ? 'supera' : 'no alcanza') +
         ' el efectivo de los folios que incluye (diferencia $' + Math.abs(t.depositoDif).toLocaleString('es-CL') + ')'))
       .concat(porVendedor.filter(t => t.depositoExceso).map(t => t.vendedor + ': depositó $' + t.depositoExceso.toLocaleString('es-CL') + ' más que el efectivo del día'))
+      .concat(porVendedor.filter(t => t.efectivoContado !== null && t.efectivoDif).map(t => t.vendedor + ': efectivo ' + (t.efectivoDif < 0 ? 'FALTA' : 'SOBRA') + ' $' + Math.abs(t.efectivoDif).toLocaleString('es-CL')))
+      .concat(porVendedor.filter(t => t.efectivoContado === null && !t.pendientes && t.efectivoEntregar > 0).map(t => t.vendedor + ': falta contar el efectivo'))
       .concat(porVendedor.filter(t => t.sinRetorno).map(t => t.vendedor + ': falta registrar retorno de ' + t.sinRetorno + ' producto(s)'))
       .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(2).replace('.', ',') + ' kg ($' + Math.abs(t.kilos.diferenciaPesos).toLocaleString('es-CL') + ') ' +
         (t.kilos.diferencia > 0 ? 'salieron y no volvieron ni se facturaron' : 'facturados de más respecto a lo que salió')))
@@ -2930,6 +2964,7 @@ function getInspeccion(token, fecha, vendedor) {
   const doc = d => d.tipo.replace(' Electrónica', '') + ' ' + d.folio;
   const bancoTr = b => BANCOS.indexOf(b) >= 0 ? b : 'BICE';     // igual que en el archivo de rendición
   const momentoCh = f => f && f > fecha ? 'A fecha' : 'Al día';       // cheque al día o a fecha
+  const contados = contadoPorVendedor_(fecha);
   const lista = vendedores_().filter(v => !vendedor || v.usuario === vendedor);
   const out = lista.map(v => {
     const ds = docs.filter(d => d.vendedor === v.usuario), cs = cob.filter(c => c.vendedor === v.usuario);
@@ -2937,14 +2972,14 @@ function getInspeccion(token, fecha, vendedor) {
     if (!ds.length && !cs.length && !gs.length && !dps.length && !desp.some(x => x.vendedor === v.usuario) && vendedor !== v.usuario) return null;
     const transf = {}; BANCOS.forEach(b => transf[b] = []);
     const cheques = [], creditos = [], cobranza = [];
-    let venta = 0, credito = 0, nc = 0, desc = 0, efVentas = 0;
+    let venta = 0, credito = 0, nc = 0, desc = 0, efVentas = 0, chequesVenta = 0;
     ds.forEach(d => {
       venta += num_(d.total); desc += num_(d.descAprob);
       d.pagos.forEach(p => {
         const base = { cliente: d.cliente, rut: d.rut || '', origen: doc(d), tipo: 'Venta', monto: p.monto };
         if (p.forma === 'EFECTIVO') efVentas += p.monto;
         else if (p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO') transf[bancoTr(p.banco)].push(base);
-        else if (p.forma === 'CHEQUE') cheques.push(Object.assign(base, { numero: p.cheque_numero || '', banco: p.banco, fechaCheque: p.cheque_fecha || '', momento: momentoCh(p.cheque_fecha), titular: p.cheque_titular || '' }));
+        else if (p.forma === 'CHEQUE') { chequesVenta += p.monto; cheques.push(Object.assign(base, { numero: p.cheque_numero || '', banco: p.banco, fechaCheque: p.cheque_fecha || '', momento: momentoCh(p.cheque_fecha), titular: p.cheque_titular || '' })); }
         else if (p.forma === 'CREDITO') { credito += p.monto; creditos.push(base); }
         else if (p.forma === 'NOTA_CREDITO') nc += p.monto;
       });
@@ -2964,7 +2999,8 @@ function getInspeccion(token, fecha, vendedor) {
       usuario: v.usuario, nombre: v.nombre, terminal: v.terminales || '',
       documentos: ds.length, detallados: ds.filter(d => d.estado === 'DETALLADO').length,
       docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
-      totales: { venta: venta - nc, ventaDocs: venta, credito, nc, descuentos: desc, contado: venta - nc - credito - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
+      totales: { venta: venta - nc, ventaDocs: venta, credito, chequesVenta, creditoTotal: credito + chequesVenta, nc, descuentos: desc, contado: venta - nc - credito - chequesVenta - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
+        efContado: contados[v.usuario] === undefined ? null : contados[v.usuario],
         entregar: efVentas + efCob - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, creditos, porDia: porDia_(ds, cs, gs),
       kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
@@ -2995,7 +3031,11 @@ function cerrarRendicion(token, fecha, forzar) {
 /** Genera el archivo tal como quedaría, sin cerrar el día. */
 function vistaPreviaRendicion(token, fecha) {
   auth_(token, ['RENDICION','SUPERVISOR']);
-  return withLock_(() => ({ url: generarArchivo_(fecha, resumen_(fecha), true) }));
+  return withLock_(() => {
+    const reg = read_('RENDICIONES').find(x => x.fecha === fecha);
+    if (reg && reg.estado === 'CERRADA' && reg.archivo_url) return { url: reg.archivo_url };      // día cerrado: ya está el definitivo
+    return { url: generarArchivo_(fecha, resumen_(fecha), true) };
+  });
 }
 
 function reabrirRendicion(token, fecha) {
@@ -3149,7 +3189,7 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
   const lineas = [
     ['Venta documentada', '=' + ref(V, 4)],
     ['(−) Notas de crédito', '=' + ref(V, 12)],
-    ['(−) Crédito', '=' + ref(V, 11)],
+    ['(−) Crédito y cheques de ventas', '=' + ref(V, 11) + '+' + ref(V, 10)],
     ['(−) Descuentos autorizados', '=' + ref(V, 13)],
     ['Venta contado', '=D{0}-D{1}-D{2}-D{3}'],
     ['Transferencias BICE', '=' + ref(V, 7) + '+' + ref(C, 4)],
@@ -3161,7 +3201,7 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     ['Gastos del día (aparte, no se descuentan)', '=' + ref(G, 2)],
     ['(−) Depositado a la empresa', '=' + ref(D, 2)],
     ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{12}'],
-    ['Efectivo recibido', contEf == null ? '' : contEf],
+    ['Efectivo recibido', contEf != null ? contEf : (datos.recibidoManual && datos.recibidoManual[t.vendedor] !== undefined ? datos.recibidoManual[t.vendedor] : '')],
     ['DIFERENCIA', '=IF(D{14}="","",D{14}-D{13})'],
     ['Firma vendedor: ____________________        Firma recibe: ____________________', '']
   ];
@@ -3183,15 +3223,30 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
 /** Crea el archivo de rendición: una hoja por vendedor y luego las hojas generales (formato de la planilla actual). */
 function generarArchivo_(fecha, r, borrador) {
   const f = fecha.split('-'), nombre = (borrador ? 'BORRADOR ' : '') + 'Rendición ' + f[2] + '-' + f[1] + '-' + f[0];
-  const ss = SpreadsheetApp.create(nombre);
+  // v107: UNA sola planilla por día (id en la propiedad ARCH_<fecha>): se reutiliza la misma URL, se borran las hojas y se rearman.
+  const props = PropertiesService.getScriptProperties(), idPrev = props.getProperty('ARCH_' + fecha);
+  let ss = null, reusado = false; const recibidoManual = {};
+  if (idPrev) {
+    try {
+      ss = SpreadsheetApp.openById(idPrev); reusado = true;
+      ss.getSheets().forEach(sh => {                        // se rescata lo anotado a mano en «Efectivo recibido» de cada vendedor
+        try { const vals = sh.getRange(1, 1, Math.min(sh.getLastRow(), 40), 4).getValues();
+          for (let i = 0; i < vals.length; i++) if (String(vals[i][0]).trim() === 'Efectivo recibido') { if (vals[i][3] !== '' && !isNaN(Number(vals[i][3]))) recibidoManual[sh.getName()] = Number(vals[i][3]); break; } } catch (e) {}
+      });
+      const tmp = ss.insertSheet('tmp_' + Date.now());
+      ss.getSheets().forEach(sh => { if (sh.getSheetId() !== tmp.getSheetId()) ss.deleteSheet(sh); });
+      ss.rename(nombre);
+    } catch (e) { ss = null; reusado = false; }
+  }
+  if (!ss) { ss = SpreadsheetApp.create(nombre); props.setProperty('ARCH_' + fecha, ss.getId()); }
   const file = DriveApp.getFileById(ss.getId());
   try {
+    file.setName(nombre);
     const root = carpetaBase_();
     let destino;
-    if (borrador) {            // los borradores van aparte y se reemplazan: solo queda el último de cada día
+    if (borrador) {            // los borradores van aparte
       destino = sub_(sub_(root, 'Rendiciones'), 'Borradores');
-      const prev = destino.getFilesByName(nombre);
-      while (prev.hasNext()) prev.next().setTrashed(true);
+      if (!reusado) { const prev = destino.getFilesByName(nombre); while (prev.hasNext()) { const f0 = prev.next(); if (f0.getId() !== ss.getId()) f0.setTrashed(true); } }
     } else destino = sub_(sub_(sub_(root, 'Rendiciones'), f[0]), f[1] + ' ' + ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'][Number(f[1]) - 1]);
     file.moveTo(destino);
   } catch (e) { /* si no hay acceso a la carpeta queda en Mi unidad */ }
@@ -3233,7 +3288,7 @@ function generarArchivo_(fecha, r, borrador) {
   read_('DOCUMENTOS').forEach(d => { if (!d.rut) return; rutFolio[String(d.folio).replace(/\D/g, '')] = d.rut; rutNombre[normTxt_(d.cliente)] = d.rut; });
   cob.forEach(c => c.rut = rutFolio[String(c.folio || '').replace(/\D/g, '')] || rutNombre[normTxt_(c.cliente)] || '');
   const conteo = {}; byFecha_('CONTEO_EFECTIVO', fecha).forEach(x => { if (x.vendedor !== 'GENERAL') conteo[x.vendedor] = x; });
-  const datos = { docs, cob, gas, deps, depDe, kilos, conteo };
+  const datos = { docs, cob, gas, deps, depDe, kilos, conteo, recibidoManual };
 
   // 1) Una hoja por vendedor
   r.porVendedor.forEach(t => hojaVendedor_(ss, fecha, t, usuarios[t.vendedor], datos));
@@ -3242,9 +3297,9 @@ function generarArchivo_(fecha, r, borrador) {
   const fechaTxt = f[2] + '-' + f[1] + '-' + f[0];
   const R = new Hoja_(ss, 'RESUMEN', 17);
   R.titulo('RESUMEN RENDICIÓN ' + fechaTxt, 'Cecinas Naranjo');
-  R.tabla('', [{ h: 'VENDEDOR' }, { h: 'DOCS', sum: 1 }, { h: 'VENTA', t: '$', sum: 1 }, { h: 'CRÉDITO', t: '$', sum: 1 }, { h: 'DESCUENTOS', t: '$', sum: 1 },
+  R.tabla('', [{ h: 'VENDEDOR' }, { h: 'DOCS', sum: 1 }, { h: 'VENTA', t: '$', sum: 1 }, { h: 'CRÉDITO TOTAL (incl. cheques)', t: '$', sum: 1 }, { h: 'DESCUENTOS', t: '$', sum: 1 },
     { h: 'EFECTIVO', t: '$', sum: 1 }, { h: 'TRANSF. BICE', t: '$', sum: 1 }, { h: 'TRANSF. ESTADO', t: '$', sum: 1 }, { h: 'TRANSF. SANTANDER', t: '$', sum: 1 },
-    { h: 'CHEQUE', t: '$', sum: 1 }, { h: 'COBRANZA', t: '$', sum: 1 }, { h: 'GASTOS', t: '$', sum: 1 }, { h: 'DEPÓSITOS', t: '$', sum: 1 },
+    { h: '· EN CHEQUE', t: '$', sum: 1 }, { h: 'COBRANZA', t: '$', sum: 1 }, { h: 'GASTOS', t: '$', sum: 1 }, { h: 'DEPÓSITOS', t: '$', sum: 1 },
     { h: 'EFECTIVO A ENTREGAR', t: '$', sum: 1 }, { h: 'KG VENDIDOS', t: 'kg', sum: 1 }, { h: 'KG FACTURADOS', t: 'kg', sum: 1 }, { h: 'DIF. KILOS $', t: '$', sum: 1 }],
     r.porVendedor.map(t => [(usuarios[t.vendedor] || {}).nombre || t.vendedor, t.documentos, t.venta, t.credito, t.descuentos, t.EFECTIVO,
       t.bancos.BICE, t.bancos.ESTADO, t.bancos.SANTANDER, t.CHEQUE, t.cobranza, t.gastos, t.depositos, t.efectivoEntregar, t.kilos.vendido, t.kilos.facturado, t.kilos.diferenciaPesos]));
@@ -3300,7 +3355,7 @@ function generarArchivo_(fecha, r, borrador) {
       const formas = d.pagos.map(p => (p.forma === 'EFECTIVO' && dep ? 'DEP. EFECTIVO ' + dep : lbl[p.forma] + (p.banco ? ' ' + p.banco : '')) +
         (d.pagos.length > 1 ? ' (' + p.monto + ')' : '')).join(' Y ');
       return [d.cliente, d.tipo, Number(d.folio) || d.folio, fechaTxt, d.total, cred >= d.total ? 'Crédito' : (cred ? 'Mixto' : 'Contado'),
-        d.total - cred, cred, nc, formas, 0, dep ? 0 : ef, sm('TRANSFERENCIA') + sm('DEP_EFECTIVO') + (dep ? ef : 0), sm('CHEQUE'), d.vendedor, d.descAprob, d.rut || ''];
+        d.total - cred - sm('CHEQUE'), cred, nc, formas, 0, dep ? 0 : ef, sm('TRANSFERENCIA') + sm('DEP_EFECTIVO') + (dep ? ef : 0), sm('CHEQUE'), d.vendedor, d.descAprob, d.rut || ''];
     }));
   VC.escribir([260, 130, 70, 85, 90, 80, 90, 90, 80, 170, 80, 90, 105, 85, 100, 85, 95]);
   const CO = new Hoja_(ss, 'COBRANZA', 10);
@@ -3310,8 +3365,7 @@ function generarArchivo_(fecha, r, borrador) {
         c.forma === 'EFECTIVO' && !dep ? m : 0, (c.forma === 'TRANSFERENCIA' || c.forma === 'DEP_EFECTIVO' || dep) ? m : 0, c.forma === 'CHEQUE' ? m : 0, c.vendedor, c.rut]; }));
   CO.escribir([85, 260, 70, 90, 170, 90, 105, 85, 100, 95]);
 
-  const def = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
-  if (def) ss.deleteSheet(def);
+  ss.getSheets().filter(sh => /^(Hoja 1|Sheet1|tmp_\d+)$/.test(sh.getName())).forEach(sh => { try { ss.deleteSheet(sh); } catch (e) {} });
   ss.setActiveSheet(ss.getSheets()[0]);
   return ss.getUrl();
 }
