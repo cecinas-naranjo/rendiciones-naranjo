@@ -663,3 +663,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v144 — «No se encontró la devolución» al elegir cliente (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - La ventana del vendedor leía la lista de la copia guardada: podía mostrar una devolución pendiente (`pend_…`, aún sin enviar) o una ya borrada, y el servidor no la encontraba. Ahora la lista se pide siempre al servidor (`pedir`), una devolución `pend_` avisa «aún no se envía» en vez de llamar al servidor, y si el servidor no la encuentra la lista se recarga. Servidor: `asignarDevolucionCliente`, `completarDevolucion` y `borrarDevolucion` comparan el id como texto (`String(x.id) === String(id)`; ids como «12345678» o «1e234567» la hoja los vuelve número). Solo sintaxis verificada.
+
+## v145 — El cliente asignado a una devolución se ve al tiro en todas las listas (solo frontend: app.js, sw.js)
+- Tras «Cliente indicado», la lista (al cerrar y volver a abrir, Hoy, Despacho) seguía mostrando la copia guardada sin cliente. Ahora `asignarDevolucionCliente` purga las listas guardadas (`purgarListas`) y la siguiente lectura va al servidor. Solo sintaxis verificada.

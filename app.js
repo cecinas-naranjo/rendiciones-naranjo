@@ -1828,7 +1828,7 @@ function abrirDevolucionesVendedor(alCerrar) {
       const c = b.dataset.libre ? { nombre: q.value.trim().toUpperCase(), rut: '' } : res._xs[Number(b.dataset.i)];
       if (String(id).indexOf('pend_') === 0) { toast('Esta devolución aún no se envía al servidor. Espera a tener internet y vuelve a abrir.'); return; }
       b.disabled = true;
-      try { await api('asignarDevolucionCliente', S.sess.token, id, c.nombre, c.rut); const x = rs.find(z => z.id === id); if (x) { x.cliente = c.nombre; x.rut = c.rut; } toast('Cliente indicado'); olvidarCache(false); pintar(); }
+      try { await api('asignarDevolucionCliente', S.sess.token, id, c.nombre, c.rut); const x = rs.find(z => z.id === id); if (x) { x.cliente = c.nombre; x.rut = c.rut; } toast('Cliente indicado'); olvidarCache(false); purgarListas(); pintar(); }
       catch (err) { b.disabled = false; cargar(); throw err; } };
   };
   $('#dvvl', ov).onclick = async e => { const b = e.target.closest('[data-el]'); if (!b) return;
