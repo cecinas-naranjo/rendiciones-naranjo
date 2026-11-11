@@ -181,6 +181,11 @@ function olvidarCache(todo) {
   guardarCache();
 }
 const claveApi = (fn, args) => fn + '|' + JSON.stringify(args);
+/* v135: tras guardar o borrar algo, las listas que muestran ese dato se piden de nuevo al servidor (no se usa la copia guardada, que aún no lo trae:
+   por eso antes «Cobrado hoy»/«Gastos» no mostraban lo recién registrado y al agregar otro aparecía el anterior). */
+const LISTAS_TRAS_ESCRIBIR = /^(listarMov|porCobrar|efectivoParaDepositar|listarDevoluciones|getConteoEfectivo|listarAdelantos|listarAnulaciones|anulacionesPendientes)\|/;
+const ESCRITURAS_DE_LISTA = new Set(['guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
+function purgarListas() { Array.from(CACHE.keys()).forEach(k => { if (LISTAS_TRAS_ESCRIBIR.test(k)) CACHE.delete(k); }); guardarCache(); }
 const FRESCURA = 20e3;      // si lo guardado tiene menos de 20 s no se vuelve a pedir al servidor
 
 // indicador "trabajando": barra arriba + aviso abajo con el mensaje; el botón tocado muestra su propio "Guardando…"
@@ -305,7 +310,7 @@ async function escribir1(fn, args) {
   const resto = args.slice(1), op = idOp(); let enviado = false;
   if (EN_LINEA && !pendActivos().length) {
     const key = claveApi(fn, args), fin = trabajando(fn, true);
-    try { const r = copia(await pedir(fn, args, key, { op })); olvidarCache(false); return r; }
+    try { const r = copia(await pedir(fn, args, key, { op })); olvidarCache(false); if (ESCRITURAS_DE_LISTA.has(fn)) purgarListas(); return r; }
     catch (e) { if (!e.red) { errorApi(e); throw e; } enviado = true; }        // se cortó: puede haber llegado o no; el reenvío lo comprueba
     finally { fin(); }
   }
@@ -391,6 +396,13 @@ function superponer(fn, args, data) {
       ps.forEach(p => {
         if (p.fn === 'guardarMov' && p.args[0] === args[1] && p.args[1] === args[2]) data.push(Object.assign({}, p.args[2], { id: 'pend_' + p.op, fecha: p.args[1], monto: soloDigitos(p.args[2].monto), adjuntos: [], sinEnviar: true,
           vendedor: p.args[2].vendedor || (S.sess.rol === 'VENDEDOR' ? S.sess.usuario : '') }));
+        if (p.fn === 'guardarCobro' && args[1] === 'COBRANZA' && p.args[0] === args[2]) {      // v135: un cobro hecho con «Cobrar a un cliente» se ve al tiro en «Cobrado hoy», aunque aún no llegue al servidor
+          const pg = (Array.isArray(p.args[2]) ? p.args[2] : [p.args[2]]).map(x => ({ forma: x.forma, banco: x.banco || '', resto: soloDigitos(x.monto) }));
+          (p.args[3] || []).forEach((it, k) => { let falta = soloDigitos(it.monto);
+            pg.forEach((x, j) => { const m = pg.length === 1 ? falta : Math.min(x.resto, falta); if (!(m > 0)) return; x.resto -= m; falta -= m;
+              data.push({ id: 'pend_' + p.op + '_' + k + '_' + j, fecha: p.args[0], cliente: (p.args[1] || {}).cliente || '', rut: (p.args[1] || {}).rut || '', folio: String(it.folio || ''), monto: m, forma: x.forma, banco: x.banco, adjuntos: [], sinEnviar: true,
+                vendedor: S.sess.rol === 'VENDEDOR' ? S.sess.usuario : '' }); }); });
+        }
         if (p.fn === 'borrarMov' && p.args[0] === args[1]) data = data.filter(r => r.id !== p.args[1]);
       });
     } else if (fn === 'listarAdelantos') {
@@ -3069,7 +3081,7 @@ async function vMov(m, tabla) {
     : tabla === 'COBRANZA' && c[0] === 'cliente' && clientesLista.length ? `<div class="cpick"><input class="in" id="m_cliente_q" placeholder="Busca y elige el cliente" autocomplete="off"><input type="hidden" name="cliente" id="m_cliente"><input type="hidden" name="rut" id="m_rut"><div id="m_cliente_l" class="cpl" hidden></div></div>`
     : `<input class="in ${c[2] === 'n' ? 'n' : ''}" name="${c[0]}" id="m_${c[0]}" ${c[2] === 'n' ? 'inputmode="numeric"' : ''}>`;
   const rows = await api('listarMov', S.sess.token, tabla, S.fecha);
-  const conAdj = !!ADJ[tabla] && tabla !== 'COBRANZA';        // la cobranza ya no lleva foto (se registra también sin internet)
+  const conAdj = !!ADJ[tabla] && tabla !== 'COBRANZA' && tabla !== 'GASTOS';        // la cobranza ya no lleva foto (se registra también sin internet)
   let clientesLista = [];
   if (tabla === 'COBRANZA') {
     try { clientesLista = (await api('listarClientes', S.sess.token) || []).slice(); } catch (e) {}
@@ -3179,7 +3191,7 @@ async function vGastosV(m) {
   const lista = rs => {
     $('#gt').textContent = clp(rs.reduce((a, r) => a + r.monto, 0));
     $('#gh').textContent = rs.length ? (S.fecha === hoyCL() ? 'Hoy' : 'Este día') + ' · ' + rs.length : '';
-    $('#ml').innerHTML = rs.length ? `<div class="card" style="padding:4px 14px">${rs.map(r => `<div class="hrow"><span class="grow">${esc(r.concepto)}<small>${r.respaldo ? 'Boleta ' + esc(r.respaldo) + ' · ' : ''}${r._pendiente || String(r.id).indexOf('pend_') === 0 ? 'en el teléfono' : ''}</small>${chipsAdj(r.adjuntos, 'GASTOS', r.id, true)}</span><b>${clp(r.monto)}</b>
+    $('#ml').innerHTML = rs.length ? `<div class="card" style="padding:4px 14px">${rs.map(r => `<div class="hrow"><span class="grow">${esc(r.concepto)}<small>${r.respaldo ? 'Boleta ' + esc(r.respaldo) + ' · ' : ''}${r._pendiente || String(r.id).indexOf('pend_') === 0 ? 'en el teléfono' : ''}</small></span><b>${clp(r.monto)}</b>
       <button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></div>`).join('')}</div>`
       : '<div class="empty">Aún no registras gastos.</div>';
   };

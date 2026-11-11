@@ -2281,18 +2281,34 @@ function guardarCobro(token, fecha, cli, pago, items) {
   const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
   assertAbierta_(fecha);
   if (!items || !items.length) throw new Error('Elige al menos una factura.');
-  const forma = String(pago.forma || '');
-  if (FORMAS.indexOf(forma) < 0 || forma === 'CREDITO' || forma === 'NOTA_CREDITO') throw new Error('Forma de pago no válida.');
-  if ((forma === 'TRANSFERENCIA' || forma === 'DEP_EFECTIVO') && BANCOS.indexOf(pago.banco) < 0) throw new Error('Indica el banco.');
-  const ch = forma === 'CHEQUE' ? datosCheque_(pago) : {};
+  // v135: `pago` puede ser una lista de formas {forma, monto, banco?, cheque…} (pago mixto) o un solo objeto (formato antiguo).
+  const lista = Array.isArray(pago) ? pago : [pago];
+  if (!lista.length) throw new Error('Indica cómo pagó.');
+  const montos = items.map(i => { const m = Math.round(num_(i.monto)); if (!(m > 0)) throw new Error('Hay un monto en cero.'); return m; });
+  const total = montos.reduce((a, b) => a + b, 0);
+  const lineas = lista.map(p => {
+    const forma = String((p || {}).forma || '');
+    if (FORMAS.indexOf(forma) < 0 || forma === 'CREDITO' || forma === 'NOTA_CREDITO') throw new Error('Forma de pago no válida.');
+    if ((forma === 'TRANSFERENCIA' || forma === 'DEP_EFECTIVO') && BANCOS.indexOf(p.banco) < 0) throw new Error('Indica el banco.');
+    const m = lista.length === 1 ? total : Math.round(num_(p.monto));
+    if (!(m > 0)) throw new Error('Hay un pago sin monto.');
+    return { p, forma, resto: m, ch: forma === 'CHEQUE' ? datosCheque_(p) : {} };
+  });
+  if (lineas.reduce((a, l) => a + l.resto, 0) !== total) throw new Error('Los pagos no suman lo que se cobra (' + total + ').');
   return withLock_(() => {
-    const vend = u.rol === 'VENDEDOR' ? u.usuario : String(pago.vendedor || '');
-    const filas = items.map(i => { const m = Math.round(num_(i.monto)); if (!(m > 0)) throw new Error('Hay un monto en cero.');
-      return Object.assign({ id: uid_(), fecha, vendedor: vend, cliente: String(cli.cliente || '').trim(), folio: String(i.folio || ''), folio_key: String(i.folio_key || ''), rut: String(cli.rut || ''),
-        monto: m, forma, banco: forma === 'CHEQUE' ? (pago.banco || '') : (pago.banco || ''), referencia: forma === 'CHEQUE' ? 'Cheque N° ' + (ch.cheque_numero || '') : '',
-        registrado_por: u.usuario, registrado: now_() }, ch); });
+    const vend = u.rol === 'VENDEDOR' ? u.usuario : String((lista[0] || {}).vendedor || '');
+    const filas = [];
+    items.forEach((i, k) => {                      // cada factura se reparte entre las formas de pago, en orden
+      let falta = montos[k];
+      lineas.forEach(l => {
+        const m = Math.min(l.resto, falta); if (!(m > 0)) return; l.resto -= m; falta -= m;
+        filas.push(Object.assign({ id: uid_(), fecha, vendedor: vend, cliente: String(cli.cliente || '').trim(), folio: String(i.folio || ''), folio_key: String(i.folio_key || ''), rut: String(cli.rut || ''),
+          monto: m, forma: l.forma, banco: l.p.banco || '', referencia: l.forma === 'CHEQUE' ? 'Cheque N° ' + (l.ch.cheque_numero || '') : '',
+          registrado_por: u.usuario, registrado: now_() }, l.ch));
+      });
+    });
     append_('COBRANZA', filas); planillaSucia_();
-    return { id: filas[0].id, ids: filas.map(f => f.id), total: filas.reduce((a, f) => a + f.monto, 0) };
+    return { id: filas[0].id, ids: filas.map(f => f.id), total };
   });
 }
 
