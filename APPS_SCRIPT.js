@@ -2746,7 +2746,7 @@ function asignarDevolucionCliente(token, id, cliente, rut) {
   const nom = String(cliente || '').trim(); if (!nom) throw new Error('Elige el cliente.');
   return withLock_(() => {
     asegurarColsDevoluciones_();
-    const r = read_('DEVOLUCIONES').find(x => x.id === id); if (!r) throw new Error('No se encontró la devolución.');
+    const r = read_('DEVOLUCIONES').find(x => String(x.id) === String(id)); if (!r) throw new Error('No se encontró la devolución. Actualiza la pantalla e inténtalo de nuevo.');
     if (u.rol === 'VENDEDOR' && r.origen !== u.usuario) throw new Error('Esta devolución no es tuya.');
     assertAbierta_(r.fecha);
     const k = rutNorm_(rut), mc = k ? read_('CLIENTES').find(c => rutNorm_(c.rut) === k) : null;
@@ -2760,7 +2760,7 @@ function completarDevolucion(token, id, datos) {
   auth_(token, ['RENDICION','SUPERVISOR']);
   return withLock_(() => {
     asegurarColsDevoluciones_();
-    const r = read_('DEVOLUCIONES').find(x => x.id === id); if (!r) throw new Error('No se encontró la devolución.');
+    const r = read_('DEVOLUCIONES').find(x => String(x.id) === String(id)); if (!r) throw new Error('No se encontró la devolución. Actualiza la pantalla e inténtalo de nuevo.');
     assertAbierta_(r.fecha);
     if (datos.nota_credito !== undefined) r.nota_credito = String(datos.nota_credito || '').trim();
     if (datos.monto !== undefined && datos.monto !== '') { const m = Math.round(num_(datos.monto)); if (m < 0) throw new Error('El monto no puede ser negativo.'); r.monto = m; }
@@ -2771,7 +2771,7 @@ function completarDevolucion(token, id, datos) {
 function borrarDevolucion(token, id) {
   auth_(token, DEV_ROLES);
   return withLock_(() => {
-    const r = read_('DEVOLUCIONES').find(x => x.id === id);
+    const r = read_('DEVOLUCIONES').find(x => String(x.id) === String(id));
     if (!r) return true;
     assertAbierta_(r.fecha);
     deleteRows_('DEVOLUCIONES', [r._row]); return true;

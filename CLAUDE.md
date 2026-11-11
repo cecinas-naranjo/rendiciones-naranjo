@@ -660,3 +660,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v142 — El ícono de devolución/merma va en su propia columna al borde derecho de la tabla de Despacho (alineado en todas las filas); en celular, arriba a la derecha de cada tarjeta (solo frontend: app.js, style.css, sw.js).
 
 ## v143 — Arreglo: la columna del ícono de devolución usaba la clase `.dvc` (ya existe: tarjeta de vendedor en Despacho) y salía con borde; ahora es `.dvx` (solo frontend: app.js, style.css, sw.js).
+
+## v144 — «No se encontró la devolución» al elegir cliente (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- La ventana del vendedor leía la lista de la copia guardada: podía mostrar una devolución pendiente (`pend_…`, aún sin enviar) o una ya borrada, y el servidor no la encontraba. Ahora la lista se pide siempre al servidor (`pedir`), una devolución `pend_` avisa «aún no se envía» en vez de llamar al servidor, y si el servidor no la encuentra la lista se recarga. Servidor: `asignarDevolucionCliente`, `completarDevolucion` y `borrarDevolucion` comparan el id como texto (`String(x.id) === String(id)`; ids como «12345678» o «1e234567» la hoja los vuelve número). Solo sintaxis verificada.

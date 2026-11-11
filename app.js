@@ -1826,14 +1826,16 @@ function abrirDevolucionesVendedor(alCerrar) {
     $('#dvback', ov).onclick = pintar;
     res.onclick = async e => { const b = e.target.closest('.cli'); if (!b) return;
       const c = b.dataset.libre ? { nombre: q.value.trim().toUpperCase(), rut: '' } : res._xs[Number(b.dataset.i)];
+      if (String(id).indexOf('pend_') === 0) { toast('Esta devolución aún no se envía al servidor. Espera a tener internet y vuelve a abrir.'); return; }
       b.disabled = true;
       try { await api('asignarDevolucionCliente', S.sess.token, id, c.nombre, c.rut); const x = rs.find(z => z.id === id); if (x) { x.cliente = c.nombre; x.rut = c.rut; } toast('Cliente indicado'); olvidarCache(false); pintar(); }
-      catch (err) { b.disabled = false; throw err; } };
+      catch (err) { b.disabled = false; cargar(); throw err; } };
   };
   $('#dvvl', ov).onclick = async e => { const b = e.target.closest('[data-el]'); if (!b) return;
     if (!clientes) { try { clientes = (await api('listarClientes', S.sess.token) || []).slice(); } catch (err) { clientes = []; } }
     elegir(b.dataset.el); };
-  (async () => { try { rs = await api('listarDevoluciones', S.sess.token, S.fecha); pintar(); } catch (e) { $('#dvvl', ov).innerHTML = '<div class="empty">No se pudieron cargar.</div>'; } })();
+  const cargar = async () => { try { const args = [S.sess.token, S.fecha]; rs = copia(await pedir('listarDevoluciones', args, claveApi('listarDevoluciones', args))); pintar(); } catch (e) { $('#dvvl', ov).innerHTML = '<div class="empty">No se pudieron cargar.</div>'; } };   // siempre lo último del servidor
+  cargar();
 }
 
 /* ============ INVENTARIO DE BODEGA ============ */
