@@ -221,6 +221,13 @@ function trabajando(fn, escritura) {
   };
 }
 
+/** Deja el botón con un giro y un texto («Registrando…») hasta que se llame a lo que devuelve; así quien toca ve que está trabajando. */
+function botonOcupado(b, texto) {
+  const h = b.innerHTML, w = b.style.minWidth;
+  b.style.minWidth = b.offsetWidth + 'px'; b.classList.add('busy'); b.disabled = true;
+  b.innerHTML = '<span class="spin"></span>' + texto;
+  return () => { if (!b.isConnected) return; b.innerHTML = h; b.style.minWidth = w; b.classList.remove('busy'); b.disabled = false; };
+}
 async function llamar(fn, args, extra) {
   let r; const ctl = new AbortController(), reloj = setTimeout(() => ctl.abort(), extra && extra.op ? 45000 : 60000);
   try {
@@ -1571,7 +1578,7 @@ async function vDevoluciones(m) {
       else if (fs.length) { try { await subirArchivos('DEVOLUCIONES', nuevo.id, fs); } catch (e) { toast('Quedó registrada, pero la foto no subió. Usa "Adjuntar" en la devolución.', true); } }
       ['#dv_c', '#dv_oc', '#dv_mt', '#dv_cl', '#dv_ob'].forEach(x => $(x).value = ''); sel.value = ''; sel.onchange(); $('#dvf_a').value = ''; $('#dvf_a').onchange();
       await recargar();
-    } finally { b.disabled = false; }
+    } finally { libre(); }
   };
 }
 
@@ -3159,12 +3166,12 @@ async function cobrarDesdeLista(box, alTerminar) {
           if (l.forma === 'TRANSFERENCIA') p.banco = l.banco;
           if (l.forma === 'CHEQUE') { const c = $('.lc[data-i="' + i + '"] .cheque', fm), ch = leerCheque(c); if (ch.error) return toast((lineas.length > 1 ? 'Pago ' + (i + 1) + ': ' : '') + ch.error, true); Object.assign(p, ch.datos); }
           pagos.push(p); }
-        const b = $('#cok', fm); b.disabled = true;
+        const b = $('#cok', fm), libre = botonOcupado(b, 'Registrando cobro…'); fm.classList.add('guardando');
         try {
           const rr = await api('guardarCobro', S.sess.token, S.fecha, { cliente: c.cliente, rut: c.rut }, pagos, [{ folio_key: f.folio_key, folio: f.folio, monto: t }]);
           toast((rr._pendiente ? 'Cobro guardado en el teléfono (sin conexión): ' : 'Cobro registrado: ') + clp(t));
           await alTerminar();
-        } finally { b.disabled = false; }
+        } finally { libre(); fm.classList.remove('guardando'); }
       };
       d.scrollIntoView({ block: 'nearest' });
     }
@@ -3271,7 +3278,7 @@ async function vMov(m, tabla) {
     if (o.monto === '0') return toast('Ingresa el monto.', true);
     if (tabla === 'COBRANZA') { o.folio = String(o.folio || '').replace(/\D/g, ''); if (!o.folio) return toast('Falta el folio de la factura que paga. Es obligatorio.', true); }
     if ((o.forma === 'TRANSFERENCIA' || o.forma === 'DEP_EFECTIVO') && 'banco' in o && !o.banco) return toast('Indica el banco.', true);
-    const b = $('#ad'); b.disabled = true;
+    const b = $('#ad'), libre = botonOcupado(b, 'Guardando…');
     try {
       const nuevo = await api('guardarMov', S.sess.token, tabla, S.fecha, o); toast(nuevo._pendiente ? 'Guardado en el teléfono (sin conexión)' : 'Agregado');
       $$('input', $('#fm')).forEach(x => x.value = ''); if (cq) cq.classList.remove('okc');

@@ -1167,3 +1167,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
  .pr .pn{padding-right:44px}
  .dvx{position:absolute;top:8px;right:10px}
 }
+
+/* v146: mientras se registra un cobro, el formulario se ve apagado y no se puede tocar */
+.guardando{opacity:.6;pointer-events:none}
+.guardando #cok{opacity:1;pointer-events:none}

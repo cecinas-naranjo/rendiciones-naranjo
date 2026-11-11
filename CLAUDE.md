@@ -666,3 +666,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v145 — El cliente asignado a una devolución se ve al tiro en todas las listas (solo frontend: app.js, sw.js)
 - Tras «Cliente indicado», la lista (al cerrar y volver a abrir, Hoy, Despacho) seguía mostrando la copia guardada sin cliente. Ahora `asignarDevolucionCliente` purga las listas guardadas (`purgarListas`) y la siguiente lectura va al servidor. Solo sintaxis verificada.
+
+## v146 — Aviso de «Registrando cobro…» (solo frontend: app.js, style.css, sw.js)
+- Al registrar un cobro («Cobrar a un cliente») o un pago a mano, el botón muestra giro y «Registrando cobro…» / «Guardando…» hasta que termina TODO (guardado y recarga de la lista), y el formulario queda apagado (`.guardando`). Antes el botón volvía a la normalidad apenas respondía el servidor y la lista tardaba en actualizarse sin indicador. Helper `botonOcupado(b, texto)`. Solo sintaxis verificada.
