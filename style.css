@@ -1143,3 +1143,9 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .bill.mons{grid-template-columns:repeat(4,1fr);margin-top:0}
 @media(max-width:640px){.bill.mons{grid-template-columns:repeat(2,1fr)}}
 .bill .sub2{font-size:15px;padding:8px 0}
+
+/* v138: mermas y devoluciones del vendedor junto al retorno */
+.bdev{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:0 0 12px}
+.bdev .bdh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.bdev .bdh .grow{flex:1}
+.bdev #bdf{border-top:1px solid var(--line);padding-top:10px;margin-bottom:10px}

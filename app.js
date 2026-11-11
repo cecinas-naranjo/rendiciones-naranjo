@@ -1610,6 +1610,7 @@ async function vDespacho(m) {
     <div id="dvg"></div>
     <div id="sgc"></div>
     <div id="vac" class="vac" hidden></div>
+    <div id="bdev" class="bdev" hidden></div>
     <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span></div>
     <div id="dt" class="dt dm-${S.dmod}">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
       return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
@@ -1645,6 +1646,7 @@ async function vDespacho(m) {
   }
   function poner(modo) {
     S.dmod = modo; dt.className = 'dt dm-' + modo + (dt.classList.contains('todos') ? ' todos' : '');
+    { const bd = $('#bdev', m); if (bd) bd.hidden = !(modo === 'retorno' && !pseudo && !r.retornoBloqueado && !!S.vend); }
     $$('#seg button', m).forEach(b => b.classList.toggle('on', b.dataset.m === modo));
     $('#dvh', m).innerHTML = modo === 'salida' ? `Anota cuánto se lleva <b>${esc(nomDe(S.vend))}</b> hoy. Escribe el número y presiona Enter para pasar al siguiente.` : `Anota lo que <b>${esc(nomDe(S.vend))}</b> devuelve al volver. La columna "Salió" muestra lo que se llevó.`
       + ((r.vuelven || []).length && modo === 'retorno' ? `<br><span class="okt">Folios anulados con producto devuelto: ${r.vuelven.map(x => esc(x.producto) + ' ' + nk(x.cantidad) + (x.unidad === 'UN' ? ' un' : ' kg')).join(' · ')}. Inclúyelos en el retorno si ya llegaron.</span>` : '');
@@ -1726,7 +1728,60 @@ async function vDespacho(m) {
   };
   $('#sv', m).onclick = () => guardar(false);
   poner(S.dmod);
+  if (S.vend && !pseudo && !r.retornoBloqueado) bloqueDev(m, S.vend, nomDe(S.vend));
 }
+
+/** Mermas y devoluciones del vendedor, al lado del retorno (se ve qué trajo cada uno). Usa las mismas devoluciones de siempre, con `origen` = vendedor. */
+async function bloqueDev(m, vend, nombre) {
+  const box = $('#bdev', m); if (!box) return;
+  const cats = {}; S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
+  const opcProd = Object.keys(cats).map(c => `<optgroup label="${esc(CATS[c] || c)}">${cats[c].map(p => `<option value="${esc(p.codigo)}" data-u="${esc(p.unidad)}">${esc(p.nombre)}</option>`).join('')}</optgroup>`).join('');
+  let tipo = 'MERMA';
+  const fmt = (n, u) => u === 'UN' ? String(Math.round(n * 100) / 100).replace('.', ',') + ' un' : kg(n) + ' kg';
+  box.innerHTML = `<div class="bdh"><b>Mermas y devoluciones de ${esc(nombre)}</b><span class="chip" id="bdn">0</span><span class="grow"></span><button type="button" class="btn ghost sm" id="bdab">+ Registrar</button></div>
+    <div id="bdf" hidden>
+      <div class="seg" id="bdt" style="width:100%;display:grid;grid-template-columns:1fr 1fr"><button type="button" data-t="MERMA" class="on">Merma</button><button type="button" data-t="REPROCESO">Reproceso</button></div>
+      <div class="grid g3" style="margin-top:10px">
+        <div><label class="f" for="bd_p">Producto</label><select class="in" id="bd_p"><option value="">Elige un producto…</option>${opcProd}</select></div>
+        <div><label class="f" for="bd_c">Cantidad <span class="muted" id="bd_u"></span></label><input class="in n" id="bd_c" inputmode="decimal" placeholder="0"></div>
+        <div><label class="f" for="bd_m">Motivo</label><select class="in" id="bd_m">${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select></div>
+        <div><label class="f" for="bd_oc">N° nota de crédito</label><input class="in" id="bd_oc" inputmode="numeric" autocomplete="off"></div>
+        <div><label class="f" for="bd_mt">Monto de la nota de crédito</label><input class="in n" id="bd_mt" inputmode="numeric" placeholder="$0"></div>
+        <div><label class="f" for="bd_ob">Observación</label><input class="in" id="bd_ob" autocomplete="off"></div>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn cu" id="bd_ad" type="button">Registrar</button></div></div>
+    <div id="bdl"></div>`;
+  const sel = $('#bd_p', box); sel.onchange = () => { const o = sel.selectedOptions[0]; $('#bd_u', box).textContent = o && o.dataset.u ? '(' + (o.dataset.u === 'UN' ? 'unidades' : 'kilos') + ')' : ''; };
+  $('#bdab', box).onclick = () => { const f = $('#bdf', box); f.hidden = !f.hidden; $('#bdab', box).textContent = f.hidden ? '+ Registrar' : 'Cerrar'; };
+  $('#bdt', box).onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; $$('#bdt button', box).forEach(x => x.classList.toggle('on', x === b)); };
+  function lista(rs) {
+    rs = rs.filter(x => x.origen === vend);
+    $('#bdn', box).textContent = rs.length; $('#bdn', box).className = 'chip' + (rs.length ? ' warn' : '');
+    $('#bdl', box).innerHTML = rs.length ? rs.map(x => `<div class="dev"><div class="row"><span class="grow"><span class="chip ${x.tipo === 'MERMA' ? 'bad' : 'warn'}">${x.tipo === 'MERMA' ? 'Merma' : 'Reproceso'}</span> <b>${esc(x.producto)}</b></span><b>${fmt(x.cantidad, x.unidad)}</b></div>
+        <div class="muted">NC N° <b>${esc(x.nota_credito)}</b> · <b>${clp(x.monto)}</b>${x.motivo ? ' · ' + esc(x.motivo) : ''}${x.obs ? ' · ' + esc(x.obs) : ''}</div>
+        <div class="row" style="margin-top:6px">${chipsAdj(x.adjuntos, 'DEVOLUCIONES', x.id, true)}<span class="grow"></span><button class="x" style="min-height:34px;width:34px" data-id="${esc(x.id)}" aria-label="Borrar">×</button></div></div>`).join('')
+      : `<div class="muted" style="padding:6px 0">${esc(nombre)} no ha traído mermas ni devoluciones hoy.</div>`;
+  }
+  const recargar = async () => { const args = [S.sess.token, S.fecha]; lista(copia(await pedir('listarDevoluciones', args, claveApi('listarDevoluciones', args)))); };
+  try { lista(await api('listarDevoluciones', S.sess.token, S.fecha)); } catch (e) { $('#bdl', box).innerHTML = '<div class="muted">No se pudieron cargar las devoluciones.</div>'; }
+  activarAdjuntarDespues($('#bdl', box), recargar);
+  $('#bdl', box).addEventListener('click', async e => { const id = e.target.dataset && e.target.dataset.id; if (!id || !confirm('¿Borrar esta devolución?')) return;
+    await api('borrarDevolucion', S.sess.token, id); await recargar(); });
+  $('#bd_ad', box).onclick = async () => {
+    const o = { tipo, codigo: sel.value, cantidad: String(dec($('#bd_c', box).value)), nota_credito: $('#bd_oc', box).value.trim(), monto: String(soloDigitos($('#bd_mt', box).value)), origen: vend, cliente: '', motivo: $('#bd_m', box).value, obs: $('#bd_ob', box).value.trim() };
+    if (!o.codigo) return toast('Elige el producto.', true);
+    if (!(dec(o.cantidad) > 0)) return toast('Ingresa la cantidad.', true);
+    if (!o.nota_credito) return toast('Falta el N° de la nota de crédito.', true);
+    if (o.monto === '0') return toast('Falta el monto de la nota de crédito.', true);
+    const b = $('#bd_ad', box); b.disabled = true;
+    try {
+      const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, o); toast(nuevo._pendiente ? 'Guardada en el teléfono (sin conexión)' : 'Registrada a nombre de ' + nombre);
+      ['#bd_c', '#bd_oc', '#bd_mt', '#bd_ob'].forEach(x => $(x, box).value = ''); sel.value = ''; sel.onchange();
+      await recargar();
+    } finally { b.disabled = false; }
+  };
+}
+
 
 /* ============ INVENTARIO DE BODEGA ============ */
 async function vInventario(m) {
