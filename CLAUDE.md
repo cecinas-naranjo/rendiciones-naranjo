@@ -654,3 +654,5 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Sigue sin tocar el inventario (ver sección Devoluciones). Solo sintaxis verificada.
 
 ## v140 — El botón de devolución/merma pasa a ser un ícono junto a la columna Unidades de Despacho (Retorno), con el texto «Devolución / merma» al pasar el cursor (solo frontend: app.js, style.css, sw.js).
+
+## v141 — Se quitó el texto explicativo al pie de la ventana de devolución/merma (solo frontend: app.js, sw.js).

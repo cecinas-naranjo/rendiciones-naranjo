@@ -1773,7 +1773,7 @@ function abrirDevolucionBodega(prod, vend, nombre, alGuardar) {
     <input class="in n" id="dgC" inputmode="decimal" autocomplete="off" placeholder="0">
     <label class="f" for="dgM" style="margin-top:10px">Motivo <span class="muted">(opcional)</span></label>
     <select class="in" id="dgM"><option value="">—</option>${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select>
-    <p class="muted" style="margin:10px 0 0">Se descuenta de la rendición de ${esc(nombre.split(' ')[0])} de hoy. El vendedor indica después de qué cliente es. La nota de crédito la hace la encargada.</p>
+    
     <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" id="dgX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="dgOk" type="button">Registrar</button></div></div></div>`;
   document.body.appendChild(ov);
   const cerrar = () => cerrarHoja(ov);
