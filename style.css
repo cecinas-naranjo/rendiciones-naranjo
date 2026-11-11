@@ -1150,8 +1150,11 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .bdev .bdh .grow{flex:1}
 .bdev #bdf{border-top:1px solid var(--line);padding-top:10px;margin-bottom:10px}
 
-.dvb{margin-left:8px;border:1px solid var(--line);background:#fff;color:var(--cu,#C2571A);border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:700;cursor:pointer}
-.dvb:hover{border-color:#C2571A}
+.dvb{position:relative;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;margin-left:6px;vertical-align:middle;border:1px solid var(--line);background:#fff;color:#C2571A;border-radius:8px;padding:0;cursor:pointer}
+.dvb svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
+.dvb:hover,.dvb:focus-visible{border-color:#C2571A;background:#FBEBDD}
+.dvb::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);right:0;background:#2A1F1A;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;padding:4px 9px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .12s;z-index:5}
+.dvb:hover::after,.dvb:focus-visible::after{opacity:1}
 .dvq{font-size:12.5px;color:#9a5b00;font-weight:600;margin-left:6px}
 .dt:not(.dm-retorno) .dvb,.dt:not(.dm-retorno) .dvq{display:none}
 .seg button.on small{opacity:.85}
