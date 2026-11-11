@@ -656,3 +656,5 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v140 — El botón de devolución/merma pasa a ser un ícono junto a la columna Unidades de Despacho (Retorno), con el texto «Devolución / merma» al pasar el cursor (solo frontend: app.js, style.css, sw.js).
 
 ## v141 — Se quitó el texto explicativo al pie de la ventana de devolución/merma (solo frontend: app.js, sw.js).
+
+## v142 — El ícono de devolución/merma va en su propia columna al borde derecho de la tabla de Despacho (alineado en todas las filas); en celular, arriba a la derecha de cada tarjeta (solo frontend: app.js, style.css, sw.js).

@@ -1612,12 +1612,13 @@ async function vDespacho(m) {
     <div id="sgc"></div>
     <div id="vac" class="vac" hidden></div>
     <div id="bdev" class="bdev" hidden></div>
-    <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span></div>
+    <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span><span></span></div>
     <div id="dt" class="dt dm-${S.dmod}">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
       return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
         <div class="pn">${esc(p.nombre)}${pseudo || r.retornoBloqueado ? '' : `<span class="dvq" data-dq="${esc(p.codigo)}"></span>`}</div><div class="rf"></div>
         <div class="cl kgc" data-col="Kilos">${p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
-        <div class="cl unc" data-col="Unidades">${p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}${pseudo || r.retornoBloqueado ? '' : `<button type="button" class="dvb" data-dc="${esc(p.codigo)}" data-tip="Devolución / merma" aria-label="Devolución o merma">${icon('box')}</button>`}</div>
+        <div class="cl unc" data-col="Unidades">${p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}</div>
+        <div class="dvc">${pseudo || r.retornoBloqueado ? '' : `<button type="button" class="dvb" data-dc="${esc(p.codigo)}" data-tip="Devolución / merma" aria-label="Devolución o merma">${icon('box')}</button>`}</div>
         <div class="st"></div></div>`; }).join('')).join('')}</div>
     <button type="button" class="btn ghost sm" id="mas" hidden></button>
     <div class="sticky-foot"><div class="card dvf"><div class="dvfi"><div class="muted" id="fl"></div><b id="tv"></b></div>

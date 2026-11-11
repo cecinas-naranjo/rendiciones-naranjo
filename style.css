@@ -1158,3 +1158,12 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .dvq{font-size:12.5px;color:#9a5b00;font-weight:600;margin-left:6px}
 .dt:not(.dm-retorno) .dvb,.dt:not(.dm-retorno) .dvq{display:none}
 .seg button.on small{opacity:.85}
+
+.dth,.pr{grid-template-columns:minmax(150px,1fr) minmax(110px,150px) 112px 112px 38px}
+.dvc{display:flex;justify-content:flex-end}
+.dvb{margin-left:0}
+@media(max-width:700px){
+ .pr{position:relative;grid-template-columns:1fr 1fr}
+ .pr .pn{padding-right:44px}
+ .dvc{position:absolute;top:8px;right:10px}
+}
