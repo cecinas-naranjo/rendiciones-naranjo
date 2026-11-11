@@ -2833,8 +2833,9 @@ async function vEfectivo(m) {
         <dt>Billetes contados</dt><dd id="s_bil"></dd><dt class="muted" id="s_det" style="grid-column:1/-1;text-align:left"></dt>
         <dt>Monedas (no se depositan)</dt><dd id="s_mon"></dd>
         <dt>Diferencia (contado − esperado)</dt><dd id="s_dif"></dd></dl>
-      <div class="grid g2" style="margin:10px 0"><div><label class="f" for="cc">Caja chica (se descuenta del depósito)</label><input class="in n" id="cc" inputmode="numeric" value="${r.cajaChica || ''}" placeholder="0" ${cerrada ? 'disabled' : ''}></div>
-        <div><label class="f" for="cco">Para qué es la caja chica</label><input class="in" id="cco" value="${esc(r.obs)}" ${cerrada ? 'disabled' : ''}></div></div>
+      <div class="row" style="margin:10px 0;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="min-width:180px"><label class="f" for="cc">Caja chica sacada de este día</label><input class="in n" id="cc" inputmode="numeric" value="${r.cajaChica || ''}" placeholder="0" disabled></div>
+        ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost" id="ccSacar" type="button">Sacar caja chica de este día</button>'}</div>
+      <p class="muted" style="margin:0 0 8px">La caja chica se saca del efectivo recaudado y se descuenta del depósito. Se anota aquí o en Caja → Caja chica.</p>
       <div class="dbox" style="margin-top:6px"><span>Efectivo a depositar</span><b id="s_dep"></b><small>Billetes contados − caja chica</small></div>
       ${cerrada ? '<p class="muted">El día está cerrado: solo ADMIN puede reabrirlo para cambiar el conteo.</p>' : '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="efg">Guardar conteo</button></div>'}</div>`);
   const filas = $$('.efv', m);
@@ -2866,11 +2867,12 @@ async function vEfectivo(m) {
     const h = e.target.closest('.efh'); if (h) { const f = h.closest('.efv'); abrirEf(f.classList.contains('abierto') ? null : f); }
   });
   calc();
+  if ($('#ccSacar')) $('#ccSacar').onclick = () => sacarCajaChica(S.fecha, async () => { olvidarCache(true); purgarListas(); S.tocado = false; ir('efectivo', true); });
   if ($('#efg')) $('#efg').onclick = async () => {
     const mal = $$('[data-b],[data-m]', m).find(i => n(i) % Number(i.dataset.b || i.dataset.m));
     if (mal) { toast('Revisa los montos: cada uno debe ser múltiplo de su billete o moneda'); mal.focus(); return; }
     const b = $('#efg'); b.disabled = true;
-    const datos = { cajaChica: n($('#cc')), obs: $('#cco').value.trim(), filas: filas.map(f => { const o = { vendedor: f.dataset.u, monedasOtras: Number(($('[data-mo]', f) || {dataset: {}}).dataset.mo || 0) }; $$('[data-b]', f).forEach(i => o['b' + i.dataset.b] = n(i) / Number(i.dataset.b)); $$('[data-m]', f).forEach(i => o['m' + i.dataset.m] = n(i) / Number(i.dataset.m)); return o; }) };
+    const datos = { cajaChica: r.cajaChicaConteo || 0, obs: r.obs || '', filas: filas.map(f => { const o = { vendedor: f.dataset.u, monedasOtras: Number(($('[data-mo]', f) || {dataset: {}}).dataset.mo || 0) }; $$('[data-b]', f).forEach(i => o['b' + i.dataset.b] = n(i) / Number(i.dataset.b)); $$('[data-m]', f).forEach(i => o['m' + i.dataset.m] = n(i) / Number(i.dataset.m)); return o; }) };
     try { await api('guardarConteoEfectivo', S.sess.token, S.fecha, datos); toast('Conteo guardado'); S.tocado = false; } finally { b.disabled = false; }
   };
 }
@@ -3714,14 +3716,39 @@ function pedirMonto(titulo, detalle, monto, conNota, alOk) {
     try { await alOk(m, conNota ? $('#pmN', ov).value : ''); cerrar(); } catch (e) { fin(); throw e; }
   };
 }
+/** v150: elegir un día, ver cuánto efectivo se recaudó y sacar un monto para la caja chica. */
+function sacarCajaChica(fecha0, alOk) {
+  const ov = document.createElement('div'); ov.className = 'ov'; const hoy = hoyCL();
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Sacar caja chica"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px;margin-bottom:4px">Sacar caja chica del efectivo</div>
+    <div class="muted" style="margin-bottom:10px">Elige el día y cuánto sacas de lo recaudado en efectivo. Se descuenta del efectivo a depositar de ese día.</div>
+    <label class="f" for="scD">Día</label><input class="in" type="date" id="scD" max="${hoy}" value="${fecha0 || hoy}">
+    <div class="dbox" style="margin:10px 0"><span>Efectivo disponible ese día</span><b id="scE">…</b><small id="scS"></small></div>
+    <label class="f" for="scM">Monto</label><input class="in n gmon" id="scM" inputmode="numeric" autocomplete="off" placeholder="$ 0">
+    <label class="f" for="scN" style="margin-top:10px">Para qué <span class="muted">(opcional)</span></label><input class="in" id="scN" autocomplete="off" placeholder="Ej.: fondo para gastos">
+    <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" id="scX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="scOk" type="button">Guardar</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov); $('#scX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  let disp = 0;
+  const cargar = async () => { $('#scE', ov).textContent = '…'; $('#scS', ov).textContent = '';
+    try { const e = await api('efectivoCajaChica', S.sess.token, $('#scD', ov).value); disp = e.disponible; $('#scE', ov).textContent = clp(e.disponible);
+      $('#scS', ov).textContent = 'Recaudado ' + clp(e.total) + (e.ya ? ' · ya sacado ' + clp(e.ya) : ''); } catch (x) { $('#scE', ov).textContent = '—'; $('#scS', ov).textContent = String(x.message || x); } };
+  $('#scD', ov).onchange = cargar; cargar(); setTimeout(() => $('#scM', ov).focus(), 60);
+  $('#scOk', ov).onclick = async () => {
+    const mt = Number(soloDigitos($('#scM', ov).value)); if (!(mt > 0)) return toast('Escribe un monto.', true);
+    if (mt > disp) return toast('Ese día solo hay ' + clp(disp) + ' disponibles.', true);
+    const b = $('#scOk', ov), fin = botonOcupado(b, 'Guardando…');
+    try { const o = await api('guardarCajaChica', S.sess.token, 'INGRESO', { fecha: $('#scD', ov).value, monto: mt, obs: $('#scN', ov).value }); olvidarCache(true); purgarListas(); toast(o.aviso || 'Caja chica anotada', !!o.aviso); cerrar(); await alOk(); } catch (e) { fin(); throw e; }
+  };
+}
 async function vCajaChica(m) {
   const r = await api('getCajaChica', S.sess.token), puede = S.sess.rol !== 'GERENCIA';
   const llamar = async (fn, ...a) => { const x = await api(fn, S.sess.token, ...a); olvidarCache(true); purgarListas(); return x; };
   render(m, `<h2>Caja chica</h2>
-    <p class="lead" style="margin:0 0 12px">El gasto del día se resta de lo que entrega el vendedor. Al otro día se repone desde aquí y la reposición se suma a la rendición del día del gasto.</p>
+    <p class="lead" style="margin:0 0 12px">El gasto del día se resta de lo que entrega el vendedor. La caja chica se saca del efectivo recaudado de un día cualquiera (se descuenta de lo que se deposita ese día). Los gastos se reponen desde aquí y la reposición se suma a la rendición del día del gasto.</p>
     <div class="kpis"><div class="cash"><span>Saldo de caja chica</span><b>${clp(r.saldo)}</b>${r.saldo < 0 ? '<small>Falta anotar plata que entró a la caja</small>' : ''}</div>
       <div><span>Ha entrado</span><b>${clp(r.ingresos)}</b></div><div><span>Se ha repuesto</span><b>${clp(r.repuesto)}</b></div></div>
-    ${puede ? '<div class="row" style="margin:12px 0"><button class="btn cu" id="ccIn" type="button">+ Anotar plata que entra a la caja chica</button></div>' : ''}
+    ${puede ? '<div class="row" style="margin:12px 0"><button class="btn cu" id="ccIn" type="button">+ Sacar caja chica del efectivo de un día</button></div>' : ''}
     <h3>Gastos por reponer ${r.pendientes.length ? `<small class="muted">(${r.pendientes.length})</small>` : ''}</h3>
     ${r.pendientes.length ? r.pendientes.map((x, i) => `<div class="cfac" style="display:block;margin-bottom:8px"><div class="row" style="gap:10px;flex-wrap:wrap">
       <span class="grow"><b>${esc(x.nombre)}</b> <span class="muted">· ${fechaCortaTxt(x.fecha)}${x.estado === 'CERRADA' ? ' · día cerrado' : ''}</span>
@@ -3729,14 +3756,13 @@ async function vCajaChica(m) {
       <b>${clp(x.falta)}</b>${puede ? `<button class="btn cu" type="button" data-i="${i}">Reponer</button>` : ''}</div></div>`).join('')
       : '<div class="empty">No hay gastos por reponer.</div>'}
     <h3 style="margin-top:18px">Movimientos</h3>
-    ${r.movimientos.length ? `<table class="t"><thead><tr><th>Anotado</th><th>Qué</th><th>Detalle</th><th class="m">Monto</th><th></th></tr></thead><tbody>${r.movimientos.map(x => `<tr>
-      <td>${fcorta(x.fecha)}</td><td>${x.tipo === 'INGRESO' ? 'Entra a la caja' : 'Reposición de gastos'}</td>
+    ${r.movimientos.length ? `<table class="t"><thead><tr><th>Día</th><th>Qué</th><th>Detalle</th><th class="m">Monto</th><th></th></tr></thead><tbody>${r.movimientos.map(x => `<tr>
+      <td>${fcorta(x.fecha)}</td><td>${x.tipo === 'INGRESO' ? 'Sacada del efectivo del día' : 'Reposición de gastos'}</td>
       <td>${x.tipo === 'REPOSICION' ? esc(x.nombre) + ' · gasto del ' + fcorta(x.fechaGasto) : ''}${x.obs ? ' ' + esc(x.obs) : ''}<div class="muted">${esc(x.por)}</div></td>
       <td class="m"><b>${x.tipo === 'INGRESO' ? '+' : '−'} ${clp(x.monto)}</b></td>${puede ? `<td><button class="x" type="button" data-d="${esc(x.id)}" aria-label="Borrar">×</button></td>` : '<td></td>'}</tr>`).join('')}</tbody></table>`
       : '<div class="empty">Aún no hay movimientos.</div>'}`);
   const bi = $('#ccIn', m);
-  if (bi) bi.onclick = () => pedirMonto('Plata que entra a la caja chica', 'Por ejemplo, el retiro que se hizo para dejar fondos en caja.', '', true,
-    async (mt, nota) => { await llamar('guardarCajaChica', 'INGRESO', { fecha: hoyCL(), monto: mt, obs: nota }); toast('Anotado'); ir('cajachica', true); });
+  if (bi) bi.onclick = () => sacarCajaChica(S.fecha, async () => ir('cajachica', true));
   $$('[data-i]', m).forEach(b => b.onclick = () => { const x = r.pendientes[b.dataset.i];
     pedirMonto('Reponer gastos de ' + x.nombre, 'Gastos del ' + fechaCortaTxt(x.fecha) + '. Se suma a la rendición de ese día y baja el saldo de la caja chica.', x.falta, false,
       async mt => { const o = await llamar('guardarCajaChica', 'REPOSICION', { fechaGasto: x.fecha, vendedor: x.vendedor, monto: mt }); toast(o.aviso || 'Reposición anotada', !!o.aviso); ir('cajachica', true); }); });

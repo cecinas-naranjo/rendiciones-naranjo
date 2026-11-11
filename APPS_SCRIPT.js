@@ -270,7 +270,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, borrarCajaChica, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -2730,6 +2730,16 @@ function reposDe_(fecha, v) {
   const fs = [fecha]; if (ventanaRA_(fecha).trae[v]) fs.push(sumarDias_(fecha, -1));
   return read_('CAJA_CHICA').filter(x => x.tipo === 'REPOSICION' && x.vendedor === v && fs.indexOf(normFecha_(x.fecha_gasto)) >= 0).reduce((a, x) => a + Math.round(num_(x.monto)), 0);
 }
+/** v150: caja chica sacada del efectivo de un día (INGRESO con esa fecha). */
+function ccDia_(fecha) {
+  asegurarCajaChica_();
+  return read_('CAJA_CHICA').filter(x => x.tipo === 'INGRESO' && normFecha_(x.fecha) === fecha).reduce((a, x) => a + Math.round(num_(x.monto)), 0);
+}
+/** v150: efectivo recaudado ese día (lo que entregan los vendedores) y lo que ya se sacó para caja chica. */
+function efectivoDiaCC_(fecha) {
+  const r = resumen_(fecha), total = r.porVendedor.reduce((a, t) => a + Math.max(0, Math.round(num_(t.efectivoEntregar))), 0), ya = ccDia_(fecha);
+  return { total, ya, disponible: Math.max(0, total - ya) };
+}
 function getCajaChica(token) {
   auth_(token, ['RENDICION', 'SUPERVISOR', 'GERENCIA']);
   asegurarCajaChica_();
@@ -2755,7 +2765,13 @@ function guardarCajaChica(token, tipo, datos) {
     asegurarCajaChica_();
     const o = { id: uid_(), fecha: hoy_(), tipo, fecha_gasto: '', vendedor: '', monto, obs: String(datos.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
     let aviso = '';
-    if (tipo === 'INGRESO') { o.fecha = normFecha_(datos.fecha) || hoy_(); }
+    if (tipo === 'INGRESO') {
+      // v150: la caja chica se saca de lo recaudado en efectivo de un día cualquiera (no tiene que ser hoy)
+      o.fecha = normFecha_(datos.fecha) || hoy_();
+      const e = efectivoDiaCC_(o.fecha);
+      if (monto > e.disponible) throw new Error('Ese día solo hay $' + e.disponible.toLocaleString('es-CL') + ' de efectivo disponible para caja chica (recaudado $' + e.total.toLocaleString('es-CL') + (e.ya ? ', ya sacado $' + e.ya.toLocaleString('es-CL') : '') + ').');
+      if (estadoDia_(o.fecha) === 'CERRADA') aviso = 'El día ' + o.fecha + ' ya está cerrado: la caja chica queda anotada y suma al saldo; el "efectivo a depositar" de ese día se ve distinto solo al volver a generar su planilla.';
+    }
     else {
       const fg = normFecha_(datos.fechaGasto), v = String(datos.vendedor || ''); if (!fg || !v) throw new Error('Elige el día del gasto y quién lo hizo.');
       const gastado = read_('GASTOS').filter(g => normFecha_(g.fecha) === fg && g.responsable === v).reduce((a, g) => a + Math.round(num_(g.monto)), 0);
@@ -2768,6 +2784,12 @@ function guardarCajaChica(token, tipo, datos) {
     append_('CAJA_CHICA', [o]);
     return { ok: true, id: o.id, aviso };
   });
+}
+/** v150: efectivo recaudado de un día y caja chica ya sacada (para anotar caja chica "de ese día"). */
+function efectivoCajaChica(token, fecha) {
+  auth_(token, ['RENDICION', 'SUPERVISOR', 'GERENCIA']);
+  fecha = normFecha_(fecha) || hoy_();
+  return Object.assign({ fecha }, efectivoDiaCC_(fecha));
 }
 function borrarCajaChica(token, id) {
   auth_(token, ['RENDICION', 'SUPERVISOR']);
@@ -2996,7 +3018,7 @@ function getConteoEfectivo(token, fecha) {
   const g = guardado.GENERAL || {};
   return { fecha, estado: r.estado,
     vendedores: r.porVendedor.map(t => Object.assign({ usuario: t.vendedor, nombre: nombres[t.vendedor] || t.vendedor, esperado: t.efectivoEntregar, guardado: !!guardado[t.vendedor] }, fila(guardado[t.vendedor]))),
-    cajaChica: Math.round(num_(g.caja_chica)), obs: g.obs || '' };
+    cajaChicaConteo: Math.round(num_(g.caja_chica)), cajaChicaDia: ccDia_(fecha), cajaChica: Math.round(num_(g.caja_chica)) + ccDia_(fecha), efectivoRecaudado: r.porVendedor.reduce((a, t) => a + Math.max(0, Math.round(num_(t.efectivoEntregar))), 0), obs: g.obs || '' };
 }
 
 /** datos: {filas:[{vendedor, b20000, b10000, b5000, b2000, b1000, monedas}], cajaChica, obs} */
@@ -3520,7 +3542,7 @@ function generarArchivo_(fecha, r, borrador) {
     const nom = u => (usuarios[u] || {}).nombre || u, esp = {}; r.porVendedor.forEach(t => esp[t.vendedor] = t.efectivoEntregar);
     const vs = cef.filter(x => x.vendedor !== 'GENERAL'), gen = cef.find(x => x.vendedor === 'GENERAL') || {};
     const bil = x => BILLETES.reduce((a, b) => a + b * num_(x['b' + b]), 0);
-    const totBil = vs.reduce((a, x) => a + bil(x), 0), cc = num_(gen.caja_chica);
+    const totBil = vs.reduce((a, x) => a + bil(x), 0), cc = num_(gen.caja_chica) + ccDia_(fecha);
     const EF = new Hoja_(ss, 'EFECTIVO A DEPOSITAR', 12); EF.titulo('CONTEO DE EFECTIVO Y DEPÓSITO ' + fechaTxt);
     EF.tabla('', [{ h: 'VENDEDOR' }, { h: 'ESPERADO', t: '$', sum: 1 }, { h: '$20.000' }, { h: '$10.000' }, { h: '$5.000' }, { h: '$2.000' }, { h: '$1.000' },
       { h: 'BILLETES', t: '$', sum: 1 }, { h: 'MONEDAS', t: '$', sum: 1 }, { h: 'CONTADO', t: '$', sum: 1 }, { h: 'DIFERENCIA', t: '$', sum: 1 }],
