@@ -658,3 +658,5 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v141 — Se quitó el texto explicativo al pie de la ventana de devolución/merma (solo frontend: app.js, sw.js).
 
 ## v142 — El ícono de devolución/merma va en su propia columna al borde derecho de la tabla de Despacho (alineado en todas las filas); en celular, arriba a la derecha de cada tarjeta (solo frontend: app.js, style.css, sw.js).
+
+## v143 — Arreglo: la columna del ícono de devolución usaba la clase `.dvc` (ya existe: tarjeta de vendedor en Despacho) y salía con borde; ahora es `.dvx` (solo frontend: app.js, style.css, sw.js).
