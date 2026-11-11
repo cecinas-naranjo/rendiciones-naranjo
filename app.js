@@ -2092,21 +2092,21 @@ async function abrirVendedor(usuario) {
         ${pend.length ? `<span class="chip cu">${pend.length} por detallar</span>` : '<span class="chip ok">Todo detallado</span>'}</div>
       <div class="dtop">
         <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
-          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)} − gastos ${clp(t.gastos)} − depositado ${clp(t.depositos)}</small></div>
+          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)} − depositado ${clp(t.depositos)}</small></div>
         <div class="dres">
           ${t.nc ? fila('Venta (' + v.documentos + ' docs)', '', t.ventaDocs) + fila('− Notas de crédito', '', t.nc) + fila('Venta neta', '', t.venta) : fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${fila('Venta contado', '', t.contado)}${t.creditoTotal ? fila('Crédito total', 'crédito ' + clp(t.credito) + ' · cheques ' + clp(t.chequesVenta), t.creditoTotal) : ''}
           ${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
           ${Object.keys(v.transf).filter(b => v.transf[b].length).map(b => fila('Transf. ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0))).join('')}
           ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}</div></div>
       ${v.porDia && v.porDia.length ? `<div class="dsec"><div class="dtit"><b>Por día</b><span>todo se rinde ${fechaCortaTxt(r.fecha)}</span></div>
-        ${v.porDia.map(x => fila(fechaCortaTxt(x.fecha) + ' · ' + x.documentos + ' docs', 'efectivo ' + clp(x.efVentas + x.efCob - x.gastos) + (x.credito ? ' · crédito ' + clp(x.credito) : ''), x.venta)).join('')}
+        ${v.porDia.map(x => fila(fechaCortaTxt(x.fecha) + ' · ' + x.documentos + ' docs', 'efectivo ' + clp(x.efVentas + x.efCob) + (x.credito ? ' · crédito ' + clp(x.credito) : ''), x.venta)).join('')}
         ${fila('Total (los días juntos)', '', v.porDia.reduce((a, x) => a + x.venta, 0))}</div>` : ''}
       ${(() => { const trV = Object.keys(v.transf).reduce((a, b) => a + v.transf[b].filter(x => x.tipo === 'Venta').reduce((c, x) => c + x.monto, 0), 0),
           ef0 = t.contado - trV, dV = t.efVentas - ef0, cont = t.efContado, dif = cont === null || cont === undefined ? null : cont - t.entregar;
         return `<div class="dsec"><div class="dtit"><b>Cuenta del efectivo</b><span>solo aviso</span></div>
           ${fila('Venta contado', 'venta − crédito − cheques − descuentos', t.contado)}${fila('− Transferencias de ventas', '', trV)}
           ${fila('= Efectivo de ventas', dV ? 'ojo: lo anotado es ' + clp(t.efVentas) + ' (diferencia ' + clp(Math.abs(dV)) + ')' : 'calza con lo anotado', ef0)}
-          ${fila('+ Cobranza en efectivo', '', t.efCob)}${fila('− Gastos', '', t.gastos)}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
+          ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
           ${fila('= Debe entregar', '', t.entregar)}
           ${dif === null ? '<div class="muted" style="padding:6px 0">Todavía no se cuenta el efectivo (pestaña Efectivo).</div>'
             : fila('Efectivo contado', dif === 0 ? 'cuadra' : dif < 0 ? 'FALTA ' + clp(-dif) : 'SOBRA ' + clp(dif), cont)}</div>`; })()}
@@ -2167,16 +2167,15 @@ async function imprimirInspeccion(usuario) {
     const bancos = Object.keys(v.transf);
     const tb = {}; bancos.forEach(b => tb[b] = sum(v.transf[b]));
     const transfTot = sum(bancos.map(b => ({ monto: tb[b] })));
-    const efTotal = t.efVentas + t.efCob, aEntregar = efTotal - t.gastos - t.depositos;
+    const efTotal = t.efVentas + t.efCob, aEntregar = efTotal - t.depositos;
     const chCob = t.cheques - t.chequesVenta;                       // cheques recibidos por cobranza (no son venta del día)
     const subtotal = aEntregar + t.depositos + transfTot + chCob, total = subtotal + t.creditoTotal;
-    const totalDetalle = t.efVentas + t.efCob - t.gastos + transfTot + chCob + t.creditoTotal;     // por origen: debe dar igual a `total`
+    const totalDetalle = t.efVentas + t.efCob + transfTot + chCob + t.creditoTotal;     // por origen: debe dar igual a `total`
     const cobEf = t.efCob, cobCh = sum(v.cobranza.filter(x => x.forma === 'CHEQUE'));
     const cobTr = sum(v.cobranza.filter(x => x.forma === 'TRANSFERENCIA' || x.forma === 'DEP_EFECTIVO'));
 
     const resumen = [
       suma('Efectivo total', `ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}`, efTotal, false),
-      t.gastos ? suma('(−) Gastos', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'} pagados con ese efectivo`, -t.gastos, false) : '',
       t.depositos ? suma('(−) Depositado', 'ya está en el banco', -t.depositos, false) : '',
       suma('Efectivo a entregar', '', aEntregar, true, 'sub'),
       t.depositos ? suma('Depósitos de efectivo', 'en el banco', t.depositos, true) : '',
@@ -2186,7 +2185,8 @@ async function imprimirInspeccion(usuario) {
       suma('Crédito', v.creditos.length ? `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}` : '', t.credito, true),
       suma('Cheques de ventas', 'cuentan como crédito hasta cobrarse', t.chequesVenta, true),
       suma('Crédito total del día', '', t.creditoTotal, false, 'sub'),
-      suma('Total rendición', '', total, false, 'tot')].join('');
+      suma('Total rendición', '', total, false, 'tot'),
+      t.gastos ? suma('Gastos del día (aparte)', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'} · no se descuentan`, t.gastos, false) : ''].join('');
 
     const transfHtml = bancos.map(b => {
       const xs = v.transf[b].slice().sort((p, q) => (p.tipo === 'COBRANZA') - (q.tipo === 'COBRANZA'));
@@ -2208,16 +2208,16 @@ async function imprimirInspeccion(usuario) {
       : `<table class="s">${suma('Venta en efectivo', '', t.efVentas, true)}</table>`;
     const credHtml = v.creditos.length ? bloque('Crédito', t.credito, `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}`, v.creditos.map(x => filaVt({ cliente: x.cliente, rut: x.rut, doc: refOrigen(x.origen), monto: x.monto })).join(''), '', COLS_VT, true) : '';
 
-    const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat(t.gastos ? [['− Gastos', -t.gastos]] : [],
+    const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat([],
       [['+ Transferencias', transfTot], ['+ Cheques de cobranza', chCob], ['+ Crédito total (crédito + cheques)', t.creditoTotal]]);
     return `<section class="ins">
       <div class="hd"><div><b class="n">${esc(v.nombre)}</b><small>Inspección de rendición · Cecinas Naranjo</small></div>
         <div class="r"><b>${fc}</b><small>${v.terminal ? 'Terminal ' + esc(v.terminal) : ''}</small></div></div>
-      ${v.porDia && v.porDia.length ? `<table class="s sp">${v.porDia.map(x => suma(fechaCortaTxt(x.fecha), x.documentos + ' docs · efectivo ' + clp(x.efVentas + x.efCob - x.gastos), x.venta, false)).join('')}${suma('Total de los días', 'se rinde junto', v.porDia.reduce((a, x) => a + x.venta, 0), false, 'tot')}</table>` : ''}
+      ${v.porDia && v.porDia.length ? `<table class="s sp">${v.porDia.map(x => suma(fechaCortaTxt(x.fecha), x.documentos + ' docs · efectivo ' + clp(x.efVentas + x.efCob), x.venta, false)).join('')}${suma('Total de los días', 'se rinde junto', v.porDia.reduce((a, x) => a + x.venta, 0), false, 'tot')}</table>` : ''}
       <h3>RESUMEN</h3><table class="s">${resumen}</table>
       <h3>DETALLE</h3>
       ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${depHtml}
-      <table class="s sp">${t.gastos ? suma('(−) Suma de gastos', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, -t.gastos, true) : ''}
+      <table class="s sp">${t.gastos ? suma('Gastos del día (aparte, no se descuentan)', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, t.gastos, true) : ''}
         </table>
       ${v.kilos && v.kilos.detalle.length ? `<div class="blk"><div class="bt"><span><b>Diferencia de kilos</b> <small>${v.kilos.diferencia > 0 ? 'kilos faltantes' : 'kilos sobrantes'} · no entra al total</small></span><b class="m">${mm(v.kilos.diferenciaPesos)}</b><i></i></div>
         <table class="d"><colgroup><col><col style="width:2cm"><col style="width:2cm"><col style="width:2cm"><col style="width:2.3cm"><col style="width:2.6cm"><col style="width:15pt"></colgroup>
@@ -2781,7 +2781,7 @@ async function vResumen(m) {
         ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
         ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
-        ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}
+        ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>${clp(v.gastos)} (aparte)</dd>` : ''}
         ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}${v.depositoExceso ? ` <span class="chip bad">${clp(v.depositoExceso)} más que el efectivo</span>` : ''}</dd>` : ''}
         <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
         ${v.efectivoContado === null || v.efectivoContado === undefined ? '' : `<dt>Efectivo contado</dt><dd>${clp(v.efectivoContado)} <span class="chip ${v.efectivoDif ? 'bad' : 'ok'}">${v.efectivoDif ? (v.efectivoDif < 0 ? 'Falta ' : 'Sobra ') + clp(Math.abs(v.efectivoDif)) : 'Cuadra'}</span></dd>`}
@@ -2891,7 +2891,7 @@ async function vDepositos(m) {
   if (!esV && !S.vend) S.vend = S.cat.vendedores[0] && S.cat.vendedores[0].usuario;
   const r = await frescoDep(esV);
   const cerrada = r.estadoDia === 'CERRADA';
-  // El depósito no se asocia a folios: se compara en plata. Efectivo del día (ventas + cobranza − gastos) contra lo depositado.
+  // El depósito no se asocia a folios: se compara en plata. Efectivo del día (ventas + cobranza) contra lo depositado.
   const q = r.resumen || (() => { const ev = r.folios.reduce((t, x) => t + x.efectivo, 0), ec = r.cobranzas.reduce((t, x) => t + x.efectivo, 0), dp = r.depositos.reduce((t, x) => t + x.monto, 0);
     return { efectivoVentas: ev, efectivoCobranza: ec, gastos: 0, disponible: ev + ec, depositado: dp, saldo: ev + ec - dp }; })();
   const sinMov = !q.efectivoVentas && !q.efectivoCobranza && !q.depositado && !r.depositos.length;
@@ -2909,7 +2909,7 @@ async function vDepositos(m) {
       <button class="btn cu block" id="dg" style="margin-top:8px">Registrar depósito</button></div>`}
     <details class="mas" style="margin:0 0 12px"><summary>Cómo se calcula</summary><ul class="info">
       <li>Efectivo de las ventas: <b>${clp(q.efectivoVentas)}</b></li><li>Efectivo de cobranza: <b>${clp(q.efectivoCobranza)}</b></li>
-      ${q.gastos ? `<li>Gastos: <b>− ${clp(q.gastos)}</b></li>` : ''}<li>Ya depositado: <b>− ${clp(q.depositado)}</b></li></ul></details>
+      <li>Ya depositado: <b>− ${clp(q.depositado)}</b></li></ul></details>
     <div class="csec">Depositado ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</div>
     ${r.depositos.length ? r.depositos.map(d => `<div class="card" style="margin-bottom:8px"><div class="row">
       <div class="grow"><b>${esc(d.banco)}</b> ${d.referencia ? '· N° ' + esc(d.referencia) : ''}${d.por ? `<div class="muted">Registró ${esc(d.por)}</div>` : ''}
@@ -3068,7 +3068,7 @@ const MOV = {
     f: [['proveedor', 'Proveedor'], ['documento', 'Documento'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
   CONSUMO: { t: 'Consumo', d: 'Ventas hechas directamente en la bodega.',
     f: [['cliente', 'Cliente'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
-  GASTOS: { t: 'Gastos', d: 'Combustible, peajes, almuerzo y otros gastos del día. La foto de la boleta se agrega después con «Falta foto · Adjuntar». Se descuentan del efectivo a entregar.',
+  GASTOS: { t: 'Gastos', d: 'Combustible, peajes, almuerzo y otros gastos del día. Se registran aparte y no se descuentan del efectivo a entregar.',
     f: [['concepto', 'Concepto'], ['monto', 'Monto', 'n'], ['respaldo', 'N° de boleta'], ['responsable', 'Responsable', 'vend'], ['obs', 'Observación']] }
 };
 async function vMov(m, tabla) {
@@ -3175,7 +3175,7 @@ async function vGastosV(m) {
   const rows = await api('listarMov', S.sess.token, 'GASTOS', S.fecha);
   let sel = '';
   render(m, `<h2>Gastos</h2>
-    <div class="gtot"><small>Gastado ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</small><b id="gt"></b><small>Se descuenta de tu efectivo a entregar</small></div>
+    <div class="gtot"><small>Gastado ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</small><b id="gt"></b><small>Se registra aparte: no cambia lo que entregas</small></div>
     <div class="card" id="fm">
       <label class="f">¿En qué gastaste?</label>
       <div class="gch" id="gc">${CONCEPTOS_GASTO.map(c => `<button type="button" data-c="${c}">${c}</button>`).join('')}</div>

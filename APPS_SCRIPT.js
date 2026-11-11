@@ -2634,11 +2634,11 @@ function efectivoParaDepositar(token, fecha, vendedor) {
     .filter(x => x.efectivo > 0);
   const cobranzas = byFecha_('COBRANZA', fecha).filter(c => c.vendedor === v && c.forma === 'EFECTIVO')
     .map(c => ({ key: c.id, folio: c.folio, cliente: c.cliente, efectivo: num_(c.monto), deposito: enDep['C:' + c.id] || '' }));
-  // el depósito ya no se asocia a folios: se compara en plata (efectivo del día − gastos) contra lo depositado
+  // el depósito ya no se asocia a folios: se compara en plata (efectivo del día) contra lo depositado. Los gastos NO se descuentan (v136)
   const gastos = byFecha_('GASTOS', fecha).filter(g => g.responsable === v).reduce((a, g) => a + num_(g.monto), 0);
   const efV = folios.reduce((a, x) => a + x.efectivo, 0), efC = cobranzas.reduce((a, x) => a + x.efectivo, 0), depositado = deps.reduce((a, d) => a + num_(d.monto), 0);
   return { vendedor: v, estadoDia: estadoDia_(fecha), folios, cobranzas,
-    resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, disponible: efV + efC - gastos, depositado, saldo: efV + efC - gastos - depositado },
+    resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, disponible: efV + efC, depositado, saldo: efV + efC - depositado },
     depositos: deps.map(d => ({ id: d.id, por: nomUsuario_(d.registrado_por), banco: d.banco, monto: num_(d.monto), referencia: d.referencia,
       folios: lista_(d.folios), cobranzas: lista_(d.cobranzas), incluido: incluidoDep_(d, folios, cobranzas), adjuntos: adjuntosDe_(d) })) };
 }
@@ -2777,7 +2777,7 @@ function guardarPrecios(token, cambios) {
 
 /* ============================ CONTEO DE EFECTIVO Y DEPÓSITO ============================ */
 // La encargada cuenta el efectivo de cada vendedor: billetes y monedas por denominación (las monedas no se depositan).
-// A depositar = billetes contados − caja chica. Esperado = efectivo de ventas + cobranza − gastos − lo que el vendedor ya depositó.
+// A depositar = billetes contados − caja chica. Esperado = efectivo de ventas + cobranza − lo que el vendedor ya depositó.
 const BILLETES = [20000, 10000, 5000, 2000, 1000];
 const MONEDAS = [500, 100, 50, 10];   // v132: monedas por denominación; `monedas` sigue siendo el total en $ (lo usan todos los cálculos)
 function asegurarColsConteo_() {
@@ -2856,14 +2856,14 @@ function resumen_(fecha) {
     const dv = deps.filter(x => x.vendedor === v);
     tot.depositos = dv.reduce((a, x) => a + num_(x.monto), 0);
     const dvF = dv.filter(x => lista_(x.folios).length || lista_(x.cobranzas).length);       // depósitos antiguos asociados a folios
-    tot.depositoExceso = Math.max(0, tot.depositos - (tot.EFECTIVO + tot.cobranzaEfectivo - tot.gastos));
+    tot.depositoExceso = Math.max(0, tot.depositos - (tot.EFECTIVO + tot.cobranzaEfectivo));
     if (dvF.length) {
       const ef = {}; ds.forEach(d => ef[d.folio_key] = d.pagos.filter(p => p.forma === 'EFECTIVO').reduce((a, p) => a + p.monto, 0));
       const efc = {}; c.filter(x => x.forma === 'EFECTIVO').forEach(x => efc[x.id] = num_(x.monto));
       const incl = dvF.reduce((a, d) => a + lista_(d.folios).reduce((s, k) => s + (ef[k] || 0), 0) + lista_(d.cobranzas).reduce((s, k) => s + (efc[k] || 0), 0), 0);
       tot.depositoDif = dvF.reduce((a, x) => a + num_(x.monto), 0) - incl;
     } else tot.depositoDif = 0;
-    tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.gastos - tot.depositos;
+    tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.depositos;   // v136: los gastos se registran aparte y no bajan lo que se entrega
     const k = desp.filter(x => x.vendedor === v);
     tot.kilos = kilosDe_(v, desp, detV, unidad, precios, anulKg_(fecha));
     tot.sinRetorno = k.filter(x => x.salida !== '' && x.retorno === '').length;
@@ -2965,7 +2965,7 @@ function getInspeccion(token, fecha, vendedor) {
       documentos: ds.length, detallados: ds.filter(d => d.estado === 'DETALLADO').length,
       docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
       totales: { venta: venta - nc, ventaDocs: venta, credito, nc, descuentos: desc, contado: venta - nc - credito - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
-        entregar: efVentas + efCob - tGas - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
+        entregar: efVentas + efCob - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, creditos, porDia: porDia_(ds, cs, gs),
       kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
       folios: ds.map(d => ({ folio_key: d.folio_key, folio: d.folio, tipo: d.tipo.replace(' Electrónica', ''), cliente: d.cliente, rut: d.rut || '',
@@ -3158,9 +3158,9 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     ['Cheques', '=' + ref(V, 10) + '+' + ref(C, 7)],
     ['Efectivo de ventas', '=' + ref(V, 6)],
     ['(+) Efectivo de cobranza', '=' + ref(C, 3)],
-    ['(−) Gastos', '=' + ref(G, 2)],
+    ['Gastos del día (aparte, no se descuentan)', '=' + ref(G, 2)],
     ['(−) Depositado a la empresa', '=' + ref(D, 2)],
-    ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{11}-D{12}'],
+    ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{12}'],
     ['Efectivo recibido', contEf == null ? '' : contEf],
     ['DIFERENCIA', '=IF(D{14}="","",D{14}-D{13})'],
     ['Firma vendedor: ____________________        Firma recibe: ____________________', '']
