@@ -669,3 +669,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v146 — Aviso de «Registrando cobro…» (solo frontend: app.js, style.css, sw.js)
 - Al registrar un cobro («Cobrar a un cliente») o un pago a mano, el botón muestra giro y «Registrando cobro…» / «Guardando…» hasta que termina TODO (guardado y recarga de la lista), y el formulario queda apagado (`.guardando`). Antes el botón volvía a la normalidad apenas respondía el servidor y la lista tardaba en actualizarse sin indicador. Helper `botonOcupado(b, texto)`. Solo sintaxis verificada.
+
+## v147 — Chuleta: Mi DTE la factura como «CHULETA VETADA» y la bodega la despacha como «CHULETA AHUMADA» (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Los kilos facturados de chuleta (código 25, «CHULETA VETADA», verificado en el Informe de ventas del 30-09) no se cruzaban con la salida de «CHULETA AHUMADA» de Despacho, y salían como faltante. `CFG.ALIAS_PRODUCTOS` suma `['CHULETA VETADA','CHULETA AHUMADA']` y `CFG.VENTA_EN_KILOS` suma `'CHULETA'` (siempre por kilo). Las ventas de días ya importados se corrigen solas al leer (el alias se aplica en `read_('VENTAS_DETALLE')`). La chuleta vetada de CÁMARA (materia prima) sigue como producto aparte. Solo sintaxis verificada.
