@@ -64,6 +64,7 @@ const SCHEMA = {
   OPERACIONES: ['op','fn','fecha'],
   CHEQUES_ESTADO: ['clave','estado','fecha','registrado_por','registrado','obs'],
   NC_EMITIDAS: ['clave','nc_folio','fecha','registrado_por','registrado'],
+  CAJA_CHICA:  ['id','fecha','tipo','fecha_gasto','vendedor','monto','obs','registrado_por','registrado'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
   ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos'],
@@ -265,7 +266,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  getCajaChica, guardarCajaChica, borrarCajaChica, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -305,7 +306,7 @@ function registrarOp_(op, fn) {
 function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { ping: 1, listarClientes: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
+const LECTURAS_ = { ping: 1, getCajaChica: 1, listarClientes: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, getSugerido: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -360,7 +361,7 @@ function actualizarArchivosAbiertos_() {
     try { withLock_(() => generarArchivo_(f, resumen_(f), true)); } catch (e) { Logger.log('Archivo ' + f + ': ' + e); }
   });
 }
-const ARCH_TABLAS_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, VENTAS_DETALLE: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, DEVOLUCIONES: 1, CONTEO_EFECTIVO: 1 };
+const ARCH_TABLAS_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, VENTAS_DETALLE: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, DEVOLUCIONES: 1, CONTEO_EFECTIVO: 1, CAJA_CHICA: 1 };
 function activarPrecalentamiento() {
   try { if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'calentar')) ScriptApp.newTrigger('calentar').timeBased().everyMinutes(5).create(); } catch (e) { Logger.log('No se pudo crear el disparador: ' + e); }
 }
@@ -2636,6 +2637,74 @@ function marcarNotaEmitida(token, claves, ncFolio, fecha) {
   });
 }
 
+/* ============ CAJA CHICA (v148) ============
+ * El gasto del día se resta de lo que el vendedor entrega. Al otro día la caja chica lo repone: esa REPOSICIÓN se anota con la fecha del gasto
+ * (fecha_gasto) y aparece en la rendición de ese día. La caja chica lleva su saldo: INGRESO (plata que entra al fondo) − REPOSICION (plata que sale).
+ * Hoja CAJA_CHICA: id, fecha (cuándo se anotó), tipo (INGRESO|REPOSICION), fecha_gasto, vendedor (responsable del gasto), monto, obs, registrado_por, registrado. */
+function asegurarCajaChica_() {
+  if (MEMO_.__cc) return;
+  const ss = SpreadsheetApp.getActive();
+  if (!ss.getSheetByName('CAJA_CHICA')) {
+    const sh = ss.insertSheet('CAJA_CHICA'), head = SCHEMA.CAJA_CHICA;
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
+    MEMO_.CAJA_CHICA = null;
+  }
+  MEMO_.__cc = true;
+}
+/** Gastos de `fecha` del vendedor ya repuestos desde la caja chica (para el vendedor que rinde con el día anterior suma también la víspera). */
+function reposDe_(fecha, v) {
+  asegurarCajaChica_();
+  const fs = [fecha]; if (ventanaRA_(fecha).trae[v]) fs.push(sumarDias_(fecha, -1));
+  return read_('CAJA_CHICA').filter(x => x.tipo === 'REPOSICION' && x.vendedor === v && fs.indexOf(normFecha_(x.fecha_gasto)) >= 0).reduce((a, x) => a + Math.round(num_(x.monto)), 0);
+}
+function getCajaChica(token) {
+  auth_(token, ['RENDICION', 'SUPERVISOR', 'GERENCIA']);
+  asegurarCajaChica_();
+  const nom = {}; read_('USUARIOS').forEach(u => nom[u.usuario] = u.nombre || u.usuario); nom.GENERAL = 'General planta';
+  const movs = read_('CAJA_CHICA').map(x => ({ id: String(x.id), fecha: normFecha_(x.fecha), tipo: x.tipo, fechaGasto: normFecha_(x.fecha_gasto), vendedor: x.vendedor || '', nombre: nom[x.vendedor] || x.vendedor || '',
+    monto: Math.round(num_(x.monto)), obs: x.obs || '', por: nom[x.registrado_por] || x.registrado_por || '', registrado: x.registrado || '' }));
+  const ingresos = movs.filter(x => x.tipo === 'INGRESO').reduce((a, x) => a + x.monto, 0), repuesto = movs.filter(x => x.tipo === 'REPOSICION').reduce((a, x) => a + x.monto, 0);
+  const rep = {}; movs.filter(x => x.tipo === 'REPOSICION').forEach(x => { const k = x.fechaGasto + '|' + x.vendedor; rep[k] = (rep[k] || 0) + x.monto; });
+  const desde = sumarDias_(hoy_(), -60), gas = {};
+  read_('GASTOS').forEach(g => { const f = normFecha_(g.fecha); if (f < desde || !g.responsable) return; const k = f + '|' + g.responsable; gas[k] = (gas[k] || 0) + Math.round(num_(g.monto)); });
+  const pendientes = Object.keys(gas).map(k => { const [f, v] = k.split('|'); return { fecha: f, vendedor: v, nombre: nom[v] || v, gastos: gas[k], repuesto: rep[k] || 0, falta: gas[k] - (rep[k] || 0), estado: estadoDia_(f) }; })
+    .filter(x => x.falta > 0).sort((a, b) => b.fecha.localeCompare(a.fecha) || a.nombre.localeCompare(b.nombre));
+  movs.sort((a, b) => String(b.registrado).localeCompare(String(a.registrado)));
+  return { saldo: ingresos - repuesto, ingresos, repuesto, pendientes, movimientos: movs.slice(0, 80) };
+}
+/** tipo INGRESO: {fecha, monto, obs}. tipo REPOSICION: {fechaGasto, vendedor, monto, obs} (se suma a la rendición de la fecha del gasto). */
+function guardarCajaChica(token, tipo, datos) {
+  const u = auth_(token, ['RENDICION', 'SUPERVISOR']);
+  tipo = String(tipo || '').toUpperCase(); datos = datos || {};
+  if (tipo !== 'INGRESO' && tipo !== 'REPOSICION') throw new Error('Tipo de movimiento no válido.');
+  const monto = Math.round(num_(datos.monto)); if (!(monto > 0)) throw new Error('Escribe un monto mayor a cero.');
+  return withLock_(() => {
+    asegurarCajaChica_();
+    const o = { id: uid_(), fecha: hoy_(), tipo, fecha_gasto: '', vendedor: '', monto, obs: String(datos.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
+    let aviso = '';
+    if (tipo === 'INGRESO') { o.fecha = normFecha_(datos.fecha) || hoy_(); }
+    else {
+      const fg = normFecha_(datos.fechaGasto), v = String(datos.vendedor || ''); if (!fg || !v) throw new Error('Elige el día del gasto y quién lo hizo.');
+      const gastado = read_('GASTOS').filter(g => normFecha_(g.fecha) === fg && g.responsable === v).reduce((a, g) => a + Math.round(num_(g.monto)), 0);
+      const ya = read_('CAJA_CHICA').filter(x => x.tipo === 'REPOSICION' && x.vendedor === v && normFecha_(x.fecha_gasto) === fg).reduce((a, x) => a + Math.round(num_(x.monto)), 0);
+      if (!gastado) throw new Error('Ese día no hay gastos registrados para esa persona.');
+      if (monto > gastado - ya) throw new Error('Se pueden reponer como máximo $' + (gastado - ya).toLocaleString('es-CL') + ' (lo que falta de ese día).');
+      o.fecha_gasto = fg; o.vendedor = v;
+      if (estadoDia_(fg) === 'CERRADA') aviso = 'El día ' + fg + ' ya está cerrado: la reposición queda anotada y el saldo baja, pero verás el cambio en su rendición solo si el administrador reabre ese día.';
+    }
+    append_('CAJA_CHICA', [o]);
+    return { ok: true, id: o.id, aviso };
+  });
+}
+function borrarCajaChica(token, id) {
+  auth_(token, ['RENDICION', 'SUPERVISOR']);
+  return withLock_(() => {
+    asegurarCajaChica_();
+    const x = read_('CAJA_CHICA').find(y => String(y.id) === String(id)); if (!x) throw new Error('No se encontró el movimiento.');
+    deleteRows_('CAJA_CHICA', [x._row]); return { ok: true };
+  });
+}
+
 /* ============================ DEPÓSITOS DE EFECTIVO ============================ */
 
 const lista_ = v => String(v || '').split(',').map(x => x.trim()).filter(String);
@@ -2652,12 +2721,12 @@ function efectivoParaDepositar(token, fecha, vendedor) {
     .filter(x => x.efectivo > 0);
   const cobranzas = byFecha_('COBRANZA', fecha).filter(c => c.vendedor === v && c.forma === 'EFECTIVO')
     .map(c => ({ key: c.id, folio: c.folio, cliente: c.cliente, efectivo: num_(c.monto), deposito: enDep['C:' + c.id] || '' }));
-  // el depósito ya no se asocia a folios: se compara en plata (efectivo del día) contra lo depositado. Los gastos NO se descuentan (v136)
+  // el depósito ya no se asocia a folios: se compara en plata (efectivo del día) contra lo depositado. Los gastos SÍ se descuentan (v148)
   const gastos = byFecha_('GASTOS', fecha).filter(g => g.responsable === v).reduce((a, g) => a + num_(g.monto), 0);
   const efV = folios.reduce((a, x) => a + x.efectivo, 0), efC = cobranzas.reduce((a, x) => a + x.efectivo, 0), depositado = deps.reduce((a, d) => a + num_(d.monto), 0);
   const dev = byFecha_('DEVOLUCIONES', fecha).filter(x => x.origen === v).reduce((a, x) => a + Math.round(num_(x.monto)), 0);   // v139
   return { vendedor: v, estadoDia: estadoDia_(fecha), folios, cobranzas,
-    resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, devoluciones: dev, disponible: efV + efC - dev, depositado, saldo: efV + efC - dev - depositado },
+    resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, devoluciones: dev, disponible: efV + efC - dev - gastos, depositado, saldo: efV + efC - dev - gastos - depositado },
     depositos: deps.map(d => ({ id: d.id, por: nomUsuario_(d.registrado_por), banco: d.banco, monto: num_(d.monto), referencia: d.referencia,
       folios: lista_(d.folios), cobranzas: lista_(d.cobranzas), incluido: incluidoDep_(d, folios, cobranzas), adjuntos: adjuntosDe_(d) })) };
 }
@@ -2928,14 +2997,15 @@ function resumen_(fecha) {
     const dv = deps.filter(x => x.vendedor === v);
     tot.depositos = dv.reduce((a, x) => a + num_(x.monto), 0);
     const dvF = dv.filter(x => lista_(x.folios).length || lista_(x.cobranzas).length);       // depósitos antiguos asociados a folios
-    tot.depositoExceso = Math.max(0, tot.depositos - (tot.EFECTIVO + tot.cobranzaEfectivo - tot.devoluciones));
+    tot.depositoExceso = Math.max(0, tot.depositos - (tot.EFECTIVO + tot.cobranzaEfectivo - tot.devoluciones - tot.gastos));
     if (dvF.length) {
       const ef = {}; ds.forEach(d => ef[d.folio_key] = d.pagos.filter(p => p.forma === 'EFECTIVO').reduce((a, p) => a + p.monto, 0));
       const efc = {}; c.filter(x => x.forma === 'EFECTIVO').forEach(x => efc[x.id] = num_(x.monto));
       const incl = dvF.reduce((a, d) => a + lista_(d.folios).reduce((s, k) => s + (ef[k] || 0), 0) + lista_(d.cobranzas).reduce((s, k) => s + (efc[k] || 0), 0), 0);
       tot.depositoDif = dvF.reduce((a, x) => a + num_(x.monto), 0) - incl;
     } else tot.depositoDif = 0;
-    tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.devoluciones - tot.depositos;   // v136: los gastos van aparte; v139: la devolución baja lo que se cobra
+    tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.devoluciones - tot.gastos - tot.depositos;   // v148: el gasto baja lo que se entrega (lo repone la caja chica al otro día); v139: la devolución baja lo que se cobra
+    tot.reposicion = reposDe_(fecha, v);   // v148: gastos de este día ya repuestos desde la caja chica (informativo: no cambia lo que se entrega)
     // v108: lo contado en la pestaña Efectivo contra lo que debe entregar (solo aviso)
     tot.efectivoContado = contados[v] === undefined ? null : contados[v];
     tot.efectivoDif = tot.efectivoContado === null ? 0 : tot.efectivoContado - tot.efectivoEntregar;
@@ -3047,7 +3117,7 @@ function getInspeccion(token, fecha, vendedor) {
       docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
       totales: { venta: venta - nc - tDev, ventaDocs: venta, credito, chequesVenta, creditoTotal: credito + chequesVenta, nc, devoluciones: tDev, devolucionesN: devoluciones.length, devSinCliente: devoluciones.filter(x => !x.cliente).length, descuentos: desc, contado: venta - nc - tDev - credito - chequesVenta - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         efContado: contados[v.usuario] === undefined ? null : contados[v.usuario],
-        entregar: efVentas + efCob - tDev - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
+        entregar: efVentas + efCob - tDev - tGas - tDep, reposicion: reposDe_(fecha, v.usuario), cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, devoluciones, creditos, porDia: porDia_(ds, cs, gs),
       kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
       folios: ds.map(d => ({ folio_key: d.folio_key, folio: d.folio, tipo: d.tipo.replace(' Electrónica', ''), cliente: d.cliente, rut: d.rut || '',
@@ -3159,7 +3229,7 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
 
   // espacio reservado para la cuadratura (se llena al final, cuando se conocen las filas de totales)
   H.seccion('CUADRATURA', 5);
-  const cuadIni = H.g.length + 1, CUAD = 18;
+  const cuadIni = H.g.length + 1, CUAD = 19;
   for (let i = 0; i < CUAD; i++) H.fila([]);
   H.fila([]);
 
@@ -3245,25 +3315,26 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     ['Efectivo de ventas', '=' + ref(V, 6)],
     ['(+) Efectivo de cobranza', '=' + ref(C, 3)],
     ['(−) Devoluciones (merma / reproceso)', num_(t.devoluciones)],
-    ['Gastos del día (aparte, no se descuentan)', '=' + ref(G, 2)],
+    ['(−) Gastos del día', '=' + ref(G, 2)],
     ['(−) Depositado a la empresa', '=' + ref(D, 2)],
-    ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{11}-D{13}'],
+    ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{11}-D{12}-D{13}'],
     ['Efectivo recibido', contEf != null ? contEf : (datos.recibidoManual && datos.recibidoManual[t.vendedor] !== undefined ? datos.recibidoManual[t.vendedor] : '')],
     ['DIFERENCIA', '=IF(D{15}="","",D{15}-D{14})'],
+    ['Gastos repuestos desde caja chica (informativo)', num_(t.reposicion)],
     ['Firma vendedor: ____________________        Firma recibe: ____________________', '']
   ];
   lineas.forEach((l, i) => {
     const f = typeof l[1] === 'number' ? l[1] : String(l[1]).replace(/\{(\d+)\}/g, (_, k) => cuadIni + Number(k));
     H.g[cuadIni - 1 + i] = [l[0], '', '', f].concat(Array(H.W - 4).fill(''));
     const r = cuadIni + i;
-    if (i === 17) { H.op(r, 1, 1, 8, g => g.merge().setFontColor('#595959').setVerticalAlignment('bottom')); return; }
+    if (i === 18) { H.op(r, 1, 1, 8, g => g.merge().setFontColor('#595959').setVerticalAlignment('bottom')); return; }
     H.op(r, 1, 1, 3, g => g.merge());
     H.op(r, 4, 1, 1, g => g.setNumberFormat(EST.dinero));
     if ([4, 14, 16].indexOf(i) >= 0) H.op(r, 1, 1, 4, g => g.setFontWeight('bold').setBackground(i === 14 ? EST.gris : EST.grisClaro));
     if (i === 14) H.op(r, 4, 1, 1, g => g.setBackground(EST.amarillo).setNote('Se llena con el conteo de la pestaña Efectivo; si no hay conteo, anotar el efectivo contado al recibir la rendición'));
   });
-  H.op(cuadIni, 1, 16, 4, g => g.setBorder(true, true, true, true, null, true, EST.borde, SpreadsheetApp.BorderStyle.SOLID));
-  H.op(cuadIni + 16, 1, 1, 1, g => g.setFontSize(10));
+  H.op(cuadIni, 1, 18, 4, g => g.setBorder(true, true, true, true, null, true, EST.borde, SpreadsheetApp.BorderStyle.SOLID));
+  H.op(cuadIni + 18, 1, 1, 1, g => g.setFontSize(10));
   H.escribir([260, 95, 95, 70, 95, 80, 90, 95, 105, 120, 85, 90, 95, 85, 110]);
 }
 

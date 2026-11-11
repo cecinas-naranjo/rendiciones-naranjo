@@ -155,7 +155,7 @@ function enlazarCampoArchivos(id) {
    Velocidad: las consultas (no los guardados) se guardan en el teléfono. Al volver a una pantalla se muestra
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
-const LECTURA = new Set(['listarClientes', 'getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
+const LECTURA = new Set(['getCajaChica', 'listarClientes', 'getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
   'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos', 'listarAnulaciones', 'anulacionesPendientes']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
@@ -183,8 +183,8 @@ function olvidarCache(todo) {
 const claveApi = (fn, args) => fn + '|' + JSON.stringify(args);
 /* v135: tras guardar o borrar algo, las listas que muestran ese dato se piden de nuevo al servidor (no se usa la copia guardada, que aún no lo trae:
    por eso antes «Cobrado hoy»/«Gastos» no mostraban lo recién registrado y al agregar otro aparecía el anterior). */
-const LISTAS_TRAS_ESCRIBIR = /^(listarMov|porCobrar|efectivoParaDepositar|listarDevoluciones|getConteoEfectivo|listarAdelantos|listarAnulaciones|anulacionesPendientes)\|/;
-const ESCRITURAS_DE_LISTA = new Set(['guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
+const LISTAS_TRAS_ESCRIBIR = /^(getCajaChica|listarMov|porCobrar|efectivoParaDepositar|listarDevoluciones|getConteoEfectivo|listarAdelantos|listarAnulaciones|anulacionesPendientes)\|/;
+const ESCRITURAS_DE_LISTA = new Set(['guardarCajaChica', 'borrarCajaChica', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
 function purgarListas() { Array.from(CACHE.keys()).forEach(k => { if (LISTAS_TRAS_ESCRIBIR.test(k)) CACHE.delete(k); }); guardarCache(); }
 const FRESCURA = 20e3;      // si lo guardado tiene menos de 20 s no se vuelve a pedir al servidor
 
@@ -595,7 +595,7 @@ const TABS = {
   RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
     ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
     ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'],
-    ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
+    ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['cajachica', 'Caja chica', 'cash'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['precios', 'Precios', 'receipt'], ['usuarios', 'Usuarios', 'users']]);
@@ -604,7 +604,7 @@ TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Res
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques', 'notascred'], 'cash'],
-  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'precios', 'usuarios'], 'dots']];
+  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'cajachica', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'precios', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
 /* ===== VER COMO (solo ADMIN): saltar entre usuarios para ver cómo ven la app los demás ===== */
@@ -913,7 +913,7 @@ function ir(t, silencioso) {
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
   const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
-  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, usuarios: vUsuarios, precios: vPrecios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, cajachica: vCajaChica, usuarios: vUsuarios, precios: vPrecios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
     if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -2209,7 +2209,7 @@ async function abrirVendedor(usuario) {
         ${pend.length ? `<span class="chip cu">${pend.length} por detallar</span>` : '<span class="chip ok">Todo detallado</span>'}</div>
       <div class="dtop">
         <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
-          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}${t.devoluciones ? ' − devoluciones ' + clp(t.devoluciones) : ''} − depositado ${clp(t.depositos)}</small></div>
+          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}${t.devoluciones ? ' − devoluciones ' + clp(t.devoluciones) : ''}${t.gastos ? ' − gastos ' + clp(t.gastos) : ''} − depositado ${clp(t.depositos)}${t.reposicion ? ' · repuesto desde caja chica ' + clp(t.reposicion) : ''}</small></div>
         <div class="dres">
           ${t.nc ? fila('Venta (' + v.documentos + ' docs)', '', t.ventaDocs) + fila('− Notas de crédito', '', t.nc) + fila('Venta neta', '', t.venta) : fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${fila('Venta contado', '', t.contado)}${t.creditoTotal ? fila('Crédito total', 'crédito ' + clp(t.credito) + ' · cheques ' + clp(t.chequesVenta), t.creditoTotal) : ''}
           ${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
@@ -2223,7 +2223,7 @@ async function abrirVendedor(usuario) {
         return `<div class="dsec"><div class="dtit"><b>Cuenta del efectivo</b><span>solo aviso</span></div>
           ${fila('Venta contado', 'venta − crédito − cheques − descuentos', t.contado)}${fila('− Transferencias de ventas', '', trV)}
           ${fila('= Efectivo de ventas', dV ? 'ojo: lo anotado es ' + clp(t.efVentas) + ' (diferencia ' + clp(Math.abs(dV)) + ')' : 'calza con lo anotado', ef0)}
-          ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.devoluciones ? fila('− Devoluciones', 'merma / reproceso', t.devoluciones) : ''}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
+          ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.devoluciones ? fila('− Devoluciones', 'merma / reproceso', t.devoluciones) : ''}${t.gastos ? fila('− Gastos del día', '', t.gastos) : ''}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
           ${fila('= Debe entregar', '', t.entregar)}
           ${dif === null ? '<div class="muted" style="padding:6px 0">Todavía no se cuenta el efectivo (pestaña Efectivo).</div>'
             : fila('Efectivo contado', dif === 0 ? 'cuadra' : dif < 0 ? 'FALTA ' + clp(-dif) : 'SOBRA ' + clp(dif), cont)}</div>`; })()}
@@ -2284,18 +2284,20 @@ async function imprimirInspeccion(usuario) {
     const bancos = Object.keys(v.transf);
     const tb = {}; bancos.forEach(b => tb[b] = sum(v.transf[b]));
     const transfTot = sum(bancos.map(b => ({ monto: tb[b] })));
-    const dev = t.devoluciones || 0, efTotal = t.efVentas + t.efCob, aEntregar = efTotal - dev - t.depositos;
+    const dev = t.devoluciones || 0, efTotal = t.efVentas + t.efCob, gas = t.gastos || 0, rep = t.reposicion || 0, aEntregar = efTotal - dev - gas - t.depositos;
     const chCob = t.cheques - t.chequesVenta;                       // cheques recibidos por cobranza (no son venta del día)
-    const subtotal = aEntregar + t.depositos + transfTot + chCob, total = subtotal + t.creditoTotal;
-    const totalDetalle = t.efVentas + t.efCob - dev + transfTot + chCob + t.creditoTotal;     // por origen: debe dar igual a `total`
+    const subtotal = aEntregar + rep + t.depositos + transfTot + chCob, total = subtotal + t.creditoTotal;
+    const totalDetalle = t.efVentas + t.efCob - dev - gas + rep + transfTot + chCob + t.creditoTotal;     // por origen: debe dar igual a `total`
     const cobEf = t.efCob, cobCh = sum(v.cobranza.filter(x => x.forma === 'CHEQUE'));
     const cobTr = sum(v.cobranza.filter(x => x.forma === 'TRANSFERENCIA' || x.forma === 'DEP_EFECTIVO'));
 
     const resumen = [
       suma('Efectivo total', `ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}`, efTotal, false),
       dev ? suma('(−) Devoluciones', 'merma / reproceso', -dev, false) : '',
+      gas ? suma('(−) Gastos del día', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, -gas, false) : '',
       t.depositos ? suma('(−) Depositado', 'ya está en el banco', -t.depositos, false) : '',
       suma('Efectivo a entregar', '', aEntregar, true, 'sub'),
+      rep ? suma('(+) Repuesto desde caja chica', 'gastos de este día', rep, true) : '',
       t.depositos ? suma('Depósitos de efectivo', 'en el banco', t.depositos, true) : '',
       ...bancos.map(b => suma('Transferencias ' + b, '', tb[b], true)),
       chCob ? suma('Cheques de cobranza', '', chCob, true) : '',
@@ -2303,8 +2305,7 @@ async function imprimirInspeccion(usuario) {
       suma('Crédito', v.creditos.length ? `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}` : '', t.credito, true),
       suma('Cheques de ventas', 'cuentan como crédito hasta cobrarse', t.chequesVenta, true),
       suma('Crédito total del día', '', t.creditoTotal, false, 'sub'),
-      suma('Total rendición', '', total, false, 'tot'),
-      t.gastos ? suma('Gastos del día (aparte)', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'} · no se descuentan`, t.gastos, false) : ''].join('');
+      suma('Total rendición', '', total, false, 'tot')].join('');
 
     const transfHtml = bancos.map(b => {
       const xs = v.transf[b].slice().sort((p, q) => (p.tipo === 'COBRANZA') - (q.tipo === 'COBRANZA'));
@@ -2328,7 +2329,7 @@ async function imprimirInspeccion(usuario) {
       : `<table class="s">${suma('Venta en efectivo', '', t.efVentas, true)}</table>`;
     const credHtml = v.creditos.length ? bloque('Crédito', t.credito, `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}`, v.creditos.map(x => filaVt({ cliente: x.cliente, rut: x.rut, doc: refOrigen(x.origen), monto: x.monto })).join(''), '', COLS_VT, true) : '';
 
-    const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat(dev ? [['− Devoluciones (merma / reproceso)', -dev]] : [],
+    const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat(dev ? [['− Devoluciones (merma / reproceso)', -dev]] : [], gas ? [['− Gastos del día', -gas]] : [], rep ? [['+ Repuesto desde caja chica', rep]] : [],
       [['+ Transferencias', transfTot], ['+ Cheques de cobranza', chCob], ['+ Crédito total (crédito + cheques)', t.creditoTotal]]);
     return `<section class="ins">
       <div class="hd"><div><b class="n">${esc(v.nombre)}</b><small>Inspección de rendición · Cecinas Naranjo</small></div>
@@ -2337,7 +2338,7 @@ async function imprimirInspeccion(usuario) {
       <h3>RESUMEN</h3><table class="s">${resumen}</table>
       <h3>DETALLE</h3>
       ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${devHtml}${depHtml}
-      <table class="s sp">${t.gastos ? suma('Gastos del día (aparte, no se descuentan)', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, t.gastos, true) : ''}
+      <table class="s sp">${t.gastos ? suma('Gastos del día', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'} · se restan del efectivo`, t.gastos, true) : ''}${rep ? suma('Repuesto desde caja chica', 'se suma a la rendición', rep, true) : ''}
         </table>
       ${v.kilos && v.kilos.detalle.length ? `<div class="blk"><div class="bt"><span><b>Diferencia de kilos</b> <small>${v.kilos.diferencia > 0 ? 'kilos faltantes' : 'kilos sobrantes'} · no entra al total</small></span><b class="m">${mm(v.kilos.diferenciaPesos)}</b><i></i></div>
         <table class="d"><colgroup><col><col style="width:2cm"><col style="width:2cm"><col style="width:2cm"><col style="width:2.3cm"><col style="width:2.6cm"><col style="width:15pt"></colgroup>
@@ -2901,7 +2902,7 @@ async function vResumen(m) {
         ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
         ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
-        ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>${clp(v.gastos)} (aparte)</dd>` : ''}
+        ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}${v.reposicion ? `<dt>Repuesto desde caja chica</dt><dd>${clp(v.reposicion)}</dd>` : ''}
         ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}${v.depositoExceso ? ` <span class="chip bad">${clp(v.depositoExceso)} más que el efectivo</span>` : ''}</dd>` : ''}
         <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
         ${v.efectivoContado === null || v.efectivoContado === undefined ? '' : `<dt>Efectivo contado</dt><dd>${clp(v.efectivoContado)} <span class="chip ${v.efectivoDif ? 'bad' : 'ok'}">${v.efectivoDif ? (v.efectivoDif < 0 ? 'Falta ' : 'Sobra ') + clp(Math.abs(v.efectivoDif)) : 'Cuadra'}</span></dd>`}
@@ -3188,7 +3189,7 @@ const MOV = {
     f: [['proveedor', 'Proveedor'], ['documento', 'Documento'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
   CONSUMO: { t: 'Consumo', d: 'Ventas hechas directamente en la bodega.',
     f: [['cliente', 'Cliente'], ['folio', 'Folio'], ['monto', 'Monto', 'n'], ['forma', 'Forma de pago', 'forma'], ['obs', 'Observación']] },
-  GASTOS: { t: 'Gastos', d: 'Combustible, peajes, almuerzo y otros gastos del día. Se registran aparte y no se descuentan del efectivo a entregar.',
+  GASTOS: { t: 'Gastos', d: 'Combustible, peajes, almuerzo y otros gastos del día. El gasto del día se resta de lo que entregas; al otro día se repone desde la caja chica.',
     f: [['concepto', 'Concepto'], ['monto', 'Monto', 'n'], ['respaldo', 'N° de boleta'], ['responsable', 'Responsable', 'vend'], ['obs', 'Observación']] }
 };
 async function vMov(m, tabla) {
@@ -3295,7 +3296,7 @@ async function vGastosV(m) {
   const rows = await api('listarMov', S.sess.token, 'GASTOS', S.fecha);
   let sel = '';
   render(m, `<h2>Gastos</h2>
-    <div class="gtot"><small>Gastado ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</small><b id="gt"></b><small>Se registra aparte: no cambia lo que entregas</small></div>
+    <div class="gtot"><small>Gastado ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</small><b id="gt"></b><small>Se resta de lo que entregas hoy</small></div>
     <div class="card" id="fm">
       <label class="f">¿En qué gastaste?</label>
       <div class="gch" id="gc">${CONCEPTOS_GASTO.map(c => `<button type="button" data-c="${c}">${c}</button>`).join('')}</div>
@@ -3688,4 +3689,51 @@ async function vNotasCredito(m) {
     XLSX.utils.book_append_sheet(wb, ws, 'Notas de crédito'); XLSX.writeFile(wb, 'Notas de credito ' + mes + '.xlsx');
   };
   lista();
+}
+
+/* ===== CAJA CHICA (v148): saldo, gastos por reponer y movimientos ===== */
+function pedirMonto(titulo, detalle, monto, conNota, alOk) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(titulo)}"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px;margin-bottom:4px">${esc(titulo)}</div><div class="muted" style="margin-bottom:10px">${esc(detalle)}</div>
+    <label class="f" for="pmM">Monto</label><input class="in n gmon" id="pmM" inputmode="numeric" autocomplete="off" value="${monto || ''}" placeholder="$ 0">
+    ${conNota ? '<label class="f" for="pmN" style="margin-top:10px">Nota <span class="muted">(opcional)</span></label><input class="in" id="pmN" autocomplete="off" placeholder="Ej.: retiro del banco">' : ''}
+    <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" id="pmX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="pmOk" type="button">Guardar</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov);
+  $('#pmX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  setTimeout(() => $('#pmM', ov).focus(), 60);
+  $('#pmOk', ov).onclick = async () => {
+    const m = Number(soloDigitos($('#pmM', ov).value)); if (!(m > 0)) return toast('Escribe un monto.', true);
+    const b = $('#pmOk', ov), fin = botonOcupado(b, 'Guardando…');
+    try { await alOk(m, conNota ? $('#pmN', ov).value : ''); cerrar(); } catch (e) { fin(); throw e; }
+  };
+}
+async function vCajaChica(m) {
+  const r = await api('getCajaChica', S.sess.token), puede = S.sess.rol !== 'GERENCIA';
+  const llamar = async (fn, ...a) => { const x = await api(fn, S.sess.token, ...a); olvidarCache(true); purgarListas(); return x; };
+  render(m, `<h2>Caja chica</h2>
+    <p class="lead" style="margin:0 0 12px">El gasto del día se resta de lo que entrega el vendedor. Al otro día se repone desde aquí y la reposición se suma a la rendición del día del gasto.</p>
+    <div class="kpis"><div class="cash"><span>Saldo de caja chica</span><b>${clp(r.saldo)}</b>${r.saldo < 0 ? '<small>Falta anotar plata que entró a la caja</small>' : ''}</div>
+      <div><span>Ha entrado</span><b>${clp(r.ingresos)}</b></div><div><span>Se ha repuesto</span><b>${clp(r.repuesto)}</b></div></div>
+    ${puede ? '<div class="row" style="margin:12px 0"><button class="btn cu" id="ccIn" type="button">+ Anotar plata que entra a la caja chica</button></div>' : ''}
+    <h3>Gastos por reponer ${r.pendientes.length ? `<small class="muted">(${r.pendientes.length})</small>` : ''}</h3>
+    ${r.pendientes.length ? r.pendientes.map((x, i) => `<div class="cfac" style="display:block;margin-bottom:8px"><div class="row" style="gap:10px;flex-wrap:wrap">
+      <span class="grow"><b>${esc(x.nombre)}</b> <span class="muted">· ${fechaCortaTxt(x.fecha)}${x.estado === 'CERRADA' ? ' · día cerrado' : ''}</span>
+        <div class="muted">Gastó ${clp(x.gastos)}${x.repuesto ? ' · ya repuesto ' + clp(x.repuesto) : ''}</div></span>
+      <b>${clp(x.falta)}</b>${puede ? `<button class="btn cu" type="button" data-i="${i}">Reponer</button>` : ''}</div></div>`).join('')
+      : '<div class="empty">No hay gastos por reponer.</div>'}
+    <h3 style="margin-top:18px">Movimientos</h3>
+    ${r.movimientos.length ? `<table class="t"><thead><tr><th>Anotado</th><th>Qué</th><th>Detalle</th><th class="m">Monto</th><th></th></tr></thead><tbody>${r.movimientos.map(x => `<tr>
+      <td>${fcorta(x.fecha)}</td><td>${x.tipo === 'INGRESO' ? 'Entra a la caja' : 'Reposición de gastos'}</td>
+      <td>${x.tipo === 'REPOSICION' ? esc(x.nombre) + ' · gasto del ' + fcorta(x.fechaGasto) : ''}${x.obs ? ' ' + esc(x.obs) : ''}<div class="muted">${esc(x.por)}</div></td>
+      <td class="m"><b>${x.tipo === 'INGRESO' ? '+' : '−'} ${clp(x.monto)}</b></td>${puede ? `<td><button class="x" type="button" data-d="${esc(x.id)}" aria-label="Borrar">×</button></td>` : '<td></td>'}</tr>`).join('')}</tbody></table>`
+      : '<div class="empty">Aún no hay movimientos.</div>'}`);
+  const bi = $('#ccIn', m);
+  if (bi) bi.onclick = () => pedirMonto('Plata que entra a la caja chica', 'Por ejemplo, el retiro que se hizo para dejar fondos en caja.', '', true,
+    async (mt, nota) => { await llamar('guardarCajaChica', 'INGRESO', { fecha: hoyCL(), monto: mt, obs: nota }); toast('Anotado'); ir('cajachica', true); });
+  $$('[data-i]', m).forEach(b => b.onclick = () => { const x = r.pendientes[b.dataset.i];
+    pedirMonto('Reponer gastos de ' + x.nombre, 'Gastos del ' + fechaCortaTxt(x.fecha) + '. Se suma a la rendición de ese día y baja el saldo de la caja chica.', x.falta, false,
+      async mt => { const o = await llamar('guardarCajaChica', 'REPOSICION', { fechaGasto: x.fecha, vendedor: x.vendedor, monto: mt }); toast(o.aviso || 'Reposición anotada', !!o.aviso); ir('cajachica', true); }); });
+  $$('[data-d]', m).forEach(b => b.onclick = async () => { if (!confirm('¿Borrar este movimiento?')) return; await llamar('borrarCajaChica', b.dataset.d); toast('Movimiento borrado'); ir('cajachica', true); });
 }
