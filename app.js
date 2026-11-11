@@ -1847,7 +1847,10 @@ function abrirDevolucionesVendedor(alCerrar) {
 
 /* ============ INVENTARIO DE BODEGA ============ */
 async function vInventario(m) {
-  const inv = await api('getInventario', S.sess.token, S.fecha);
+  let inv = await api('getInventario', S.sess.token, S.fecha);
+  if (inv.nominaPendiente && S.sess.rol !== 'GERENCIA') {      // v149: la primera vez deja los productos como la nómina del bodeguero
+    try { await api('aplicarNominaInventario', S.sess.token); olvidarCache(true); inv = await api('getInventario', S.sess.token, S.fecha); } catch (e) { /* si falla, se sigue con lo que hay */ }
+  }
   S.secInv = S.secInv || 'TERMINADOS';
   if (!S.invM) S.invM = S.sess.rol === 'BODEGA' ? 'contar' : 'ver';       // el bodeguero abre en "Contar y anotar"; los demás, en "Ver stock"
   const sum = o => Object.keys(o || {}).reduce((a, k) => a + (Number(o[k]) || 0), 0);
@@ -1866,7 +1869,7 @@ async function vInventario(m) {
   };
   const nombreSec = id => (inv.secciones.find(x => x.id === id) || {}).nombre || id;
   render(m, `<div class="row"><div class="grow"><h2>Inventario de bodega</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
-      <button class="btn ghost sm" id="plan">Planilla del día</button></div>
+      ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost sm" id="edp">Editar planilla</button>'}<button class="btn ghost sm" id="plan">Planilla del día</button></div>
     <p class="muted" id="invh"></p>
     <div class="invtop"><div class="seg secs" id="sec">${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
       <div class="seg" id="invm"><button type="button" data-m="ver">Ver stock</button><button type="button" data-m="contar">Contar y anotar</button></div></div>
@@ -1938,8 +1941,9 @@ async function vInventario(m) {
   lista.addEventListener('focusin', e => { if (e.target.matches('input[data-k]')) setTimeout(() => e.target.select && e.target.select(), 0); });
   lista.onclick = e => { const b = e.target.closest('[data-otras]'); if (!b) return; abrirOtras(est[b.closest('tr[data-c]').dataset.c]); };
   function abrirOtras(st) {
-    const lista2 = inv.destinos.filter(d => d !== 'SUPERMERCADO' || !st.desp.SUPERMERCADO);
-    const dist = inv.distribuidores || [];
+    const delaSec = inv.destinosSec && inv.destinosSec[st.f.seccion];
+    const lista2 = (delaSec ? delaSec.concat(['SUPERMERCADO']) : inv.destinos).filter(d => d !== 'SUPERMERCADO' || !st.desp.SUPERMERCADO);
+    const dist = delaSec ? [] : (inv.distribuidores || []);
     const extras = Object.keys(st.otras).filter(k => lista2.indexOf(k) < 0 && dist.indexOf(k) < 0);
     const campo = d => `<label class="f" style="margin:0">${esc(d === 'SUPERMERCADO' ? 'Supermercado' : d.charAt(0) + d.slice(1).toLowerCase())}
         <input class="in n" data-d="${esc(d)}" inputmode="decimal" value="${st.otras[d] || ''}"></label>`;
@@ -1947,9 +1951,9 @@ async function vInventario(m) {
     ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div><div class="body">
       <div class="muted">Otras salidas</div><div style="font-weight:700;font-size:18px">${esc(st.f.nombre)}</div>
       ${Object.keys(st.desp).length ? `<p class="muted">Desde Despacho: ${Object.keys(st.desp).map(k => esc(k) + ' ' + kg(st.desp[k])).join(', ')}</p>` : ''}
-      <div class="muted" style="margin-top:12px;font-weight:700">Distribuidores</div>
-      <div class="grid g2" style="margin-top:6px">${dist.map(campo).join('')}</div>
-      <div class="muted" style="margin-top:14px;font-weight:700">Otros destinos</div>
+      ${dist.length ? `<div class="muted" style="margin-top:12px;font-weight:700">Distribuidores</div>
+      <div class="grid g2" style="margin-top:6px">${dist.map(campo).join('')}</div>` : ''}
+      <div class="muted" style="margin-top:14px;font-weight:700">${dist.length ? 'Otros destinos' : 'Salidas de esta sección'}</div>
       <div class="grid g2" style="margin-top:6px" id="ods">${lista2.concat(extras).map(campo).join('')}</div>
       <div class="row" style="margin-top:12px"><input class="in grow" id="odN" placeholder="Otro destino o distribuidor nuevo"><input class="in n" id="odQ" style="width:110px" inputmode="decimal" placeholder="Cantidad"></div>
       </div><div class="foot"><button class="btn ghost grow" id="odX">Cancelar</button><button class="btn cu grow" id="odOk">Listo</button></div></div>`;
@@ -1988,6 +1992,7 @@ async function vInventario(m) {
       <span class="grow">Hoja ${esc(r.hoja)} lista en ${esc(r.nombre)} (carpeta Inventario).</span><a class="btn cu sm" href="${esc(r.url)}" target="_blank" rel="noopener">Abrir planilla</a></div>`;
     $('#lnkInv').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
+  const edp = $('#edp'); if (edp) edp.onclick = () => abrirEditorPlanilla(() => ir('inventario', true));
   $('#npA').onclick = async () => {
     const n = $('#npN').value.trim(); if (!n) return toast('Escribe el nombre del producto.', true);
     await api('agregarProductoInv', S.sess.token, { nombre: n, seccion: S.secInv, unidad: $('#npU').value });
@@ -3736,4 +3741,71 @@ async function vCajaChica(m) {
     pedirMonto('Reponer gastos de ' + x.nombre, 'Gastos del ' + fechaCortaTxt(x.fecha) + '. Se suma a la rendición de ese día y baja el saldo de la caja chica.', x.falta, false,
       async mt => { const o = await llamar('guardarCajaChica', 'REPOSICION', { fechaGasto: x.fecha, vendedor: x.vendedor, monto: mt }); toast(o.aviso || 'Reposición anotada', !!o.aviso); ir('cajachica', true); }); });
   $$('[data-d]', m).forEach(b => b.onclick = async () => { if (!confirm('¿Borrar este movimiento?')) return; await llamar('borrarCajaChica', b.dataset.d); toast('Movimiento borrado'); ir('cajachica', true); });
+}
+
+/* ===== EDITAR LA PLANILLA DE INVENTARIO (v149): el bodeguero agrega, renombra, oculta y reordena productos y columnas de salida ===== */
+async function abrirEditorPlanilla(alGuardar) {
+  const cfg = await api('getConfigInventario', S.sess.token);
+  const prods = cfg.productos.map(p => Object.assign({}, p)), dest = JSON.parse(JSON.stringify(cfg.destinos));
+  let sec = S.secInv || 'TERMINADOS', cambio = false;
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet ancha" role="dialog" aria-modal="true" aria-label="Editar planilla"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Editar planilla de inventario</div>
+    <p class="muted" style="margin:4px 0 10px">Cambia el orden con ▲ ▼, corrige el nombre, oculta lo que ya no usas (no se borra: se puede volver a mostrar) o muévelo de sección. Abajo están las columnas de salida de cada sección.</p>
+    <div class="seg" id="edS" style="margin-bottom:10px"></div><div id="edL"></div><div id="edD"></div></div>
+    <div class="foot"><button class="btn ghost" id="edX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="edOk" type="button">Guardar</button></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov);
+  $('#edX', ov).onclick = () => { if (cambio && !confirm('Hay cambios sin guardar. ¿Salir igual?')) return; cerrar(); };
+  const secs = cfg.secciones;
+  const pintar = () => {
+    $('#edS', ov).innerHTML = secs.map(x => `<button type="button" data-s="${x.id}" class="${x.id === sec ? 'on' : ''}">${esc(x.nombre)}</button>`).join('');
+    const xs = prods.filter(p => p.seccion === sec);
+    $('#edL', ov).innerHTML = xs.map((p, i) => `<div class="edr${p.oculto ? ' of' : ''}" data-c="${esc(p.codigo)}">
+      <span class="edb"><button type="button" data-m="-1" aria-label="Subir"${i === 0 ? ' disabled' : ''}>▲</button><button type="button" data-m="1" aria-label="Bajar"${i === xs.length - 1 ? ' disabled' : ''}>▼</button></span>
+      <input class="in grow" data-n value="${esc(p.nombre)}" autocomplete="off">
+      <select class="in" data-sec aria-label="Sección">${secs.map(q => `<option value="${q.id}"${q.id === p.seccion ? ' selected' : ''}>${esc(q.nombre)}</option>`).join('')}</select>
+      <label class="edv"><input type="checkbox" data-v${p.oculto ? '' : ' checked'}> Se ve</label></div>`).join('') || '<div class="empty">No hay productos en esta sección.</div>';
+    const dl = dest[sec];
+    $('#edD', ov).innerHTML = `<div class="edadd"><input class="in grow" id="edNN" placeholder="Producto nuevo en esta sección" autocomplete="off"><select class="in" id="edNU" style="width:auto"><option>KG</option><option>UN</option></select><button class="btn ghost sm" id="edNA" type="button">Agregar producto</button></div>
+      ${dl ? `<h3 style="margin-top:18px">Columnas de salida de ${esc((secs.find(q => q.id === sec) || {}).nombre)}</h3>
+      <p class="muted" style="margin:2px 0 8px">Son las columnas a la derecha de los vendedores en la planilla. «Supermercado» va siempre al final.</p>
+      ${dl.map((d, i) => `<div class="edr" data-d="${i}"><span class="edb"><button type="button" data-dm="-1"${i === 0 ? ' disabled' : ''}>▲</button><button type="button" data-dm="1"${i === dl.length - 1 ? ' disabled' : ''}>▼</button></span>
+        <input class="in grow" data-dn value="${esc(d)}" autocomplete="off"><button type="button" class="x" data-dx aria-label="Quitar">×</button></div>`).join('')}
+      <div class="edadd"><input class="in grow" id="edDN" placeholder="Columna nueva (ej.: DEGUSTACION)" autocomplete="off"><button class="btn ghost sm" id="edDA" type="button">Agregar columna</button></div>`
+      : '<p class="muted" style="margin-top:14px">La cámara de carnes usa siempre las columnas Sale a fábrica y Sale a vendedores.</p>'}`;
+  };
+  ov.addEventListener('click', e => {
+    const bs = e.target.closest('[data-s]'); if (bs) { sec = bs.dataset.s; pintar(); return; }
+    const bm = e.target.closest('[data-m]');
+    if (bm) { const c = bm.closest('[data-c]').dataset.c, xs = prods.filter(p => p.seccion === sec), i = xs.findIndex(p => p.codigo === c), j = i + Number(bm.dataset.m);
+      if (j < 0 || j >= xs.length) return; const a = prods.indexOf(xs[i]), b = prods.indexOf(xs[j]); [prods[a], prods[b]] = [prods[b], prods[a]]; cambio = true; pintar(); return; }
+    const dm = e.target.closest('[data-dm]');
+    if (dm) { const i = Number(dm.closest('[data-d]').dataset.d), j = i + Number(dm.dataset.dm), l = dest[sec]; if (j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; cambio = true; pintar(); return; }
+    const dx = e.target.closest('[data-dx]'); if (dx) { dest[sec].splice(Number(dx.closest('[data-d]').dataset.d), 1); cambio = true; pintar(); return; }
+    if (e.target.closest('#edDA')) { const n = $('#edDN', ov).value.trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); if (!n) return;
+      if (n === 'SUPERMERCADO' || dest[sec].indexOf(n) >= 0) return toast('Esa columna ya existe.', true); dest[sec].push(n); cambio = true; pintar(); return; }
+    if (e.target.closest('#edNA')) agregarNuevo();
+  });
+  ov.addEventListener('input', e => { const r = e.target.closest('[data-c]'); if (r && e.target.matches('[data-n]')) { prods.find(p => p.codigo === r.dataset.c).nombre = e.target.value; cambio = true; }
+    const d = e.target.closest('[data-d]'); if (d && e.target.matches('[data-dn]')) { dest[sec][Number(d.dataset.d)] = e.target.value; cambio = true; } });
+  ov.addEventListener('change', e => { const r = e.target.closest('[data-c]'); if (!r) return; const p = prods.find(x => x.codigo === r.dataset.c);
+    if (e.target.matches('[data-v]')) { p.oculto = !e.target.checked; cambio = true; r.classList.toggle('of', p.oculto); }
+    if (e.target.matches('[data-sec]')) { p.seccion = e.target.value; cambio = true; sec = p.seccion; pintar(); toast('Movido a ' + (secs.find(q => q.id === p.seccion) || {}).nombre); } });
+  const datos = () => ({ productos: prods.map(p => ({ codigo: p.codigo, nombre: p.nombre, seccion: p.seccion, oculto: p.oculto })),
+    destinos: Object.fromEntries(Object.keys(dest).map(k => [k, dest[k].map(x => String(x).trim()).filter(Boolean)])) });
+  async function agregarNuevo() {
+    const n = $('#edNN', ov).value.trim(); if (!n) return toast('Escribe el nombre del producto.', true);
+    const b = $('#edNA', ov); b.disabled = true;
+    try { if (cambio) await api('guardarConfigInventario', S.sess.token, datos());      // primero se guarda lo ya editado
+      await api('agregarProductoInv', S.sess.token, { nombre: n, seccion: sec, unidad: $('#edNU', ov).value });
+      const c2 = await api('getConfigInventario', S.sess.token); prods.length = 0; c2.productos.forEach(p => prods.push(Object.assign({}, p))); cambio = false; olvidarCache(true);
+      toast('Producto agregado al final de la sección'); pintar();
+    } finally { b.disabled = false; }
+  }
+  $('#edOk', ov).onclick = async () => {
+    const b = $('#edOk', ov), fin = botonOcupado(b, 'Guardando…');
+    try { await api('guardarConfigInventario', S.sess.token, datos()); olvidarCache(true); purgarListas(); toast('Planilla actualizada'); cambio = false; cerrar(); if (alGuardar) alGuardar(); } catch (e) { fin(); throw e; }
+  };
+  pintar();
 }

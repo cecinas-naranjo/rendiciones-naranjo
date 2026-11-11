@@ -40,12 +40,16 @@ const CFG = {
   // Distribuidores: en la planilla de inventario cada uno tiene su columna de salida (aparece si retiró ese día)
   // Carga sugerida: cuántos días se miran (mismo día de la semana) y colchón sobre el promedio
   SUG_DIAS: 8, SUG_COLCHON: 0.20,
-  DISTRIBUIDORES: ['PATRICIO','CESAR','JUAN CARLOS','AMIR','OSCAR','CHILOE']
+  DISTRIBUIDORES: ['PATRICIO','CESAR','JUAN CARLOS','AMIR','OSCAR','CHILOE'],
+  // v149: columnas de salida de la planilla de inventario por sección (nómina del bodeguero); él las edita desde la app (propiedad INV_DEST). SUPERMERCADO siempre va al final.
+  DEST_SECCION: { TERMINADOS: ['REPROCESO','CONSUMO','CONSUMO EXTERNO','LAMINADO','PATRICIO','OSCAR','AMIR'],
+    CONGELADOS: ['OTRAS SALIDAS CON GUIA','CONSUMO','REPROCESO','LAMINADO','PATRICIO','CESAR','JUAN CARLOS'],
+    LAMINADOS: ['OTRAS SALIDAS CON GUIA','CONSUMO','REPROCESO','LAMINADO','PATRICIO','CESAR','JUAN CARLOS'] }
 };
 
 const SCHEMA = {
   USUARIOS:    ['usuario','nombre','rol','pin','terminales','activo','rut','correo','clave_hash','sal','cambiar_clave','intentos','bloqueado_hasta','emite_antes','deposita'],
-  PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo','seccion','nombre_inv'],
+  PRODUCTOS:   ['codigo','nombre','categoria','unidad','precio','orden','activo','seccion','nombre_inv','orden_inv','inv_oculto'],
   INVENTARIO_MOV: ['key','fecha','codigo','tipo','destino','cantidad','obs','registrado_por','registrado'],
   DESPACHO:    ['id','fecha','vendedor','codigo','producto','unidad','salida','retorno','obs','actualizado_por','actualizado','salida_un','retorno_un'],
   DOCUMENTOS:  ['folio_key','fecha','tipo','folio','rut','cliente','total','condicion_dte','terminal','vendedor','estado','importado'],
@@ -266,7 +270,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  getCajaChica, guardarCajaChica, borrarCajaChica, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, borrarCajaChica, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -481,6 +485,7 @@ function normFecha_(v) {
 
 function valores_(name) {
   const head = SCHEMA[name];
+  if (name === 'PRODUCTOS') asegurarColsProductos_();
   if (CACHEADAS_[name]) {
     try { const c = CacheService.getScriptCache().get('tbl_' + name); if (c) return JSON.parse(c); } catch (e) {}
   }
@@ -1745,21 +1750,20 @@ const INV_ITEMS = [
   ['TERMINADOS', 'COSTILLAR', 'COSTILLAR DE CERDO AHUMADO ENV.'], ['TERMINADOS', 'S. CERVEZA', 'SALCHICHON CERVECERO'], ['TERMINADOS', 'M. LISA', 'MORTADELA LISA'],
   ['TERMINADOS', 'M. JAMONADA', 'MORTADELA JAMONADA'], ['TERMINADOS', 'JAMON SANDWICH', 'JAMON SANDWICH'], ['TERMINADOS', 'TAPABARRIGA', ''],
   ['TERMINADOS', 'CHULETA AHUMADA', ''], ['TERMINADOS', 'JAMON ACARAMELADO', ''], ['TERMINADOS', 'JAMON AHUMADO', ''],
-  ['TERMINADOS', 'CAZUELA', 'CAZUELA AHUMADA'], ['TERMINADOS', 'ARROLLADO CON CUERO', 'ARROLLADO CON CUERO'],
-  ['CAMARA', 'PULPA PALETA'], ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'PULPA AURORA'], ['CAMARA', 'PULPA SEARA'], ['CAMARA', 'PULPA ECOFRIGO'],
-  ['CAMARA', 'PULPA PAMPLONA'], ['CAMARA', 'TOCINO FRIVAR'], ['CAMARA', 'TRUTRO ENTERO POLLO'], ['CAMARA', 'PANA AGROSUPER'], ['CAMARA', 'CUERO'],
-  ['CAMARA', 'GORDURA CHICA'], ['CAMARA', 'CHULETA VETADA'], ['CAMARA', 'CAZUELA'], ['CAMARA', 'CARNE LONGA'], ['CAMARA', 'FORRO FRICASA'],
-  ['CONGELADOS', 'EMPANADA QUESO 16X600', ''], ['CONGELADOS', 'EMPANADA PINO 16X600', ''], ['CONGELADOS', 'EMPANADA QUESO 14X24', 'EMP QUESO 14X24X25G ESTUCHE'],
+  ['TERMINADOS', 'CAZUELA', 'CAZUELA AHUMADA'],
+  ['CAMARA', 'PECHUGA SADIA POLLO'], ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'FORRO FRICASA'], ['CAMARA', 'PULPA ESTRELLA'], ['CAMARA', 'TOCINO FRIVAR'],
+  ['CAMARA', 'TRUTRO ENTERO POLLO'], ['CAMARA', 'PANA AGROSUPER'], ['CAMARA', 'CUERO'], ['CAMARA', 'GORDURA CHICA'], ['CAMARA', 'CHULETA VETADA'],
+  ['CAMARA', 'FILETILLO SADIA POLLO'], ['CAMARA', 'PULPA PAMPLONA'],
+  ['CONGELADOS', 'EMPANADA QUESO 16X600', ''], ['CONGELADOS', 'EMPANADA PINO 16X600', ''], ['CONGELADOS', 'EMPANADA QUESO CAMARON', ''],
   ['CONGELADOS', 'SOPAIPILLA 20X12', 'SOPAIPILLA 20X12X420G'], ['CONGELADOS', 'SOPAIPILLA 20X48', 'SOPAIPILLA 20X48X500G'],
   ['CONGELADOS', 'PASTA CHOCLO 15X1', 'PASTA CHOCLO 1 KILO'], ['CONGELADOS', 'PAPAS FRITAS', 'PAPAS PRE FRITAS 4X2.5KG SUPER CAPITAN'],
   ['CONGELADOS', 'EMPANADA QUESO 3X3', 'EMP MED LUNA QUESO GRANEL 3X3 9KG'], ['CONGELADOS', 'CARNE MOLIDA 10', 'CARNE MOLIDA VACUNO 500G - 10 PORCIENTO'],
   ['CONGELADOS', 'CARNE MOLIDA 5', ''], ['CONGELADOS', 'MECHADA CAMPESTRE', 'CARNE DE VACUNO DESMECHADO CAMESTRE 1KG'],
   ['CONGELADOS', 'MECHADA CERDO BBQ', 'CERDO BBQ DESMECHADA 1KG'],
   ['LAMINADOS', 'P.LAM-JAMONADA 150G'], ['LAMINADOS', 'P.LAM-LISA 150G'], ['LAMINADOS', 'P.LAM-CERVECERO 150G'], ['LAMINADOS', 'P.LAM-ARROLLADO CON AJI 150G'],
-  ['LAMINADOS', 'P.LAM-ARROLLADO 150G'], ['LAMINADOS', 'P.LAM-QUESO CABEZA 150G'], ['LAMINADOS', 'GAUDA LAM. 30X400G HUILCO'],
-  ['LAMINADOS', 'GAUDA LAM. RIG. 24X500G HUILCO'], ['LAMINADOS', 'GAUDA BAR. 4X3.5KG NOAL CL'], ['LAMINADOS', 'GAUDA LAM. 30X200G HUILCO'],
-  ['LAMINADOS', 'MANTECOSO LAM. 24X500G HUILCO'], ['LAMINADOS', 'MANTECOSO LAM. 30X400G HUILCO'], ['LAMINADOS', 'MANTECOSO LAM. 30X200G HUILCO'],
-  ['LAMINADOS', 'QUESO CREMA 36X190G HUILCO'], ['LAMINADOS', 'MANTEQUILLA PAN 10X250GR HUILCO'],
+  ['LAMINADOS', 'P.LAM-ARROLLADO 150G'], ['LAMINADOS', 'P.LAM-QUESO CABEZA 150G'],
+  ['LAMINADOS', 'GAUDA LAM. RIG. 24X500G HUILCO'], ['LAMINADOS', 'QUESO CREMA TONADITA CHEDDAR 200GR'], ['LAMINADOS', 'MANTEQUILLA TONADITA 250GR 12X1'],
+  ['LAMINADOS', 'UNTABLE TONADITA'], ['LAMINADOS', 'QUESO CREMA TONADITA 100GR 20X1'], ['LAMINADOS', 'MANTEQUILLA TONADITA 125GR 24X1'],
   ['LAMINADOS', 'CHOCLO M.V', 'CHOCLO 10X200G M. VERDE'], ['LAMINADOS', 'ARVEJA M.V', 'ARVEJAS 10X200G M. VERDE'], ['LAMINADOS', 'PRIMAVERA M.V', 'PRIMAVERA 10X200G M. VERDE'],
   ['LAMINADOS', 'POROTO VERDE M.V', 'POROTO VERDE 10X150G M. VERDE'], ['LAMINADOS', 'SOFRITO M.V', 'SOFRITO CON AJO 12X150G M. VERDE'],
   ['LAMINADOS', 'CHOCLO TROZITO', 'CHOCLO TROCITO M. VERDE 20X180G']
@@ -1791,12 +1795,77 @@ function unidadInv_(p) {
   if (p.seccion === 'TERMINADOS') return CFG.INV_EN_KILOS.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre)) ? 'KG' : 'UN';
   return (SECCIONES_INV.find(x => x[0] === p.seccion) || [])[2] || p.unidad || 'UN';
 }
-function productosInv_() {
-  const orden = {}; INV_ITEMS.forEach((x, i) => orden[x[0] + '|' + claveInv_(x[1])] = i);
-  return read_('PRODUCTOS').filter(p => p.seccion && String(p.activo).toUpperCase() !== 'FALSE')
-    .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre_inv || p.nombre, seccion: p.seccion, unidad: unidadInv_(p), unidadVenta: p.unidad, kgUn: kgUnidad_(p),
-      orden: orden[p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre)] !== undefined ? orden[p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre)] : 500 + num_(p.orden) }))
+function asegurarColsProductos_() {
+  if (MEMO_.__cp) return; MEMO_.__cp = true;
+  const sh = SpreadsheetApp.getActive().getSheetByName('PRODUCTOS'); if (!sh) return;
+  const h = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0], need = SCHEMA.PRODUCTOS;
+  if (sh.getMaxColumns() < need.length) sh.insertColumnsAfter(sh.getMaxColumns(), need.length - sh.getMaxColumns());
+  let hecho = false;
+  need.forEach((c, i) => { if (h[i] !== c) { sh.getRange(1, i + 1).setValue(c).setFontWeight('bold'); hecho = true; } });
+  if (hecho) { MEMO_.PRODUCTOS = null; SLICE_ = {}; try { CacheService.getScriptCache().remove('tbl_PRODUCTOS'); } catch (e) {} }
+}
+const invOculto_ = p => p.inv_oculto === true || String(p.inv_oculto).toUpperCase() === 'TRUE';
+function productosInv_(conOcultos) {
+  const orden = {}; INV_ITEMS.forEach((x, i) => orden[x[0] + '|' + claveInv_(x[1])] = i * 10);
+  return read_('PRODUCTOS').filter(p => p.seccion && String(p.activo).toUpperCase() !== 'FALSE' && (conOcultos || !invOculto_(p)))
+    .map(p => { const k = p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre);
+      return { codigo: codeKey_(p.codigo), nombre: p.nombre_inv || p.nombre, seccion: p.seccion, unidad: unidadInv_(p), unidadVenta: p.unidad, kgUn: kgUnidad_(p), oculto: invOculto_(p),
+        orden: p.orden_inv !== '' && p.orden_inv !== undefined && p.orden_inv !== null ? num_(p.orden_inv) : (orden[k] !== undefined ? orden[k] : 5000 + num_(p.orden)) }; })
     .sort((a, b) => a.orden - b.orden);
+}
+
+/** Columnas de salida por sección (editables por el bodeguero). SUPERMERCADO siempre va al final y no se quita. */
+function invDestinos_() {
+  let g = {}; try { g = JSON.parse(PropertiesService.getScriptProperties().getProperty('INV_DEST') || '{}'); } catch (e) {}
+  const o = {}; ['TERMINADOS', 'CONGELADOS', 'LAMINADOS'].forEach(sec => { o[sec] = (Array.isArray(g[sec]) ? g[sec] : CFG.DEST_SECCION[sec]).filter(x => x !== 'SUPERMERCADO'); });
+  return o;
+}
+const invSello_ = () => String(PropertiesService.getScriptProperties().getProperty('INV_DEST_V') || '0');
+const ROLES_INV_ = ['BODEGA', 'RENDICION', 'SUPERVISOR'];
+const NOMINA_INV_ = 'v1';
+/** Deja los productos como la nómina del bodeguero (INV_ITEMS): crea los que faltan, ordena y oculta (sin borrar) los que ya no están. Se corre sola una vez. */
+function aplicarNominaInventario(token) {
+  auth_(token, ROLES_INV_);
+  return withLock_(() => {
+    const props = PropertiesService.getScriptProperties();
+    if (props.getProperty('NOMINA_INV') === NOMINA_INV_) return { ok: true, yaAplicada: true };
+    asegurarColsProductos_(); prepararProductosInventario_(); MEMO_.PRODUCTOS = null;
+    const pos = {}; INV_ITEMS.forEach(([sec, inv], i) => pos[sec + '|' + claveInv_(inv)] = i * 10);
+    let ocultos = 0;
+    read_('PRODUCTOS').forEach(p => { if (!p.seccion) return;
+      const k = pos[p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre)], oculto = k === undefined;
+      const ord = oculto ? 5000 + num_(p.orden) : k;
+      if (String(p.orden_inv) === String(ord) && invOculto_(p) === oculto) return;
+      p.orden_inv = ord; p.inv_oculto = oculto ? true : ''; if (oculto) ocultos++; updateRow_('PRODUCTOS', p._row, p); });
+    props.setProperty('NOMINA_INV', NOMINA_INV_); props.setProperty('INV_DEST_V', String(Date.now()));
+    return { ok: true, ocultos };
+  });
+}
+/** Lo que el bodeguero puede cambiar de la planilla: productos (nombre, sección, orden, oculto) y columnas de salida por sección. */
+function getConfigInventario(token) {
+  auth_(token, ROLES_INV_);
+  return { secciones: SECCIONES_INV.map(x => ({ id: x[0], nombre: x[1] })), destinos: invDestinos_(), distribuidores: CFG.DISTRIBUIDORES,
+    productos: productosInv_(true).map(p => ({ codigo: p.codigo, nombre: p.nombre, seccion: p.seccion, unidad: p.unidad, oculto: p.oculto })) };
+}
+/** cfg: {productos:[{codigo, nombre, seccion, oculto}] en el orden deseado, destinos:{SECCION:[nombres]}} */
+function guardarConfigInventario(token, cfg) {
+  auth_(token, ROLES_INV_); cfg = cfg || {};
+  return withLock_(() => {
+    asegurarColsProductos_();
+    const por = {}; read_('PRODUCTOS').forEach(p => por[codeKey_(p.codigo)] = p);
+    const seq = {}, vistos = {};
+    (cfg.productos || []).forEach(x => { const p = por[codeKey_(x.codigo)]; if (!p || !p.seccion) return;
+      const sec = SECCIONES_INV.some(q => q[0] === x.seccion) ? x.seccion : p.seccion, nom = normTxt_(x.nombre);
+      const clave = sec + '|' + claveInv_(nom || p.nombre_inv || p.nombre); if (vistos[clave]) throw new Error('«' + (nom || p.nombre_inv) + '» está repetido en la sección ' + sec + '.'); vistos[clave] = 1;
+      const nuevo = { nombre_inv: nom || p.nombre_inv || p.nombre, seccion: sec, inv_oculto: x.oculto ? true : '', orden_inv: (seq[sec] = (seq[sec] || 0) + 1) * 10 };
+      if (p.nombre_inv === nuevo.nombre_inv && p.seccion === sec && invOculto_(p) === !!x.oculto && String(p.orden_inv) === String(nuevo.orden_inv)) return;
+      updateRow_('PRODUCTOS', p._row, Object.assign(p, nuevo)); });
+    const dest = {}; ['TERMINADOS', 'CONGELADOS', 'LAMINADOS'].forEach(sec => { const v = ((cfg.destinos || {})[sec] || invDestinos_()[sec]).map(normTxt_).filter(x => x && x !== 'SUPERMERCADO');
+      dest[sec] = v.filter((x, i) => v.indexOf(x) === i); });
+    const props = PropertiesService.getScriptProperties(); props.setProperty('INV_DEST', JSON.stringify(dest)); props.setProperty('INV_DEST_V', String(Date.now()));
+    limpiarCache_('PRODUCTOS');
+    return { ok: true };
+  });
 }
 
 const r3_ = x => Math.round(x * 1000) / 1000;
@@ -1851,12 +1920,13 @@ function inventarioDia_(fecha) {
       teorico: r3_(teorico), final: r3_(final), ajuste: x.conteo !== null ? r3_(x.conteo - teorico) : 0 });
   });
   return { fecha, vendedores: colVend.map(u => ({ usuario: u, nombre: (vend.find(v => v.usuario === u) || {}).nombre || u })),
-    destinos: CFG.DESTINOS, distribuidores: CFG.DISTRIBUIDORES, secciones: SECCIONES_INV.map(x => ({ id: x[0], nombre: x[1] })), filas };
+    destinos: CFG.DESTINOS, destinosSec: invDestinos_(), distribuidores: CFG.DISTRIBUIDORES, secciones: SECCIONES_INV.map(x => ({ id: x[0], nombre: x[1] })), filas };
 }
 
 function getInventario(token, fecha) {
   auth_(token, ['BODEGA','RENDICION','SUPERVISOR','GERENCIA']);
-  return conCache_('inv|' + fecha, ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(fecha));
+  const r = conCache_('inv|' + fecha + '|' + invSello_(), ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(fecha));
+  return Object.assign({}, r, { nominaPendiente: PropertiesService.getScriptProperties().getProperty('NOMINA_INV') !== NOMINA_INV_ });
 }
 
 /**
@@ -1898,12 +1968,14 @@ function agregarProductoInv(token, p) {
   if (!nombre) throw new Error('Escribe el nombre del producto.');
   return withLock_(() => {
     const ex = read_('PRODUCTOS').find(x => x.seccion === p.seccion && claveInv_(x.nombre_inv || x.nombre) === claveInv_(nombre));
-    if (ex) { ex.activo = true; updateRow_('PRODUCTOS', ex._row, ex); return true; }
+    asegurarColsProductos_();
+    const fin = read_('PRODUCTOS').filter(x => x.seccion === p.seccion && x.orden_inv !== '').reduce((a, x) => Math.max(a, num_(x.orden_inv)), 0) + 10;
+    if (ex) { ex.activo = true; ex.inv_oculto = ''; updateRow_('PRODUCTOS', ex._row, ex); return true; }
     const usados = {}; read_('PRODUCTOS').forEach(x => usados[codeKey_(x.codigo)] = 1);
     let codigo = (p.seccion === 'CAMARA' ? '?CAM-' : '?') + claveInv_(nombre).slice(0, 18), n = 2; const b0 = codigo;
     while (usados[codeKey_(codigo)]) codigo = b0 + n++;
     append_('PRODUCTOS', [{ codigo, nombre, categoria: p.seccion === 'CAMARA' ? 'MATERIA PRIMA' : p.seccion,
-      unidad: p.unidad || sec[2], precio: '', orden: 900, activo: true, seccion: p.seccion, nombre_inv: nombre }]);
+      unidad: p.unidad || sec[2], precio: '', orden: 900, activo: true, seccion: p.seccion, nombre_inv: nombre, orden_inv: fin, inv_oculto: '' }]);
     return true;
   });
 }
@@ -1981,21 +2053,22 @@ function reenlazarInicial_(sh, enl) {
 function escribirHojaInventario_(sh, inv, enlaces) {
   const rojo = '#FF0000', borde = SpreadsheetApp.BorderStyle.SOLID;
   const vend = inv.vendedores;
-  const FIJOS = CFG.DESTINOS.slice(0, 4);
-  // otros destinos usados ese día (en el orden de CFG.DESTINOS), supermercado siempre al final
-  const usados = {}; inv.filas.filter(f => f.seccion !== 'CAMARA').forEach(f => Object.keys(f.otras).forEach(k => { if (f.otras[k]) usados[k] = 1; }));
-  const conocidos = CFG.DESTINOS.concat(CFG.DISTRIBUIDORES);
-  const extra = conocidos.filter(x => FIJOS.indexOf(x) < 0 && x !== 'SUPERMERCADO' && usados[x])
-    .concat(Object.keys(usados).filter(x => conocidos.indexOf(x) < 0));
-  const destinos = FIJOS.concat(extra, ['SUPERMERCADO']);
-  const etiqueta = x => x === 'SUPERMERCADO' ? 'SALIDAS SUPERMERCADO' : x;
   const hayAjuste = inv.filas.some(f => f.conteo !== null && f.conteo !== undefined);
-  const head = ['PRODUCTOS', 'INVENTARIO INICIAL'].concat(vend.map(v => String(v.nombre).toUpperCase()), destinos.map(etiqueta),
-    ['TOTAL SALIDA', 'TOTAL INICIAL - SALIDAS', 'INGRESO FABRICA'], vend.map(v => 'RETORNO ' + String(v.usuario).toUpperCase()),
-    ['TOTAL RETORNO'], hayAjuste ? ['AJUSTE CONTEO'] : [], ['INVENTARIO FINAL']);
-  const W = head.length, L = colL_;
-  const cSal0 = 3, cSal1 = 2 + vend.length + destinos.length, cTot = cSal1 + 1, cDif = cTot + 1, cIng = cDif + 1;
-  const cRet0 = cIng + 1, cRet1 = cIng + vend.length, cTotR = cRet1 + 1, cAj = hayAjuste ? cTotR + 1 : 0, cFin = W;
+  const etiqueta = x => x === 'SUPERMERCADO' ? 'SALIDAS SUPERMERCADO' : x;
+  const L = colL_;
+  // v149: cada sección tiene sus propias columnas de salida (nómina del bodeguero) más lo que se haya usado ese día; supermercado al final
+  const layout = sec => {
+    const base = (inv.destinosSec && inv.destinosSec[sec]) || CFG.DEST_SECCION[sec] || [];
+    const usados = {}; inv.filas.filter(f => f.seccion === sec).forEach(f => Object.keys(f.otras).forEach(k => { if (f.otras[k]) usados[k] = 1; }));
+    const destinos = base.concat(Object.keys(usados).filter(x => base.indexOf(x) < 0 && x !== 'SUPERMERCADO'), ['SUPERMERCADO']);
+    const head = ['PRODUCTOS', 'INVENTARIO INICIAL'].concat(vend.map(v => String(v.nombre).toUpperCase()), destinos.map(etiqueta),
+      ['TOTAL SALIDA', 'TOTAL INICIAL - SALIDAS', 'INGRESO FABRICA'], vend.map(v => 'RETORNO ' + String(v.usuario).toUpperCase()),
+      ['TOTAL RETORNO'], hayAjuste ? ['AJUSTE CONTEO'] : [], ['INVENTARIO FINAL']);
+    const W = head.length, cSal0 = 3, cSal1 = 2 + vend.length + destinos.length, cTot = cSal1 + 1, cDif = cTot + 1, cIng = cDif + 1;
+    const cRet0 = cIng + 1, cRet1 = cIng + vend.length, cTotR = cRet1 + 1, cAj = hayAjuste ? cTotR + 1 : 0;
+    return { destinos, head, W, cSal0, cSal1, cTot, cDif, cIng, cRet0, cRet1, cTotR, cAj, cFin: W };
+  };
+  const W = Math.max(layout('TERMINADOS').W, layout('CONGELADOS').W, layout('LAMINADOS').W, 8);
   const g = [], ops = [];
   const fila = v => { const r = (v || []).slice(); while (r.length < W) r.push(''); g.push(r); return g.length; };
   const fechaD = new Date(inv.fecha + 'T12:00:00');
@@ -2003,25 +2076,25 @@ function escribirHojaInventario_(sh, inv, enlaces) {
   fila([]); fila([]);
   const v0 = x => x ? r3_(x) : '';
   const bloque = sec => {
-    const filas = inv.filas.filter(f => f.seccion === sec);
-    const h = fila(head); ops.push([h, 1, 1, W, x => x.setFontWeight('bold').setHorizontalAlignment('center').setWrap(true).setVerticalAlignment('middle')]);
+    const Ly = layout(sec), Ws = Ly.W, destinos = Ly.destinos, filas = inv.filas.filter(f => f.seccion === sec);
+    const h = fila(Ly.head); ops.push([h, 1, 1, Ws, x => x.setFontWeight('bold').setHorizontalAlignment('center').setWrap(true).setVerticalAlignment('middle')]);
     filas.forEach(f => {
       const n = g.length + 1;
       const row = [f.nombre, f.inicialManual ? f.inicial : (refInicial_(enlaces, sec, f.nombre) || f.inicial)]
         .concat(vend.map(v => v0(f.salVend[v.usuario])), destinos.map(dd => v0(f.otras[dd])),
-          ['=SUM(' + L(cSal0) + n + ':' + L(cSal1) + n + ')', '=B' + n + '-' + L(cTot) + n, v0(f.ingreso)],
-          vend.map(v => v0(f.retVend[v.usuario])), ['=SUM(' + L(cRet0) + n + ':' + L(cRet1) + n + ')'],
+          ['=SUM(' + L(Ly.cSal0) + n + ':' + L(Ly.cSal1) + n + ')', '=B' + n + '-' + L(Ly.cTot) + n, v0(f.ingreso)],
+          vend.map(v => v0(f.retVend[v.usuario])), ['=SUM(' + L(Ly.cRet0) + n + ':' + L(Ly.cRet1) + n + ')'],
           hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
-          ['=' + L(cDif) + n + '+' + L(cIng) + n + '+' + L(cTotR) + n + (hayAjuste ? '+' + L(cAj) + n : '')]);
+          ['=' + L(Ly.cDif) + n + '+' + L(Ly.cIng) + n + '+' + L(Ly.cTotR) + n + (hayAjuste ? '+' + L(Ly.cAj) + n : '')]);
       fila(row);
     });
     const ini = h + 1, fin = g.length;
     if (fin >= ini) {
-      ops.push([ini, 2, fin - ini + 1, W - 1, x => x.setNumberFormat('0.00').setHorizontalAlignment('right')]);
+      ops.push([ini, 2, fin - ini + 1, Ws - 1, x => x.setNumberFormat('0.00').setHorizontalAlignment('right')]);
       ops.push([ini, 2, fin - ini + 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
-      ops.push([ini, cFin, fin - ini + 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
+      ops.push([ini, Ly.cFin, fin - ini + 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
     }
-    ops.push([h, 1, Math.max(fin, h) - h + 1, W, x => x.setBorder(true, true, true, true, true, true, '#000000', borde)]);
+    ops.push([h, 1, Math.max(fin, h) - h + 1, Ws, x => x.setBorder(true, true, true, true, true, true, '#000000', borde)]);
     fila([]);
   };
   bloque('TERMINADOS');

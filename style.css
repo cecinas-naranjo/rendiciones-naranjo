@@ -1171,3 +1171,15 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 /* v146: mientras se registra un cobro, el formulario se ve apagado y no se puede tocar */
 .guardando{opacity:.6;pointer-events:none}
 .guardando #cok{opacity:1;pointer-events:none}
+
+/* Editar planilla de inventario (v149) */
+.edr{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line-2)}
+.edr.of{opacity:.55}
+.edr select.in{width:auto;max-width:170px}
+.edb{display:flex;flex-direction:column;gap:2px}
+.edb button{border:1px solid var(--line);background:#fff;border-radius:6px;font-size:11px;line-height:1;padding:4px 7px;min-height:0}
+.edb button:disabled{opacity:.3}
+.edv{display:flex;gap:4px;align-items:center;white-space:nowrap;font-size:14px}
+.edadd{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.edr .x{min-height:38px;padding:0 12px}
+@media(max-width:600px){.edr{flex-wrap:wrap}.edr select.in{max-width:none;flex:1}}
