@@ -57,7 +57,7 @@ const SCHEMA = {
   CONTEO_EFECTIVO: ['key','fecha','vendedor','b20000','b10000','b5000','b2000','b1000','monedas','m500','m100','m50','m10','caja_chica','obs','registrado_por','registrado'],
   CLIENTES:    ['rut','razon_social','condicion','vendedor','alias','actualizado'],
   CREDITOS_CARGA: ['folio_key','rut','cliente_excel','tipo','folio','fecha','monto','condicion','vendedor','estado','recepcion','metodo','obs','cargado'],
-  DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','nota_credito','motivo','obs','registrado_por','registrado','adjuntos','monto'],
+  DEVOLUCIONES: ['id','fecha','tipo','origen','cliente','codigo','producto','unidad','cantidad','nota_credito','motivo','obs','registrado_por','registrado','adjuntos','monto','rut'],
   GASTOS:      ['id','fecha','responsable','concepto','monto','respaldo','obs','registrado_por','registrado','adjuntos'],
   DEPOSITOS:   ['id','fecha','vendedor','banco','monto','referencia','folios','cobranzas','obs','registrado_por','registrado','adjuntos'],
   OPERACIONES: ['op','fn','fecha'],
@@ -264,7 +264,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -2643,7 +2643,7 @@ const lista_ = v => String(v || '').split(',').map(x => x.trim()).filter(String)
 function efectivoParaDepositar(token, fecha, vendedor) {
   const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
   const v = u.rol === 'VENDEDOR' ? u.usuario : vendedor;
-  cargarDia_(fecha, ['DEPOSITOS', 'PAGOS', 'DESCUENTOS', 'DOCUMENTOS', 'COBRANZA', 'GASTOS']);
+  cargarDia_(fecha, ['DEPOSITOS', 'PAGOS', 'DESCUENTOS', 'DOCUMENTOS', 'COBRANZA', 'GASTOS', 'DEVOLUCIONES']);
   const deps = byFecha_('DEPOSITOS', fecha).filter(d => d.vendedor === v);
   const enDep = {}; deps.forEach(d => { lista_(d.folios).forEach(k => enDep[k] = d.id); lista_(d.cobranzas).forEach(k => enDep['C:' + k] = d.id); });
   const folios = docsDelDia_(fecha, v).map(d => ({ key: d.folio_key, folio: d.folio, cliente: d.cliente,
@@ -2654,8 +2654,9 @@ function efectivoParaDepositar(token, fecha, vendedor) {
   // el depósito ya no se asocia a folios: se compara en plata (efectivo del día) contra lo depositado. Los gastos NO se descuentan (v136)
   const gastos = byFecha_('GASTOS', fecha).filter(g => g.responsable === v).reduce((a, g) => a + num_(g.monto), 0);
   const efV = folios.reduce((a, x) => a + x.efectivo, 0), efC = cobranzas.reduce((a, x) => a + x.efectivo, 0), depositado = deps.reduce((a, d) => a + num_(d.monto), 0);
+  const dev = byFecha_('DEVOLUCIONES', fecha).filter(x => x.origen === v).reduce((a, x) => a + Math.round(num_(x.monto)), 0);   // v139
   return { vendedor: v, estadoDia: estadoDia_(fecha), folios, cobranzas,
-    resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, disponible: efV + efC, depositado, saldo: efV + efC - depositado },
+    resumen: { efectivoVentas: efV, efectivoCobranza: efC, gastos, devoluciones: dev, disponible: efV + efC - dev, depositado, saldo: efV + efC - dev - depositado },
     depositos: deps.map(d => ({ id: d.id, por: nomUsuario_(d.registrado_por), banco: d.banco, monto: num_(d.monto), referencia: d.referencia,
       folios: lista_(d.folios), cobranzas: lista_(d.cobranzas), incluido: incluidoDep_(d, folios, cobranzas), adjuntos: adjuntosDe_(d) })) };
 }
@@ -2697,17 +2698,30 @@ function borrarDeposito(token, id) {
 
 /* ============================ DEVOLUCIONES (mermas y reprocesos) ============================ */
 // Producto que vuelve a la bodega y no se puede vender: MERMA (se descarta) o REPROCESO (vuelve a producción).
-// Cada una se justifica con una nota de crédito: N° y monto obligatorios; la foto de la NC es opcional.
+// v139: la anota el bodeguero al recibir el retorno (solo producto, cantidad y tipo). El valor se calcula (cantidad × precio de lista) y se
+// DESCUENTA de la rendición del vendedor del día en que vuelve (origen). El vendedor después indica de qué cliente es; la N° de la nota de
+// crédito y el monto exacto los completa la encargada cuando se emite la NC.
 const DEV_ROLES = ['BODEGA','RENDICION','SUPERVISOR'];
 const DEV_TIPOS = ['MERMA','REPROCESO'];
 
+/** Agrega la columna `rut` a DEVOLUCIONES si la hoja es de una versión anterior. */
+function asegurarColsDevoluciones_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName('DEVOLUCIONES'); if (!sh) return;
+  const h = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]; let n = h.filter(String).length, hecho = false;
+  SCHEMA.DEVOLUCIONES.forEach(c => { if (h.indexOf(c) < 0) { sh.getRange(1, ++n).setValue(c).setFontWeight('bold'); hecho = true; } });
+  if (hecho) { MEMO_.DEVOLUCIONES = null; SLICE_ = {}; }
+}
+/** Valor en pesos de una devolución: cantidad × precio de lista (PRODUCTOS.precio). 0 si el producto no tiene precio. */
+function valorDevolucion_(p, cantidad) { return Math.round(num_(cantidad) * num_(p.precio)); }
+
 function listarDevoluciones(token, fecha) {
-  auth_(token, DEV_ROLES);
-  return byFecha_('DEVOLUCIONES', fecha).map(r => { delete r._row; r.cantidad = num_(r.cantidad); r.monto = num_(r.monto); r.adjuntos = adjuntosDe_(r); return r; })
+  const u = auth_(token, DEV_ROLES.concat(['VENDEDOR']));
+  return byFecha_('DEVOLUCIONES', fecha).filter(r => u.rol !== 'VENDEDOR' || r.origen === u.usuario)
+    .map(r => { delete r._row; r.cantidad = num_(r.cantidad); r.monto = num_(r.monto); r.adjuntos = adjuntosDe_(r); return r; })
     .sort((a, b) => String(a.registrado) < String(b.registrado) ? 1 : -1);
 }
 
-/** o: {tipo, codigo, cantidad, origen (usuario del vendedor o ''), cliente, nota_credito, motivo, obs} */
+/** o: {tipo, codigo, cantidad, origen (usuario del vendedor o ''), motivo, obs}. Opcionales: cliente, rut, nota_credito, monto (si no viene se calcula). */
 function guardarDevolucion(token, fecha, o) {
   const u = auth_(token, DEV_ROLES);
   assertAbierta_(fecha);
@@ -2715,16 +2729,42 @@ function guardarDevolucion(token, fecha, o) {
   if (DEV_TIPOS.indexOf(tipo) < 0) throw new Error('Indica si es merma o reproceso.');
   const cantidad = num_(o.cantidad);
   if (!(cantidad > 0)) throw new Error('Ingresa la cantidad.');
-  const oc = String(o.nota_credito || '').trim();
-  if (!oc) throw new Error('Falta el N° de la nota de crédito que justifica la devolución.');
-  const monto = Math.round(num_(o.monto));
-  if (!(monto > 0)) throw new Error('Ingresa el monto de la nota de crédito.');
   const p = read_('PRODUCTOS').find(x => codeKey_(x.codigo) === codeKey_(o.codigo));
   if (!p) throw new Error('Elige el producto.');
   return withLock_(() => {
-    const r = { id: uid_(), fecha, tipo, monto, origen: String(o.origen || ''), cliente: String(o.cliente || '').trim(), codigo: codeKey_(p.codigo), producto: p.nombre,
-      unidad: p.unidad, cantidad, nota_credito: oc, motivo: String(o.motivo || '').trim(), obs: String(o.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
+    asegurarColsDevoluciones_();
+    const monto = Math.round(num_(o.monto)) > 0 ? Math.round(num_(o.monto)) : valorDevolucion_(p, cantidad);
+    const r = { id: uid_(), fecha, tipo, monto, origen: String(o.origen || ''), cliente: String(o.cliente || '').trim(), rut: String(o.rut || '').trim(), codigo: codeKey_(p.codigo), producto: p.nombre,
+      unidad: p.unidad, cantidad, nota_credito: String(o.nota_credito || '').trim(), motivo: String(o.motivo || '').trim(), obs: String(o.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
     append_('DEVOLUCIONES', [r]); return r;
+  });
+}
+
+/** El vendedor (o la oficina) indica de qué cliente es la devolución, para corregir su factura. Solo el vendedor dueño puede asignar la suya. */
+function asignarDevolucionCliente(token, id, cliente, rut) {
+  const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
+  const nom = String(cliente || '').trim(); if (!nom) throw new Error('Elige el cliente.');
+  return withLock_(() => {
+    asegurarColsDevoluciones_();
+    const r = read_('DEVOLUCIONES').find(x => x.id === id); if (!r) throw new Error('No se encontró la devolución.');
+    if (u.rol === 'VENDEDOR' && r.origen !== u.usuario) throw new Error('Esta devolución no es tuya.');
+    assertAbierta_(r.fecha);
+    const k = rutNorm_(rut), mc = k ? read_('CLIENTES').find(c => rutNorm_(c.rut) === k) : null;
+    r.cliente = mc ? mc.razon_social : nom; r.rut = mc ? mc.rut : String(rut || '').trim();
+    updateRow_('DEVOLUCIONES', r._row, r); return true;
+  });
+}
+
+/** La encargada completa N° de nota de crédito y/o corrige el monto (cambia el descuento de la rendición de ese día). */
+function completarDevolucion(token, id, datos) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => {
+    asegurarColsDevoluciones_();
+    const r = read_('DEVOLUCIONES').find(x => x.id === id); if (!r) throw new Error('No se encontró la devolución.');
+    assertAbierta_(r.fecha);
+    if (datos.nota_credito !== undefined) r.nota_credito = String(datos.nota_credito || '').trim();
+    if (datos.monto !== undefined && datos.monto !== '') { const m = Math.round(num_(datos.monto)); if (m < 0) throw new Error('El monto no puede ser negativo.'); r.monto = m; }
+    updateRow_('DEVOLUCIONES', r._row, r); return true;
   });
 }
 
@@ -2874,7 +2914,9 @@ function resumen_(fecha) {
     tot.bancos = {}; BANCOS.forEach(b => tot.bancos[b] = 0);
     ds.forEach(d => d.pagos.filter(p => p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO')
       .forEach(p => { const b = BANCOS.indexOf(p.banco) >= 0 ? p.banco : 'BICE'; tot.bancos[b] += p.monto; }));
-    tot.nc = tot.NOTA_CREDITO; tot.ventaDocs = tot.venta; tot.venta = tot.venta - tot.nc;     // v130: la venta documentada ya viene sin las notas de crédito
+    const dvv = devs.filter(x => x.origen === v);      // v139: mermas/devoluciones que trajo el vendedor: se descuentan de su rendición de ese día
+    tot.devoluciones = dvv.reduce((a, x) => a + Math.round(num_(x.monto)), 0); tot.devolucionesN = dvv.length; tot.devSinCliente = dvv.filter(x => !String(x.cliente || '').trim()).length;
+    tot.nc = tot.NOTA_CREDITO; tot.ventaDocs = tot.venta; tot.venta = tot.venta - tot.nc - tot.devoluciones;     // v130: la venta documentada ya viene sin las notas de crédito (y v139 sin devoluciones)
     // v107: un cheque de venta es crédito hasta que se cobra
     tot.creditoVenta = tot.CREDITO; tot.creditoCheque = tot.CHEQUE; tot.credito = tot.creditoVenta + tot.creditoCheque;
     tot.contado = tot.venta - tot.credito - tot.descuentos;
@@ -2885,14 +2927,14 @@ function resumen_(fecha) {
     const dv = deps.filter(x => x.vendedor === v);
     tot.depositos = dv.reduce((a, x) => a + num_(x.monto), 0);
     const dvF = dv.filter(x => lista_(x.folios).length || lista_(x.cobranzas).length);       // depósitos antiguos asociados a folios
-    tot.depositoExceso = Math.max(0, tot.depositos - (tot.EFECTIVO + tot.cobranzaEfectivo));
+    tot.depositoExceso = Math.max(0, tot.depositos - (tot.EFECTIVO + tot.cobranzaEfectivo - tot.devoluciones));
     if (dvF.length) {
       const ef = {}; ds.forEach(d => ef[d.folio_key] = d.pagos.filter(p => p.forma === 'EFECTIVO').reduce((a, p) => a + p.monto, 0));
       const efc = {}; c.filter(x => x.forma === 'EFECTIVO').forEach(x => efc[x.id] = num_(x.monto));
       const incl = dvF.reduce((a, d) => a + lista_(d.folios).reduce((s, k) => s + (ef[k] || 0), 0) + lista_(d.cobranzas).reduce((s, k) => s + (efc[k] || 0), 0), 0);
       tot.depositoDif = dvF.reduce((a, x) => a + num_(x.monto), 0) - incl;
     } else tot.depositoDif = 0;
-    tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.depositos;   // v136: los gastos se registran aparte y no bajan lo que se entrega
+    tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.devoluciones - tot.depositos;   // v136: los gastos van aparte; v139: la devolución baja lo que se cobra
     // v108: lo contado en la pestaña Efectivo contra lo que debe entregar (solo aviso)
     tot.efectivoContado = contados[v] === undefined ? null : contados[v];
     tot.efectivoDif = tot.efectivoContado === null ? 0 : tot.efectivoContado - tot.efectivoEntregar;
@@ -2902,7 +2944,7 @@ function resumen_(fecha) {
     // la diferencia de kilos solo se evalúa cuando ya se registró todo el retorno
     tot.kilos.alerta = hayDetalle && tot.kilos.salida > 0 && tot.sinRetorno === 0 && Math.abs(tot.kilos.diferencia) > CFG.TOLERANCIA_KG;
     return tot;
-  }).filter(t => t.documentos || t.kilos.salida || t.cobranza || t.gastos || t.depositos);
+  }).filter(t => t.documentos || t.kilos.salida || t.cobranza || t.gastos || t.depositos || t.devoluciones);
 
   const sinAsignar = docs.filter(d => !d.vendedor);
   const sum = (arr) => arr.reduce((a, x) => a + num_(x.monto), 0);
@@ -2925,6 +2967,7 @@ function resumen_(fecha) {
       .concat(porVendedor.filter(t => t.depositoExceso).map(t => t.vendedor + ': depositó $' + t.depositoExceso.toLocaleString('es-CL') + ' más que el efectivo del día'))
       .concat(porVendedor.filter(t => t.efectivoContado !== null && t.efectivoDif).map(t => t.vendedor + ': efectivo ' + (t.efectivoDif < 0 ? 'FALTA' : 'SOBRA') + ' $' + Math.abs(t.efectivoDif).toLocaleString('es-CL')))
       .concat(porVendedor.filter(t => t.efectivoContado === null && !t.pendientes && t.efectivoEntregar > 0).map(t => t.vendedor + ': falta contar el efectivo'))
+      .concat(porVendedor.filter(t => t.devSinCliente).map(t => t.vendedor + ': ' + t.devSinCliente + ' devolución(es) sin cliente asignado'))
       .concat(porVendedor.filter(t => t.sinRetorno).map(t => t.vendedor + ': falta registrar retorno de ' + t.sinRetorno + ' producto(s)'))
       .concat(porVendedor.filter(t => t.kilos.alerta).map(t => t.vendedor + ': ' + Math.abs(t.kilos.diferencia).toFixed(2).replace('.', ',') + ' kg ($' + Math.abs(t.kilos.diferenciaPesos).toLocaleString('es-CL') + ') ' +
         (t.kilos.diferencia > 0 ? 'salieron y no volvieron ni se facturaron' : 'facturados de más respecto a lo que salió')))
@@ -2952,7 +2995,7 @@ function porDia_(ds, cs, gs) {
 }
 function getInspeccion(token, fecha, vendedor) {
   auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
-  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO', 'VENTAS_DETALLE']);
+  cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO', 'VENTAS_DETALLE', 'DEVOLUCIONES']);
   const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
   const unidadP = {}; read_('PRODUCTOS').forEach(p => unidadP[codeKey_(p.codigo)] = p.unidad);
   const precios = preciosKg_(detV);
@@ -2964,7 +3007,7 @@ function getInspeccion(token, fecha, vendedor) {
   const doc = d => d.tipo.replace(' Electrónica', '') + ' ' + d.folio;
   const bancoTr = b => BANCOS.indexOf(b) >= 0 ? b : 'BICE';     // igual que en el archivo de rendición
   const momentoCh = f => f && f > fecha ? 'A fecha' : 'Al día';       // cheque al día o a fecha
-  const contados = contadoPorVendedor_(fecha);
+  const contados = contadoPorVendedor_(fecha), devsDia = byFecha_('DEVOLUCIONES', fecha);
   const lista = vendedores_().filter(v => !vendedor || v.usuario === vendedor);
   const out = lista.map(v => {
     const ds = docs.filter(d => d.vendedor === v.usuario), cs = cob.filter(c => c.vendedor === v.usuario);
@@ -2995,14 +3038,16 @@ function getInspeccion(token, fecha, vendedor) {
     const gastos = gs.map(g => ({ concepto: g.concepto, respaldo: g.respaldo || '', monto: num_(g.monto) }));
     const depositos = dps.map(d => ({ banco: d.banco, referencia: d.referencia || '', monto: num_(d.monto) }));
     const tGas = gastos.reduce((a, x) => a + x.monto, 0), tDep = depositos.reduce((a, x) => a + x.monto, 0);
+    const devoluciones = devsDia.filter(x => x.origen === v.usuario).map(x => ({ id: x.id, tipo: x.tipo, producto: x.producto, cantidad: num_(x.cantidad), unidad: x.unidad, cliente: x.cliente || '', rut: x.rut || '', nota_credito: x.nota_credito || '', monto: Math.round(num_(x.monto)) }));
+    const tDev = devoluciones.reduce((a, x) => a + x.monto, 0);
     return {
       usuario: v.usuario, nombre: v.nombre, terminal: v.terminales || '',
       documentos: ds.length, detallados: ds.filter(d => d.estado === 'DETALLADO').length,
       docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
-      totales: { venta: venta - nc, ventaDocs: venta, credito, chequesVenta, creditoTotal: credito + chequesVenta, nc, descuentos: desc, contado: venta - nc - credito - chequesVenta - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
+      totales: { venta: venta - nc - tDev, ventaDocs: venta, credito, chequesVenta, creditoTotal: credito + chequesVenta, nc, devoluciones: tDev, devolucionesN: devoluciones.length, devSinCliente: devoluciones.filter(x => !x.cliente).length, descuentos: desc, contado: venta - nc - tDev - credito - chequesVenta - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         efContado: contados[v.usuario] === undefined ? null : contados[v.usuario],
-        entregar: efVentas + efCob - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
-      transf, cheques, cobranza, gastos, depositos, creditos, porDia: porDia_(ds, cs, gs),
+        entregar: efVentas + efCob - tDev - tDep, cheques: cheques.reduce((a, x) => a + x.monto, 0) },
+      transf, cheques, cobranza, gastos, depositos, devoluciones, creditos, porDia: porDia_(ds, cs, gs),
       kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
       folios: ds.map(d => ({ folio_key: d.folio_key, folio: d.folio, tipo: d.tipo.replace(' Electrónica', ''), cliente: d.cliente, rut: d.rut || '',
         total: num_(d.total), estado: d.estado, descAprob: num_(d.descAprob), detalladoPor: d.detalladoPor || '',
@@ -3113,7 +3158,7 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
 
   // espacio reservado para la cuadratura (se llena al final, cuando se conocen las filas de totales)
   H.seccion('CUADRATURA', 5);
-  const cuadIni = H.g.length + 1, CUAD = 17;
+  const cuadIni = H.g.length + 1, CUAD = 18;
   for (let i = 0; i < CUAD; i++) H.fila([]);
   H.fila([]);
 
@@ -3191,28 +3236,29 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     ['(−) Notas de crédito', '=' + ref(V, 12)],
     ['(−) Crédito y cheques de ventas', '=' + ref(V, 11) + '+' + ref(V, 10)],
     ['(−) Descuentos autorizados', '=' + ref(V, 13)],
-    ['Venta contado', '=D{0}-D{1}-D{2}-D{3}'],
+    ['Venta contado', '=D{0}-D{1}-D{2}-D{3}-D{11}'],
     ['Transferencias BICE', '=' + ref(V, 7) + '+' + ref(C, 4)],
     ['Transferencias Estado', '=' + ref(V, 8) + '+' + ref(C, 5)],
     ['Transferencias Santander', '=' + ref(V, 9) + '+' + ref(C, 6)],
     ['Cheques', '=' + ref(V, 10) + '+' + ref(C, 7)],
     ['Efectivo de ventas', '=' + ref(V, 6)],
     ['(+) Efectivo de cobranza', '=' + ref(C, 3)],
+    ['(−) Devoluciones (merma / reproceso)', num_(t.devoluciones)],
     ['Gastos del día (aparte, no se descuentan)', '=' + ref(G, 2)],
     ['(−) Depositado a la empresa', '=' + ref(D, 2)],
-    ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{12}'],
+    ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{11}-D{13}'],
     ['Efectivo recibido', contEf != null ? contEf : (datos.recibidoManual && datos.recibidoManual[t.vendedor] !== undefined ? datos.recibidoManual[t.vendedor] : '')],
-    ['DIFERENCIA', '=IF(D{14}="","",D{14}-D{13})'],
+    ['DIFERENCIA', '=IF(D{15}="","",D{15}-D{14})'],
     ['Firma vendedor: ____________________        Firma recibe: ____________________', '']
   ];
   lineas.forEach((l, i) => {
     const f = typeof l[1] === 'number' ? l[1] : String(l[1]).replace(/\{(\d+)\}/g, (_, k) => cuadIni + Number(k));
     H.g[cuadIni - 1 + i] = [l[0], '', '', f].concat(Array(H.W - 4).fill(''));
     const r = cuadIni + i;
-    if (i === 16) { H.op(r, 1, 1, 8, g => g.merge().setFontColor('#595959').setVerticalAlignment('bottom')); return; }
+    if (i === 17) { H.op(r, 1, 1, 8, g => g.merge().setFontColor('#595959').setVerticalAlignment('bottom')); return; }
     H.op(r, 1, 1, 3, g => g.merge());
     H.op(r, 4, 1, 1, g => g.setNumberFormat(EST.dinero));
-    if ([4, 13, 15].indexOf(i) >= 0) H.op(r, 1, 1, 4, g => g.setFontWeight('bold').setBackground(i === 13 ? EST.gris : EST.grisClaro));
+    if ([4, 14, 16].indexOf(i) >= 0) H.op(r, 1, 1, 4, g => g.setFontWeight('bold').setBackground(i === 14 ? EST.gris : EST.grisClaro));
     if (i === 14) H.op(r, 4, 1, 1, g => g.setBackground(EST.amarillo).setNote('Se llena con el conteo de la pestaña Efectivo; si no hay conteo, anotar el efectivo contado al recibir la rendición'));
   });
   H.op(cuadIni, 1, 16, 4, g => g.setBorder(true, true, true, true, null, true, EST.borde, SpreadsheetApp.BorderStyle.SOLID));
@@ -3320,7 +3366,7 @@ function generarArchivo_(fecha, r, borrador) {
   const dvs = byFecha_('DEVOLUCIONES', fecha);
   if (dvs.length) {
     const DV = new Hoja_(ss, 'DEVOLUCIONES', 10); DV.titulo('DEVOLUCIONES (MERMAS Y REPROCESOS) ' + fechaTxt);
-    DV.tabla('', [{ h: 'TIPO' }, { h: 'PRODUCTO' }, { h: 'CANTIDAD', t: 'kg', sum: 0 }, { h: 'UNIDAD' }, { h: 'VIENE DE' }, { h: 'CLIENTE' }, { h: 'N° NOTA DE CRÉDITO' }, { h: 'MONTO NC', t: '$', sum: 1 }, { h: 'MOTIVO' }, { h: 'FOTO NC' }],
+    DV.tabla('', [{ h: 'TIPO' }, { h: 'PRODUCTO' }, { h: 'CANTIDAD', t: 'kg', sum: 0 }, { h: 'UNIDAD' }, { h: 'VIENE DE' }, { h: 'CLIENTE' }, { h: 'N° NOTA DE CRÉDITO' }, { h: 'MONTO (DESCUENTO)', t: '$', sum: 1 }, { h: 'MOTIVO' }, { h: 'FOTO NC' }],
       dvs.map(x => [x.tipo, x.producto, num_(x.cantidad), x.unidad, x.origen ? ((usuarios[x.origen] || {}).nombre || x.origen) : 'Cliente / otro', x.cliente, x.nota_credito, num_(x.monto), x.motivo, linkAdj_(x)]));
     DV.escribir([90, 220, 80, 70, 150, 200, 140, 100, 200, 80]);
   }

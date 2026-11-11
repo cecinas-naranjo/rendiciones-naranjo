@@ -1149,3 +1149,9 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .bdev .bdh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
 .bdev .bdh .grow{flex:1}
 .bdev #bdf{border-top:1px solid var(--line);padding-top:10px;margin-bottom:10px}
+
+.dvb{margin-left:8px;border:1px solid var(--line);background:#fff;color:var(--cu,#C2571A);border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:700;cursor:pointer}
+.dvb:hover{border-color:#C2571A}
+.dvq{font-size:12.5px;color:#9a5b00;font-weight:600;margin-left:6px}
+.dt:not(.dm-retorno) .dvb,.dt:not(.dm-retorno) .dvq{display:none}
+.seg button.on small{opacity:.85}

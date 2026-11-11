@@ -425,7 +425,7 @@ function superponer(fn, args, data) {
       });
     } else if (fn === 'listarDevoluciones') {
       ps.forEach(p => { if (p.fn === 'guardarDevolucion' && p.args[0] === args[1]) { const o = p.args[1], pr = (S.cat.productos || []).find(x => String(x.codigo) === String(o.codigo)) || {};
-        data.push(Object.assign({}, o, { id: 'pend_' + p.op, fecha: p.args[0], cantidad: Number(o.cantidad) || 0, monto: soloDigitos(o.monto), producto: pr.nombre || o.codigo, unidad: pr.unidad || 'UN', adjuntos: [], sinEnviar: true })); } });
+        data.push(Object.assign({}, o, { id: 'pend_' + p.op, fecha: p.args[0], cantidad: Number(o.cantidad) || 0, monto: soloDigitos(o.monto) || Math.round((Number(o.cantidad) || 0) * (Number(pr.precio) || 0)), producto: pr.nombre || o.codigo, unidad: pr.unidad || 'UN', adjuntos: [], sinEnviar: true })); } });
     } else if (fn === 'porCobrar' && data.clientes) {
       ps.filter(p => p.fn === 'guardarCobro').forEach(p => p.args[3].forEach(it => data.clientes.forEach(c => c.facturas.forEach(f => { if (f.folio_key === it.folio_key) { const q = Math.min(f.saldo, soloDigitos(it.monto)); f.saldo -= q; c.deuda -= q; } }))));
       data.clientes = data.clientes.filter(c => c.facturas.some(f => f.saldo > 0));
@@ -444,7 +444,7 @@ function descPend(x) {
     case 'guardarMov': return (NOMBRE_TABLA[a[0]] || a[0]) + ' ' + clp(soloDigitos(a[2].monto)) + (a[2].cliente ? ' · ' + a[2].cliente : a[2].concepto ? ' · ' + a[2].concepto : a[2].proveedor ? ' · ' + a[2].proveedor : '');
     case 'borrarMov': return 'Borrar un registro de ' + (NOMBRE_TABLA[a[0]] || a[0]);
     case 'guardarCobro': return 'Cobro a ' + a[1].cliente + ' · ' + clp(a[3].reduce((t, i) => t + soloDigitos(i.monto), 0));
-    case 'guardarDevolucion': return 'Devolución (' + String(a[1].tipo || '').toLowerCase() + ') NC ' + a[1].nota_credito;
+    case 'guardarDevolucion': return 'Devolución (' + String(a[1].tipo || '').toLowerCase() + ')';
     case 'saveDespacho': return 'Despacho de ' + a[1];
     case 'adelantarFolio': return 'Folio adelantado ' + a[2] + ' · ' + clp(soloDigitos(a[3]));
     case 'borrarAdelanto': return 'Quitar un folio adelantado';
@@ -936,7 +936,7 @@ const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores<
 /* ============ HOY (inicio del vendedor): qué hacer y cómo va el día ============ */
 async function vHoy(m) {
   const tok = S.sess.token, F = S.fecha, pri = (S.sess.nombre || '').split(' ')[0];
-  const [r, cob, gas, ads] = await Promise.all([api('misDocumentos', tok, F, S.vend), api('listarMov', tok, 'COBRANZA', F), api('listarMov', tok, 'GASTOS', F), api('listarAdelantos', tok, F, S.sess.usuario).catch(() => [])]);
+  const [r, cob, gas, ads, devs] = await Promise.all([api('misDocumentos', tok, F, S.vend), api('listarMov', tok, 'COBRANZA', F), api('listarMov', tok, 'GASTOS', F), api('listarAdelantos', tok, F, S.sess.usuario).catch(() => []), api('listarDevoluciones', tok, F).catch(() => [])]);
   const nAd = ads.length, aplAd = ads.filter(x => x.estado === 'APLICADO').length;
   const docs = r.docs, cerrada = r.estadoDia === 'CERRADA', hechos = docs.filter(d => d.estado === 'DETALLADO'), pend = docs.length - hechos.length;
   const por = fs => hechos.reduce((a, d) => a + d.pagos.filter(p => fs.indexOf(p.forma) >= 0).reduce((b, p) => b + p.monto, 0), 0);
@@ -950,6 +950,8 @@ async function vHoy(m) {
     ['COBRANZA', 'cash', 'Cobranza', gb(cob.length, 'ok')],
     ['GASTOS', 'fuel', 'Gastos', gb(gas.length, 'ok')]];
   if (dep) tiles.push(['depositos', 'bank', 'Depósito', '']);
+  const devSin = devs.filter(x => !x.cliente).length;
+  if (devs.length) tiles.push(['devs', 'box', 'Devoluciones', devSin ? `<span class="bd">${devSin} sin cliente</span>` : '<span class="bd ok">Listo</span>']);
   render(m, `<h2>Hola, ${esc(pri)}</h2>
     ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : ''}
     <button class="bigbtn" id="hanota" ${cerrada ? 'disabled' : ''}>${icon('plus')}<span class="grow"><b>Anotar folio</b><small>${nAd ? pl(nAd, 'anotado', 'anotados') + ' hoy' : 'Funciona sin internet'}</small></span><i class="go" aria-hidden="true">›</i></button>
@@ -959,7 +961,8 @@ async function vHoy(m) {
       <div><span>Transferencias</span><b>${clp(tr)}</b></div>${ch ? `<div><span>Cheques</span><b>${clp(ch)}</b></div>` : ''}<div><span>A crédito</span><b>${clp(cr)}</b></div></div></details>` : ''}`);
   m.onclick = e => {
     if (e.target.closest('#hanota')) return abrirAdelanto(S.sess.usuario, () => { olvidarCache(false); ir(S.tab, true); });
-    const b = e.target.closest('.htile'); if (b) ir(b.dataset.t);
+    const b = e.target.closest('.htile'); if (b && b.dataset.t === 'devs') return abrirDevolucionesVendedor(() => { olvidarCache(false); ir(S.tab, true); });
+    if (b) ir(b.dataset.t);
   };
 }
 
@@ -1521,14 +1524,14 @@ async function vDevoluciones(m) {
   const cats = {}; S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
   const opcProd = Object.keys(cats).map(c => `<optgroup label="${esc(CATS[c] || c)}">${cats[c].map(p => `<option value="${esc(p.codigo)}" data-u="${esc(p.unidad)}">${esc(p.nombre)}</option>`).join('')}</optgroup>`).join('');
   let tipo = 'MERMA';
-  render(m, `<h2>Devoluciones</h2><p class="lead">Producto que vuelve y no se puede vender. <b>Merma</b>: se descarta. <b>Reproceso</b>: vuelve a producción. Cada una se justifica con una nota de crédito: el N° y el monto son obligatorios; la foto es opcional.</p>
+  render(m, `<h2>Devoluciones</h2><p class="lead">Producto que vuelve y no se puede vender. <b>Merma</b>: se descarta. <b>Reproceso</b>: vuelve a producción. El bodeguero las anota al recibir el retorno (botón en cada producto) y se descuentan de la rendición del vendedor ese día; el vendedor indica el cliente. El N° de la nota de crédito y el monto los puede completar la encargada después; la foto es opcional.</p>
     <div class="card" id="dvf">
       <div class="seg" id="dvt" style="width:100%;display:grid;grid-template-columns:1fr 1fr"><button type="button" data-t="MERMA" class="on">Merma</button><button type="button" data-t="REPROCESO">Reproceso</button></div>
       <div class="grid g3" style="margin-top:12px">
         <div><label class="f" for="dv_p">Producto</label><select class="in" id="dv_p"><option value="">Elige un producto…</option>${opcProd}</select></div>
         <div><label class="f" for="dv_c">Cantidad <span class="muted" id="dv_u"></span></label><input class="in n" id="dv_c" inputmode="decimal" placeholder="0"></div>
-        <div><label class="f" for="dv_oc">N° nota de crédito</label><input class="in" id="dv_oc" inputmode="numeric" autocomplete="off"></div>
-        <div><label class="f" for="dv_mt">Monto de la nota de crédito</label><input class="in n" id="dv_mt" inputmode="numeric" placeholder="$0"></div>
+        <div><label class="f" for="dv_oc">N° nota de crédito <span class="muted">(opcional, lo agrega la encargada)</span></label><input class="in" id="dv_oc" inputmode="numeric" autocomplete="off"></div>
+        <div><label class="f" for="dv_mt">Monto a descontar <span class="muted">(vacío = cantidad × precio de lista)</span></label><input class="in n" id="dv_mt" inputmode="numeric" placeholder="$0"></div>
         <div><label class="f" for="dv_o">Viene de</label><select class="in" id="dv_o"><option value="">Cliente / otro</option>${opcVend('')}</select></div>
         <div><label class="f" for="dv_cl">Cliente (si corresponde)</label><input class="in" id="dv_cl" autocomplete="off"></div>
         <div><label class="f" for="dv_m">Motivo</label><select class="in" id="dv_m">${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select></div>
@@ -1546,7 +1549,7 @@ async function vDevoluciones(m) {
       return `<div><span>${t === 'MERMA' ? 'Mermas' : 'Reprocesos'}</span><b>${xs.length}</b><small>${[k ? kg(k) + ' kg' : '', u ? u + ' un' : '', xs.length ? clp(xs.reduce((a, r) => a + r.monto, 0)) : ''].filter(Boolean).join(' · ') || '—'}</small></div>`; };
     $('#dvl').innerHTML = rs.length ? `<div class="dvres">${res('MERMA')}${res('REPROCESO')}</div>` + rs.map(r => `<div class="dev">
         <div class="row"><span class="grow"><span class="chip ${r.tipo === 'MERMA' ? 'bad' : 'warn'}">${r.tipo === 'MERMA' ? 'Merma' : 'Reproceso'}</span> <b>${esc(r.producto)}</b></span><b>${fmt(r.cantidad, r.unidad)}</b></div>
-        <div class="muted">NC N° <b>${esc(r.nota_credito)}</b> · <b>${clp(r.monto)}</b>${r.motivo ? ' · ' + esc(r.motivo) : ''}${r.origen ? ' · viene de ' + esc((S.cat.vendedores.find(v => v.usuario === r.origen) || {}).nombre || r.origen) : ''}${r.cliente ? ' · ' + esc(r.cliente) : ''}${r.obs ? ' · ' + esc(r.obs) : ''}</div>
+        <div class="muted">${r.nota_credito ? 'NC N° <b>' + esc(r.nota_credito) + '</b>' : '<span style="color:#9a5b00">NC por hacer</span>'} · <b>${clp(r.monto)}</b>${r.motivo ? ' · ' + esc(r.motivo) : ''}${r.origen ? ' · viene de ' + esc((S.cat.vendedores.find(v => v.usuario === r.origen) || {}).nombre || r.origen) : ''}${r.cliente ? ' · ' + esc(r.cliente) : ''}${r.obs ? ' · ' + esc(r.obs) : ''}</div>
         <div class="row" style="margin-top:6px">${chipsAdj(r.adjuntos, 'DEVOLUCIONES', r.id, true)}<span class="grow"></span>
           <button class="x" style="min-height:34px;width:34px" data-id="${esc(r.id)}" aria-label="Borrar">×</button></div></div>`).join('')
       : '<div class="empty">Sin devoluciones este día.</div>';
@@ -1560,8 +1563,6 @@ async function vDevoluciones(m) {
     const o = { tipo, codigo: sel.value, cantidad: String(dec($('#dv_c').value)), nota_credito: $('#dv_oc').value.trim(), monto: String(soloDigitos($('#dv_mt').value)), origen: $('#dv_o').value, cliente: $('#dv_cl').value.trim(), motivo: $('#dv_m').value, obs: $('#dv_ob').value.trim() };
     if (!o.codigo) return toast('Elige el producto.', true);
     if (!(dec(o.cantidad) > 0)) return toast('Ingresa la cantidad.', true);
-    if (!o.nota_credito) return toast('Falta el N° de la nota de crédito.', true);
-    if (o.monto === '0') return toast('Falta el monto de la nota de crédito.', true);
     const b = $('#dv_ad'); b.disabled = true;
     try {
       const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, o); toast(nuevo._pendiente ? 'Devolución guardada en el teléfono (sin conexión)' : 'Devolución registrada');
@@ -1614,7 +1615,7 @@ async function vDespacho(m) {
     <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span></div>
     <div id="dt" class="dt dm-${S.dmod}">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
       return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
-        <div class="pn">${esc(p.nombre)}</div><div class="rf"></div>
+        <div class="pn">${esc(p.nombre)}${pseudo || r.retornoBloqueado ? '' : `<button type="button" class="dvb" data-dc="${esc(p.codigo)}">Devolución / merma</button><span class="dvq" data-dq="${esc(p.codigo)}"></span>`}</div><div class="rf"></div>
         <div class="cl kgc" data-col="Kilos">${p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
         <div class="cl unc" data-col="Unidades">${p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}</div>
         <div class="st"></div></div>`; }).join('')).join('')}</div>
@@ -1727,61 +1728,112 @@ async function vDespacho(m) {
     toast('Despacho de ' + nomDe(S.vend) + ' guardado');
   };
   $('#sv', m).onclick = () => guardar(false);
+  dt.addEventListener('click', e => { const bd = e.target.closest('.dvb'); if (!bd) return;
+    const prod = S.cat.productos.find(x => String(x.codigo) === bd.dataset.dc); if (!prod) return;
+    abrirDevolucionBodega(prod, S.vend, nomDe(S.vend), () => { if (S.devRefrescar) S.devRefrescar(); }); });
   poner(S.dmod);
   if (S.vend && !pseudo && !r.retornoBloqueado) bloqueDev(m, S.vend, nomDe(S.vend));
 }
 
-/** Mermas y devoluciones del vendedor, al lado del retorno (se ve qué trajo cada uno). Usa las mismas devoluciones de siempre, con `origen` = vendedor. */
+/** Mermas y devoluciones que trajo el vendedor (v139): lista junto al retorno. Se registran con el botón «Devolución / merma» de cada producto. */
 async function bloqueDev(m, vend, nombre) {
   const box = $('#bdev', m); if (!box) return;
-  const cats = {}; S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
-  const opcProd = Object.keys(cats).map(c => `<optgroup label="${esc(CATS[c] || c)}">${cats[c].map(p => `<option value="${esc(p.codigo)}" data-u="${esc(p.unidad)}">${esc(p.nombre)}</option>`).join('')}</optgroup>`).join('');
-  let tipo = 'MERMA';
   const fmt = (n, u) => u === 'UN' ? String(Math.round(n * 100) / 100).replace('.', ',') + ' un' : kg(n) + ' kg';
-  box.innerHTML = `<div class="bdh"><b>Mermas y devoluciones de ${esc(nombre)}</b><span class="chip" id="bdn">0</span><span class="grow"></span><button type="button" class="btn ghost sm" id="bdab">+ Registrar</button></div>
-    <div id="bdf" hidden>
-      <div class="seg" id="bdt" style="width:100%;display:grid;grid-template-columns:1fr 1fr"><button type="button" data-t="MERMA" class="on">Merma</button><button type="button" data-t="REPROCESO">Reproceso</button></div>
-      <div class="grid g3" style="margin-top:10px">
-        <div><label class="f" for="bd_p">Producto</label><select class="in" id="bd_p"><option value="">Elige un producto…</option>${opcProd}</select></div>
-        <div><label class="f" for="bd_c">Cantidad <span class="muted" id="bd_u"></span></label><input class="in n" id="bd_c" inputmode="decimal" placeholder="0"></div>
-        <div><label class="f" for="bd_m">Motivo</label><select class="in" id="bd_m">${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select></div>
-        <div><label class="f" for="bd_oc">N° nota de crédito</label><input class="in" id="bd_oc" inputmode="numeric" autocomplete="off"></div>
-        <div><label class="f" for="bd_mt">Monto de la nota de crédito</label><input class="in n" id="bd_mt" inputmode="numeric" placeholder="$0"></div>
-        <div><label class="f" for="bd_ob">Observación</label><input class="in" id="bd_ob" autocomplete="off"></div>
-      </div>
-      <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn cu" id="bd_ad" type="button">Registrar</button></div></div>
-    <div id="bdl"></div>`;
-  const sel = $('#bd_p', box); sel.onchange = () => { const o = sel.selectedOptions[0]; $('#bd_u', box).textContent = o && o.dataset.u ? '(' + (o.dataset.u === 'UN' ? 'unidades' : 'kilos') + ')' : ''; };
-  $('#bdab', box).onclick = () => { const f = $('#bdf', box); f.hidden = !f.hidden; $('#bdab', box).textContent = f.hidden ? '+ Registrar' : 'Cerrar'; };
-  $('#bdt', box).onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; $$('#bdt button', box).forEach(x => x.classList.toggle('on', x === b)); };
+  box.innerHTML = `<div class="bdh"><b>Mermas y devoluciones de ${esc(nombre)}</b><span class="chip" id="bdn">0</span><span class="grow"></span><span class="muted" id="bdt"></span></div><div id="bdl"></div>`;
   function lista(rs) {
     rs = rs.filter(x => x.origen === vend);
     $('#bdn', box).textContent = rs.length; $('#bdn', box).className = 'chip' + (rs.length ? ' warn' : '');
+    $('#bdt', box).textContent = rs.length ? 'Se descuenta de su rendición: ' + clp(rs.reduce((a, x) => a + (Number(x.monto) || 0), 0)) : '';
     $('#bdl', box).innerHTML = rs.length ? rs.map(x => `<div class="dev"><div class="row"><span class="grow"><span class="chip ${x.tipo === 'MERMA' ? 'bad' : 'warn'}">${x.tipo === 'MERMA' ? 'Merma' : 'Reproceso'}</span> <b>${esc(x.producto)}</b></span><b>${fmt(x.cantidad, x.unidad)}</b></div>
-        <div class="muted">NC N° <b>${esc(x.nota_credito)}</b> · <b>${clp(x.monto)}</b>${x.motivo ? ' · ' + esc(x.motivo) : ''}${x.obs ? ' · ' + esc(x.obs) : ''}</div>
-        <div class="row" style="margin-top:6px">${chipsAdj(x.adjuntos, 'DEVOLUCIONES', x.id, true)}<span class="grow"></span><button class="x" style="min-height:34px;width:34px" data-id="${esc(x.id)}" aria-label="Borrar">×</button></div></div>`).join('')
+        <div class="muted">${clp(x.monto)}${x.motivo ? ' · ' + esc(x.motivo) : ''}${x.obs ? ' · ' + esc(x.obs) : ''} · ${x.cliente ? 'cliente: <b>' + esc(x.cliente) + '</b>' : '<span class="okt" style="color:#9a5b00">el vendedor aún no indica el cliente</span>'}</div>
+        <div class="row" style="margin-top:6px"><span class="grow"></span><button class="x" style="min-height:34px;width:34px" data-id="${esc(x.id)}" aria-label="Borrar">×</button></div></div>`).join('')
       : `<div class="muted" style="padding:6px 0">${esc(nombre)} no ha traído mermas ni devoluciones hoy.</div>`;
+    // marca en cada producto lo que ya se registró
+    $$('[data-dq]', m).forEach(e => { const xs = rs.filter(x => String(x.codigo) === String(e.dataset.dq));
+      e.textContent = xs.length ? '· ' + xs.map(x => `${fmt(x.cantidad, x.unidad)} ${x.tipo === 'MERMA' ? 'merma' : 'reproceso'}`).join(' · ') : ''; });
   }
   const recargar = async () => { const args = [S.sess.token, S.fecha]; lista(copia(await pedir('listarDevoluciones', args, claveApi('listarDevoluciones', args)))); };
+  S.devRefrescar = recargar;
   try { lista(await api('listarDevoluciones', S.sess.token, S.fecha)); } catch (e) { $('#bdl', box).innerHTML = '<div class="muted">No se pudieron cargar las devoluciones.</div>'; }
-  activarAdjuntarDespues($('#bdl', box), recargar);
   $('#bdl', box).addEventListener('click', async e => { const id = e.target.dataset && e.target.dataset.id; if (!id || !confirm('¿Borrar esta devolución?')) return;
     await api('borrarDevolucion', S.sess.token, id); await recargar(); });
-  $('#bd_ad', box).onclick = async () => {
-    const o = { tipo, codigo: sel.value, cantidad: String(dec($('#bd_c', box).value)), nota_credito: $('#bd_oc', box).value.trim(), monto: String(soloDigitos($('#bd_mt', box).value)), origen: vend, cliente: '', motivo: $('#bd_m', box).value, obs: $('#bd_ob', box).value.trim() };
-    if (!o.codigo) return toast('Elige el producto.', true);
-    if (!(dec(o.cantidad) > 0)) return toast('Ingresa la cantidad.', true);
-    if (!o.nota_credito) return toast('Falta el N° de la nota de crédito.', true);
-    if (o.monto === '0') return toast('Falta el monto de la nota de crédito.', true);
-    const b = $('#bd_ad', box); b.disabled = true;
+}
+
+/** Ventana del bodeguero para registrar una merma o un reproceso de un producto que trajo el vendedor. Solo cantidad y tipo; el valor lo calcula el servidor. */
+function abrirDevolucionBodega(prod, vend, nombre, alGuardar) {
+  let tipo = '';
+  const esUn = prod.unidad === 'UN';
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Devolución o merma"><div class="grip"></div><div class="body">
+    <div class="muted">Trajo ${esc(nombre)}</div>
+    <div style="font-weight:700;font-size:19px;line-height:1.25;margin:2px 0 10px">${esc(prod.nombre)}</div>
+    <div class="muted" style="font-weight:700;margin-bottom:6px">¿Qué es?</div>
+    <div class="seg" id="dgT" style="width:100%;display:grid;grid-template-columns:1fr 1fr"><button type="button" data-t="MERMA">Merma<small style="display:block;font-weight:400">se descarta</small></button><button type="button" data-t="REPROCESO">Reproceso<small style="display:block;font-weight:400">vuelve a producción</small></button></div>
+    <label class="f" for="dgC" style="margin-top:12px">Cantidad <span class="muted">(${esUn ? 'unidades' : 'kilos'})</span></label>
+    <input class="in n" id="dgC" inputmode="decimal" autocomplete="off" placeholder="0">
+    <label class="f" for="dgM" style="margin-top:10px">Motivo <span class="muted">(opcional)</span></label>
+    <select class="in" id="dgM"><option value="">—</option>${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select>
+    <p class="muted" style="margin:10px 0 0">Se descuenta de la rendición de ${esc(nombre.split(' ')[0])} de hoy. El vendedor indica después de qué cliente es. La nota de crédito la hace la encargada.</p>
+    <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" id="dgX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="dgOk" type="button">Registrar</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov);
+  $('#dgX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  $('#dgT', ov).onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; tipo = b.dataset.t; $$('#dgT button', ov).forEach(x => x.classList.toggle('on', x === b)); };
+  setTimeout(() => $('#dgC', ov).focus(), 60);
+  $('#dgOk', ov).onclick = async () => {
+    const cant = parseFloat(String($('#dgC', ov).value).replace(',', '.')) || 0;
+    if (!tipo) return toast('Elige si es merma o reproceso.', true);
+    if (!(cant > 0)) return toast('Ingresa la cantidad.', true);
+    const b = $('#dgOk', ov); b.disabled = true;
     try {
-      const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, o); toast(nuevo._pendiente ? 'Guardada en el teléfono (sin conexión)' : 'Registrada a nombre de ' + nombre);
-      ['#bd_c', '#bd_oc', '#bd_mt', '#bd_ob'].forEach(x => $(x, box).value = ''); sel.value = ''; sel.onchange();
-      await recargar();
-    } finally { b.disabled = false; }
+      const nuevo = await api('guardarDevolucion', S.sess.token, S.fecha, { tipo, codigo: prod.codigo, cantidad: String(cant), origen: vend, motivo: $('#dgM', ov).value });
+      toast(nuevo._pendiente ? 'Guardada en el teléfono (sin conexión)' : (tipo === 'MERMA' ? 'Merma' : 'Reproceso') + ' registrado a nombre de ' + nombre);
+      cerrar(); if (alGuardar) alGuardar();
+    } catch (e) { b.disabled = false; throw e; }
   };
 }
 
+/** El vendedor ve sus devoluciones del día (las que anotó el bodeguero) e indica de qué cliente es cada una. */
+function abrirDevolucionesVendedor(alCerrar) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Devoluciones de hoy"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Devoluciones de ${S.fecha === hoyCL() ? 'hoy' : 'este día'}</div>
+    <p class="muted" style="margin:2px 0 10px">Indica de qué cliente es cada una para corregir su factura o boleta.</p><div id="dvvl"></div>
+    <div class="row" style="margin-top:12px"><span class="grow"></span><button class="btn ghost" id="dvvX" type="button">Cerrar</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => { cerrarHoja(ov); if (alCerrar) alCerrar(); };
+  $('#dvvX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  const fmt = (n, u) => u === 'UN' ? String(Math.round(n * 100) / 100).replace('.', ',') + ' un' : kg(n) + ' kg';
+  let clientes = null, rs = [];
+  const pintar = () => {
+    $('#dvvl', ov).innerHTML = rs.length ? rs.map(x => `<div class="dev" data-id="${esc(x.id)}"><div class="row"><span class="grow"><span class="chip ${x.tipo === 'MERMA' ? 'bad' : 'warn'}">${x.tipo === 'MERMA' ? 'Merma' : 'Reproceso'}</span> <b>${esc(x.producto)}</b></span><b>${fmt(x.cantidad, x.unidad)}</b></div>
+      <div class="muted">${x.cliente ? 'Cliente: <b>' + esc(x.cliente) + '</b>' : 'Falta indicar el cliente'}</div>
+      <div class="row" style="margin-top:6px"><span class="grow"></span><button class="btn ${x.cliente ? 'ghost' : 'cu'} sm" data-el="${esc(x.id)}" type="button">${x.cliente ? 'Cambiar cliente' : 'Elegir cliente'}</button></div></div>`).join('')
+      : '<div class="empty">No hay devoluciones este día.</div>';
+  };
+  const elegir = id => {
+    $('#dvvl', ov).innerHTML = `<div class="muted" style="margin-bottom:6px">Escribe el nombre o el RUT del cliente</div><input class="in" id="dvq" autocomplete="off" placeholder="Buscar cliente…"><div id="dvr" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:8px"><button class="btn ghost sm" id="dvback" type="button">‹ Volver</button></div>`;
+    const q = $('#dvq', ov), res = $('#dvr', ov);
+    const buscar = () => { const t = normBus(q.value); let xs = clientes || [];
+      if (t) xs = xs.filter(c => normBus(c.nombre).includes(t) || normBus(c.rut).includes(t)); xs = xs.slice(0, 30);
+      res.innerHTML = xs.map((c, i) => `<button type="button" class="cli" data-i="${i}" style="width:100%;text-align:left"><b>${esc(c.nombre)}</b>${c.rut ? `<small>${esc(c.rut)}</small>` : ''}</button>`).join('')
+        + (q.value.trim() ? `<button type="button" class="cli" data-libre="1" style="width:100%;text-align:left"><b>Usar «${esc(q.value.trim().toUpperCase())}»</b><small>cliente que no está en la lista</small></button>` : '')
+        || '<div class="muted">Escribe para buscar.</div>';
+      res._xs = xs; };
+    q.oninput = buscar; buscar(); q.focus();
+    $('#dvback', ov).onclick = pintar;
+    res.onclick = async e => { const b = e.target.closest('.cli'); if (!b) return;
+      const c = b.dataset.libre ? { nombre: q.value.trim().toUpperCase(), rut: '' } : res._xs[Number(b.dataset.i)];
+      b.disabled = true;
+      try { await api('asignarDevolucionCliente', S.sess.token, id, c.nombre, c.rut); const x = rs.find(z => z.id === id); if (x) { x.cliente = c.nombre; x.rut = c.rut; } toast('Cliente indicado'); olvidarCache(false); pintar(); }
+      catch (err) { b.disabled = false; throw err; } };
+  };
+  $('#dvvl', ov).onclick = async e => { const b = e.target.closest('[data-el]'); if (!b) return;
+    if (!clientes) { try { clientes = (await api('listarClientes', S.sess.token) || []).slice(); } catch (err) { clientes = []; } }
+    elegir(b.dataset.el); };
+  (async () => { try { rs = await api('listarDevoluciones', S.sess.token, S.fecha); pintar(); } catch (e) { $('#dvvl', ov).innerHTML = '<div class="empty">No se pudieron cargar.</div>'; } })();
+}
 
 /* ============ INVENTARIO DE BODEGA ============ */
 async function vInventario(m) {
@@ -2147,21 +2199,21 @@ async function abrirVendedor(usuario) {
         ${pend.length ? `<span class="chip cu">${pend.length} por detallar</span>` : '<span class="chip ok">Todo detallado</span>'}</div>
       <div class="dtop">
         <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
-          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)} − depositado ${clp(t.depositos)}</small></div>
+          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}${t.devoluciones ? ' − devoluciones ' + clp(t.devoluciones) : ''} − depositado ${clp(t.depositos)}</small></div>
         <div class="dres">
           ${t.nc ? fila('Venta (' + v.documentos + ' docs)', '', t.ventaDocs) + fila('− Notas de crédito', '', t.nc) + fila('Venta neta', '', t.venta) : fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${fila('Venta contado', '', t.contado)}${t.creditoTotal ? fila('Crédito total', 'crédito ' + clp(t.credito) + ' · cheques ' + clp(t.chequesVenta), t.creditoTotal) : ''}
           ${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
           ${Object.keys(v.transf).filter(b => v.transf[b].length).map(b => fila('Transf. ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0))).join('')}
-          ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}</div></div>
+          ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}${t.devoluciones ? fila('Devoluciones (' + t.devolucionesN + ')', t.devSinCliente ? t.devSinCliente + ' sin cliente' : 'merma / reproceso', t.devoluciones) : ''}</div></div>
       ${v.porDia && v.porDia.length ? `<div class="dsec"><div class="dtit"><b>Por día</b><span>todo se rinde ${fechaCortaTxt(r.fecha)}</span></div>
         ${v.porDia.map(x => fila(fechaCortaTxt(x.fecha) + ' · ' + x.documentos + ' docs', 'efectivo ' + clp(x.efVentas + x.efCob) + (x.credito ? ' · crédito ' + clp(x.credito) : ''), x.venta)).join('')}
         ${fila('Total (los días juntos)', '', v.porDia.reduce((a, x) => a + x.venta, 0))}</div>` : ''}
       ${(() => { const trV = Object.keys(v.transf).reduce((a, b) => a + v.transf[b].filter(x => x.tipo === 'Venta').reduce((c, x) => c + x.monto, 0), 0),
-          ef0 = t.contado - trV, dV = t.efVentas - ef0, cont = t.efContado, dif = cont === null || cont === undefined ? null : cont - t.entregar;
+          ef0 = t.contado + (t.devoluciones || 0) - trV, dV = t.efVentas - ef0, cont = t.efContado, dif = cont === null || cont === undefined ? null : cont - t.entregar;
         return `<div class="dsec"><div class="dtit"><b>Cuenta del efectivo</b><span>solo aviso</span></div>
           ${fila('Venta contado', 'venta − crédito − cheques − descuentos', t.contado)}${fila('− Transferencias de ventas', '', trV)}
           ${fila('= Efectivo de ventas', dV ? 'ojo: lo anotado es ' + clp(t.efVentas) + ' (diferencia ' + clp(Math.abs(dV)) + ')' : 'calza con lo anotado', ef0)}
-          ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
+          ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.devoluciones ? fila('− Devoluciones', 'merma / reproceso', t.devoluciones) : ''}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
           ${fila('= Debe entregar', '', t.entregar)}
           ${dif === null ? '<div class="muted" style="padding:6px 0">Todavía no se cuenta el efectivo (pestaña Efectivo).</div>'
             : fila('Efectivo contado', dif === 0 ? 'cuadra' : dif < 0 ? 'FALTA ' + clp(-dif) : 'SOBRA ' + clp(dif), cont)}</div>`; })()}
@@ -2222,15 +2274,16 @@ async function imprimirInspeccion(usuario) {
     const bancos = Object.keys(v.transf);
     const tb = {}; bancos.forEach(b => tb[b] = sum(v.transf[b]));
     const transfTot = sum(bancos.map(b => ({ monto: tb[b] })));
-    const efTotal = t.efVentas + t.efCob, aEntregar = efTotal - t.depositos;
+    const dev = t.devoluciones || 0, efTotal = t.efVentas + t.efCob, aEntregar = efTotal - dev - t.depositos;
     const chCob = t.cheques - t.chequesVenta;                       // cheques recibidos por cobranza (no son venta del día)
     const subtotal = aEntregar + t.depositos + transfTot + chCob, total = subtotal + t.creditoTotal;
-    const totalDetalle = t.efVentas + t.efCob + transfTot + chCob + t.creditoTotal;     // por origen: debe dar igual a `total`
+    const totalDetalle = t.efVentas + t.efCob - dev + transfTot + chCob + t.creditoTotal;     // por origen: debe dar igual a `total`
     const cobEf = t.efCob, cobCh = sum(v.cobranza.filter(x => x.forma === 'CHEQUE'));
     const cobTr = sum(v.cobranza.filter(x => x.forma === 'TRANSFERENCIA' || x.forma === 'DEP_EFECTIVO'));
 
     const resumen = [
       suma('Efectivo total', `ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}`, efTotal, false),
+      dev ? suma('(−) Devoluciones', 'merma / reproceso', -dev, false) : '',
       t.depositos ? suma('(−) Depositado', 'ya está en el banco', -t.depositos, false) : '',
       suma('Efectivo a entregar', '', aEntregar, true, 'sub'),
       t.depositos ? suma('Depósitos de efectivo', 'en el banco', t.depositos, true) : '',
@@ -2255,6 +2308,8 @@ async function imprimirInspeccion(usuario) {
     const depHtml = v.depositos.length ? bloque('Depósitos de efectivo', t.depositos, 'ya están dentro del efectivo', v.depositos.map(x =>
       `<tr><td>${esc(x.banco)}</td><td class="g">${x.referencia ? 'Op. ' + esc(x.referencia) : ''}</td><td class="m">${clp(x.monto)}</td>${CK}</tr>`).join(''), '', COLS_DP) : '';
 
+    const devHtml = (v.devoluciones || []).length ? bloque('Devoluciones (merma / reproceso)', dev, 'se descuentan del efectivo', v.devoluciones.map(x =>
+      `<tr><td>${esc(x.producto)}<small>${esc((x.tipo === 'MERMA' ? 'Merma' : 'Reproceso') + ' · ' + x.cantidad + (x.unidad === 'UN' ? ' un' : ' kg'))}</small></td><td class="g">${esc(x.cliente || 'sin cliente')}</td><td class="m">${clp(x.monto)}</td>${CK}</tr>`).join(''), '', COLS_DP) : '';
     // todas las ventas: lo pagado en efectivo (por folio) y lo vendido a crédito
     const efecFilas = [];
     v.folios.forEach(f => (f.pagos || []).forEach(p => { if (p.forma === 'EFECTIVO') efecFilas.push({ cliente: f.cliente, rut: f.rut, doc: f.tipo + ' ' + f.folio, monto: p.monto }); }));
@@ -2263,7 +2318,7 @@ async function imprimirInspeccion(usuario) {
       : `<table class="s">${suma('Venta en efectivo', '', t.efVentas, true)}</table>`;
     const credHtml = v.creditos.length ? bloque('Crédito', t.credito, `${v.creditos.length} documento${v.creditos.length === 1 ? '' : 's'}`, v.creditos.map(x => filaVt({ cliente: x.cliente, rut: x.rut, doc: refOrigen(x.origen), monto: x.monto })).join(''), '', COLS_VT, true) : '';
 
-    const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat([],
+    const comp = [['Venta en efectivo', t.efVentas], ['+ Cobranza en efectivo', t.efCob]].concat(dev ? [['− Devoluciones (merma / reproceso)', -dev]] : [],
       [['+ Transferencias', transfTot], ['+ Cheques de cobranza', chCob], ['+ Crédito total (crédito + cheques)', t.creditoTotal]]);
     return `<section class="ins">
       <div class="hd"><div><b class="n">${esc(v.nombre)}</b><small>Inspección de rendición · Cecinas Naranjo</small></div>
@@ -2271,7 +2326,7 @@ async function imprimirInspeccion(usuario) {
       ${v.porDia && v.porDia.length ? `<table class="s sp">${v.porDia.map(x => suma(fechaCortaTxt(x.fecha), x.documentos + ' docs · efectivo ' + clp(x.efVentas + x.efCob), x.venta, false)).join('')}${suma('Total de los días', 'se rinde junto', v.porDia.reduce((a, x) => a + x.venta, 0), false, 'tot')}</table>` : ''}
       <h3>RESUMEN</h3><table class="s">${resumen}</table>
       <h3>DETALLE</h3>
-      ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${depHtml}
+      ${efecHtml}${transfHtml}${chequesHtml}${cobHtml}${devHtml}${depHtml}
       <table class="s sp">${t.gastos ? suma('Gastos del día (aparte, no se descuentan)', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, t.gastos, true) : ''}
         </table>
       ${v.kilos && v.kilos.detalle.length ? `<div class="blk"><div class="bt"><span><b>Diferencia de kilos</b> <small>${v.kilos.diferencia > 0 ? 'kilos faltantes' : 'kilos sobrantes'} · no entra al total</small></span><b class="m">${mm(v.kilos.diferenciaPesos)}</b><i></i></div>
