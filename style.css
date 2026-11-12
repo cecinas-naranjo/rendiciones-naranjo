@@ -1183,3 +1183,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .edadd{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .edr .x{min-height:38px;padding:0 12px}
 @media(max-width:600px){.edr{flex-wrap:wrap}.edr select.in{max-width:none;flex:1}}
+
+/* v154: Inventario con todas las secciones juntas */
+.invsec{margin:18px 0 6px;font-size:17px;color:var(--cafe,#2A1F1A)}
+.invsec .muted{font-weight:400;font-size:14px}

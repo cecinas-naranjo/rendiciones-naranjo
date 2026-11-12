@@ -707,3 +707,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v153 — Se quitó la pantalla Precios (solo frontend: app.js, sw.js)
 - Pedido del dueño: los precios salen de Mi DTE (v152), así que la pantalla de precios de lista sobra. Se eliminó `vPrecios` y su entrada en el menú (grupo Más). PRODUCTOS.precio queda solo como respaldo cuando un producto no se facturó ese día. Las APIs `listarPrecios`/`guardarPrecios` siguen en el servidor sin uso (inofensivas). Solo sintaxis verificada.
+
+## v154 — Inventario y Despacho muestran todos los productos (solo frontend: app.js, style.css, sw.js)
+- Pedido del dueño: que se vean TODOS los productos del bodeguero. Inventario: pestaña nueva «Todos» (por defecto) que dibuja una tabla por sección una bajo otra, con título y cantidad de productos; las pestañas por sección siguen. Los filtros y el buscador valen para todas. «Agregar producto» ahora pide la sección (`#npS`). Despacho (Salida y Retorno): la lista parte con todos los productos (`.dt.todos`); el botón «Mostrar solo los productos del día» vuelve a la vista corta. Solo sintaxis verificada.

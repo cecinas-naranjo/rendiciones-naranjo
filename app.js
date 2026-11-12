@@ -1620,7 +1620,7 @@ async function vDespacho(m) {
     <div id="vac" class="vac" hidden></div>
     <div id="bdev" class="bdev" hidden></div>
     <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span><span></span></div>
-    <div id="dt" class="dt dm-${S.dmod}">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
+    <div id="dt" class="dt dm-${S.dmod} todos">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
       return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
         <div class="pn">${esc(p.nombre)}${pseudo || r.retornoBloqueado ? '' : `<span class="dvq" data-dq="${esc(p.codigo)}"></span>`}</div><div class="rf"></div>
         <div class="cl kgc" data-col="Kilos">${p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
@@ -1851,7 +1851,7 @@ async function vInventario(m) {
   if (inv.nominaPendiente && S.sess.rol !== 'GERENCIA') {      // v149: la primera vez deja los productos como la nómina del bodeguero
     try { await api('aplicarNominaInventario', S.sess.token); olvidarCache(true); inv = await api('getInventario', S.sess.token, S.fecha); } catch (e) { /* si falla, se sigue con lo que hay */ }
   }
-  S.secInv = S.secInv || 'TERMINADOS';
+  S.secInv = S.secInv || 'TODOS';            // v154: por defecto se ven todos los productos juntos
   if (!S.invM) S.invM = S.sess.rol === 'BODEGA' ? 'contar' : 'ver';       // el bodeguero abre en "Contar y anotar"; los demás, en "Ver stock"
   const sum = o => Object.keys(o || {}).reduce((a, k) => a + (Number(o[k]) || 0), 0);
   // estado editable por producto
@@ -1871,20 +1871,20 @@ async function vInventario(m) {
   render(m, `<div class="row"><div class="grow"><h2>Inventario de bodega</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
       ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost sm" id="edp">Editar planilla</button>'}<button class="btn ghost sm" id="plan">Planilla del día</button></div>
     <p class="muted" id="invh"></p>
-    <div class="invtop"><div class="seg secs" id="sec">${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
+    <div class="invtop"><div class="seg secs" id="sec"><button data-s="TODOS">Todos</button>${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
       <div class="seg" id="invm"><button type="button" data-m="ver">Ver stock</button><button type="button" data-m="contar">Contar y anotar</button></div></div>
     <div class="invbar"><input class="in grow" id="invq" type="search" placeholder="Buscar producto…" value="${esc(S.invQ || '')}" autocomplete="off">
       <div class="seg" id="invf"><button type="button" data-f="todos">Todos</button><button type="button" data-f="mov">Con movimiento</button><button type="button" data-f="dif">Con diferencia</button></div></div>
     <div id="alertInv"></div><div id="lista" class="invl"></div>
     <div class="card" id="npc" style="margin-top:12px"><b>¿Falta un producto?</b><div class="row" style="margin-top:8px">
-      <input class="in grow" id="npN" placeholder="Nombre, como en la planilla"><select class="in" id="npU" style="width:auto"><option>KG</option><option>UN</option></select>
-      <button class="btn ghost sm" id="npA">Agregar a esta sección</button></div></div>
+      <input class="in grow" id="npN" placeholder="Nombre, como en la planilla"><select class="in" id="npS" style="width:auto">${inv.secciones.map(x => `<option value="${x.id}">${x.nombre}</option>`).join('')}</select><select class="in" id="npU" style="width:auto"><option>KG</option><option>UN</option></select>
+      <button class="btn ghost sm" id="npA">Agregar</button></div></div>
     <div id="lnkInv"></div>
     <div class="sticky-foot" id="invfoot"><div class="card"><div><div class="muted" id="cambios">Sin cambios</div></div><button class="btn cu" id="gi">Guardar</button></div></div>`);
   const lista = $('#lista');
   function pintar() {
     $$('#sec button').forEach(b => b.classList.toggle('on', b.dataset.s === S.secInv));
-    const cam = S.secInv === 'CAMARA';
+    let cam = false;                                   // se fija por sección al dibujar (en «Todos» hay varias)
     const q = (S.invQ || '').trim().toLowerCase(), mov = S.invF === 'mov', dife = S.invF === 'dif', contar = S.invM === 'contar';
     $$('#invf button').forEach(x => x.classList.toggle('on', x.dataset.f === (mov ? 'mov' : dife ? 'dif' : 'todos')));
     $$('#invm button').forEach(x => x.classList.toggle('on', x.dataset.m === S.invM));
@@ -1893,7 +1893,8 @@ async function vInventario(m) {
     if (S.sess.rol === 'GERENCIA') { $('#invm').hidden = true; S.invM = 'ver'; }
     const conMov = f => { const e = est[f.codigo]; return e.cambio || sum(f.salVend) + sum(f.retVend) + sum(e.desp) + sum(e.otras) > 0 || dec(e.ingreso) > 0 || e.conteo !== ''; };
     const conDif = f => { const c = calc(est[f.codigo]); return (est[f.codigo].conteo !== '' && Math.abs(c.ajuste) > 0.001) || c.final < -0.001; };
-    const filas = inv.filas.filter(f => f.seccion === S.secInv && (!q || String(f.nombre).toLowerCase().indexOf(q) >= 0) && (!mov || conMov(f)) && (!dife || conDif(f)));
+    const todos = S.secInv === 'TODOS';
+    const filtrar = sec => inv.filas.filter(f => f.seccion === sec && (!q || String(f.nombre).toLowerCase().indexOf(q) >= 0) && (!mov || conMov(f)) && (!dife || conDif(f)));
     const negativos = inv.filas.filter(f => calc(est[f.codigo]).final < -0.001);
     $('#alertInv').innerHTML = negativos.length ? `<div class="alert"><b>${negativos.length} producto(s) con stock negativo:</b> ${negativos.slice(0, 6).map(f => esc(f.nombre)).join(', ')}${negativos.length > 6 ? '…' : ''}. Revisa ingresos o registra un conteo.</div>` : '';
     const fqU = f => v => f.unidad === 'UN' ? nk(v) : kg(v);
@@ -1918,10 +1919,13 @@ async function vInventario(m) {
         <td data-col="Conteo físico">${inpt('conteo', '—', e.conteo)}</td><td class="df" data-col="Diferencia">${difH(e, c, fq)}</td>
         ${cam ? '' : `<td class="lk" data-col=""><button type="button" class="ghostlink" data-otras="1">${nOtras ? `Otras salidas ${fq(sum(e.otras))} ›` : 'Otras salidas ›'}</button></td>`}</tr>`;
     };
-    const cab = contar
+    const cabF = () => contar
       ? `<tr><th>Producto</th><th>Empezó</th><th>Debería haber</th><th>${cam ? 'Entra producto' : 'Entra de fábrica'}</th>${cam ? '<th>Sale a fábrica</th><th>Sale a vendedores</th>' : ''}<th>Conteo físico</th><th>Diferencia</th>${cam ? '' : '<th></th>'}</tr>`
       : `<tr><th>Producto</th><th>Empezó</th><th>Entró</th><th>Salió${cam ? '' : ' (vendedores)'}</th>${cam ? '' : '<th>Volvió</th><th>Otras salidas</th>'}<th>Quedan</th><th>Estado</th></tr>`;
-    lista.innerHTML = filas.length ? `<div class="invt"><table>${cab}${filas.map(fila).join('')}</table></div>` : '<div class="empty">No hay productos con ese filtro en esta sección.</div>';
+    const tabla = sec => { cam = sec === 'CAMARA'; const fs = filtrar(sec); return fs.length ? `<div class="invt"><table>${cabF()}${fs.map(fila).join('')}</table></div>` : ''; };
+    const secs = todos ? inv.secciones.map(x => x.id) : [S.secInv];
+    const html = secs.map(sec => { const h = tabla(sec); if (!h) return ''; return (todos ? `<h3 class="invsec">${esc(nombreSec(sec))} <span class="muted">· ${filtrar(sec).length} productos</span></h3>` : '') + h; }).join('');
+    lista.innerHTML = html || '<div class="empty">No hay productos con ese filtro.</div>';
     const n = Object.values(est).filter(e => e.cambio).length;
     $('#cambios').textContent = n ? n + ' producto(s) con cambios sin guardar' : 'Sin cambios';
   }
@@ -1995,8 +1999,8 @@ async function vInventario(m) {
   const edp = $('#edp'); if (edp) edp.onclick = () => abrirEditorPlanilla(() => ir('inventario', true));
   $('#npA').onclick = async () => {
     const n = $('#npN').value.trim(); if (!n) return toast('Escribe el nombre del producto.', true);
-    await api('agregarProductoInv', S.sess.token, { nombre: n, seccion: S.secInv, unidad: $('#npU').value });
-    toast('Producto agregado a ' + nombreSec(S.secInv)); ir('inventario');
+    await api('agregarProductoInv', S.sess.token, { nombre: n, seccion: $('#npS').value, unidad: $('#npU').value });
+    toast('Producto agregado a ' + nombreSec($('#npS').value)); ir('inventario');
   };
   pintar();
 }
@@ -3665,7 +3669,7 @@ async function vCajaChica(m) {
 async function abrirEditorPlanilla(alGuardar) {
   const cfg = await api('getConfigInventario', S.sess.token);
   const prods = cfg.productos.map(p => Object.assign({}, p)), dest = JSON.parse(JSON.stringify(cfg.destinos));
-  let sec = S.secInv || 'TERMINADOS', cambio = false;
+  let sec = S.secInv && S.secInv !== 'TODOS' ? S.secInv : 'TERMINADOS', cambio = false;
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet ancha" role="dialog" aria-modal="true" aria-label="Editar planilla"><div class="grip"></div><div class="body">
     <div style="font-weight:700;font-size:19px">Editar planilla de inventario</div>
