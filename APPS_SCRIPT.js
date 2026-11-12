@@ -835,13 +835,16 @@ function vendedores_() {
   return read_('USUARIOS').filter(u => u.rol === 'VENDEDOR' && String(u.activo).toUpperCase() !== 'FALSE');
 }
 
+const ordenNomina_ = p => { const r = { TERMINADOS: 0, CONGELADOS: 1, LAMINADOS: 2 }[p.seccion];
+  return r !== undefined && p.orden_inv !== '' && p.orden_inv !== undefined && p.orden_inv !== null ? r * 10000 + num_(p.orden_inv) : 90000 + (num_(p.orden) || 999); };
 function catalogo(token) {
   auth_(token);
   const conDeposito = {}; read_('DEPOSITOS').forEach(d => conDeposito[d.vendedor] = 1);   // quien ya depositó antes sigue viendo el botón
   return {
     hoy: hoy_(), distribuidores: CFG.DISTRIBUIDORES,
-    productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA')
-      .sort((a, b) => (a.orden || 999) - (b.orden || 999))
+    // v155: Despacho usa los mismos productos y el mismo orden que la nómina del bodeguero (lo oculto del inventario no sale)
+    productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA' && !invOculto_(p))
+      .sort((a, b) => ordenNomina_(a) - ordenNomina_(b))
       .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p) })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, rindeAntes: parseDiasRA_(v.emite_antes).map(i => DIAS_RA_[i]).join(','), deposita: esSi_(v.deposita) || conDeposito[v.usuario] === 1 })),
     formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
