@@ -598,13 +598,13 @@ const TABS = {
     ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['cajachica', 'Caja chica', 'cash'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
-TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['precios', 'Precios', 'receipt'], ['usuarios', 'Usuarios', 'users']]);
-TABS.SUPERVISOR = TABS.SUPERVISOR.concat([['precios', 'Precios', 'receipt']]);
+TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
+
 TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'], ['inventario', 'Inventario', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques', 'notascred'], 'cash'],
-  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'cajachica', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'precios', 'usuarios'], 'dots']];
+  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'cajachica', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
 /* ===== VER COMO (solo ADMIN): saltar entre usuarios para ver cómo ven la app los demás ===== */
@@ -913,7 +913,7 @@ function ir(t, silencioso) {
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
   const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
-  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, cajachica: vCajaChica, usuarios: vUsuarios, precios: vPrecios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, cajachica: vCajaChica, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
     if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -3528,114 +3528,6 @@ async function vDatos(m) {
     ult.set(b, t);
   }, true);
 })();
-
-
-/* ===== PRECIOS DE LISTA (v122) ===== */
-async function vPrecios(m) {
-  const lista = await api('listarPrecios', S.sess.token);
-  const orig = {}; lista.forEach(p => orig[p.codigo] = p.precio);
-  const nuevo = {};                                     // codigo -> precio escrito distinto del actual
-  const num = t => { const n = Number(String(t).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')); return isFinite(n) ? n : NaN; };
-  const fila = p => `<tr data-c="${esc(p.codigo)}"><td>${esc(p.nombre)}</td><td class="pr-u">${p.unidad === 'KG' ? 'por kilo' : 'por unidad'}</td>
-      <td><input class="in pr-in" inputmode="decimal" autocomplete="off" value="${p.precio ? Math.round(p.precio * 100) / 100 : ''}" placeholder="Sin precio" aria-label="Precio de ${esc(p.nombre)}"></td></tr>`;
-  const sec = (tit, arr) => arr.length ? `<h3 class="pr-h">${tit}</h3><div class="tw"><table class="pr-t"><tbody>${arr.map(fila).join('')}</tbody></table></div>` : '';
-  render(m, `<h2>Precios</h2>
-    <p class="lead" style="margin:0 0 12px">Precio de referencia. La app valoriza los kilos y las devoluciones al precio con que Mi DTE facturó ese producto ese día (incluye descuentos); este precio solo se usa si ese día no se facturó.</p>
-    <div class="row pr-bar"><button class="btn cu sm" id="pxu">Subir listado de precios (Excel)</button><button class="btn ghost sm" id="pxd">Bajar planilla para editar</button>
-      <input type="file" id="pxf" accept=".xlsx,.xls,.csv" class="sr"></div>
-    <div id="pxmsg"></div>
-    <input class="in" id="pxq" placeholder="Buscar producto" autocomplete="off" style="margin:10px 0">
-    <div id="pxl">${sec('Por kilo', lista.filter(p => p.unidad === 'KG'))}${sec('Por unidad', lista.filter(p => p.unidad !== 'KG'))}</div>
-    <div class="pr-foot" id="pxfoot" hidden><span id="pxn"></span><span class="grow"></span><button class="btn ghost sm" id="pxc">Descartar</button><button class="btn cu" id="pxg">Guardar cambios</button></div>`);
-  const filas = () => [...m.querySelectorAll('#pxl tr')];
-  const marcar = () => {
-    const n = Object.keys(nuevo).length; $('#pxfoot', m).hidden = !n;
-    $('#pxn', m).textContent = n === 1 ? '1 precio cambiado' : n + ' precios cambiados';
-    filas().forEach(tr => { const c = tr.dataset.c; tr.classList.toggle('pr-chg', c in nuevo); });
-  };
-  const poner = (c, v) => { const tr = filas().find(t => t.dataset.c === c); if (!tr) return; const i = $('input', tr); i.value = v === '' || v == null ? '' : v;
-    if (v !== '' && v != null && Number(v) !== orig[c]) nuevo[c] = Number(v); else delete nuevo[c]; };
-  $('#pxl', m).addEventListener('input', e => { const tr = e.target.closest('tr'); if (!tr) return; const c = tr.dataset.c, t = e.target.value.trim(), v = t === '' ? 0 : num(t);
-    if (!isNaN(v) && v !== orig[c]) nuevo[c] = v; else delete nuevo[c]; marcar(); });
-  $('#pxq', m).oninput = e => { const q = normBus(e.target.value); filas().forEach(tr => tr.hidden = q && normBus(tr.cells[0].textContent).indexOf(q) < 0); };
-  $('#pxc', m).onclick = () => { Object.keys(nuevo).forEach(c => poner(c, orig[c] || '')); marcar(); $('#pxmsg', m).innerHTML = ''; };
-  $('#pxg', m).onclick = async () => {
-    const cambios = Object.keys(nuevo).map(c => ({ codigo: c, precio: nuevo[c] })); if (!cambios.length) return;
-    if (cambios.some(x => isNaN(x.precio))) return toast('Hay un precio que no es un número.', true);
-    if (!confirm('¿Guardar ' + cambios.length + (cambios.length === 1 ? ' precio nuevo?' : ' precios nuevos?') + '\nLos kilos de días ya cerrados se recalculan con el precio nuevo si se abre de nuevo su rendición.')) return;
-    const b = $('#pxg', m); b.disabled = true;
-    try { await api('guardarPrecios', S.sess.token, cambios); olvidarCache(true); toast('Precios guardados'); ir('precios'); } catch (e) { b.disabled = false; throw e; }
-  };
-  $('#pxd', m).onclick = async () => {
-    await cargarXLSX(); const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([['Codigo', 'Producto', 'Unidad', 'Precio']].concat(lista.map(p => [p.codigo, p.nombre, p.unidad === 'KG' ? 'KG' : 'UN', p.precio || ''])));
-    ws['!cols'] = [{ wch: 10 }, { wch: 40 }, { wch: 8 }, { wch: 12 }]; XLSX.utils.book_append_sheet(wb, ws, 'Precios'); XLSX.writeFile(wb, 'Precios de lista.xlsx');
-  };
-  $('#pxu', m).onclick = () => $('#pxf', m).click();
-  $('#pxf', m).onchange = async e => {
-    const f = e.target.files[0]; if (!f) return; e.target.value = '';
-    const msg = $('#pxmsg', m); msg.innerHTML = '<p class="muted">Leyendo el archivo…</p>';
-    try {
-      await cargarXLSX(); const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
-      let rows = null, hi = -1, ci = -1, ni = -1, pi = -1;
-      for (const nombre of wb.SheetNames) {
-        const r = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, raw: true, defval: '' });
-        for (let i = 0; i < Math.min(r.length, 15); i++) { const h = r[i].map(x => normBus(x));
-          const p = h.findIndex(x => x.indexOf('PRECIO') >= 0), n = h.findIndex(x => /^(PRODUCTO|NOMBRE|DESCRIPCION|DETALLE)/.test(x)), c = h.findIndex(x => x.indexOf('CODIGO') >= 0 || x === 'COD' || x === 'SKU');
-          if (p >= 0 && (n >= 0 || c >= 0)) { rows = r; hi = i; pi = p; ni = n; ci = c; break; } }
-        if (rows) break;
-      }
-      if (!rows) { msg.innerHTML = '<div class="aviso mal">No encontré las columnas. El archivo necesita una columna <b>Precio</b> y otra con el <b>Código</b> o el <b>Nombre</b> del producto. Usa «Bajar planilla para editar» y cambia solo los precios.</div>'; return; }
-      const kc = x => String(x).trim().replace(/\.0+$/, ''), porC = {}, porN = {}; lista.forEach(p => { porC[kc(p.codigo)] = p; porN[normBus(p.nombre)] = p; });
-      let cambian = 0, iguales = 0; const noHay = [], malos = [];
-      rows.slice(hi + 1).forEach(r => {
-        const cod = ci >= 0 ? kc(r[ci]) : '', nom = ni >= 0 ? String(r[ni]).trim() : '', raw = r[pi];
-        if (!cod && !nom) return; if (raw === '' || raw == null) return;
-        const p = (cod && porC[cod]) || (nom && porN[normBus(nom)]);
-        if (!p) { noHay.push(nom || cod); return; }
-        const v = typeof raw === 'number' ? raw : num(raw);
-        if (isNaN(v) || v < 0) { malos.push(p.nombre); return; }
-        if (v === orig[p.codigo]) { iguales++; return; }
-        poner(p.codigo, v); cambian++;
-      });
-      marcar();
-      msg.innerHTML = `<div class="aviso ${cambian ? 'ok' : ''}"><b>${cambian ? cambian + (cambian === 1 ? ' precio cambia' : ' precios cambian') : 'No hay precios distintos a los actuales'}</b>${iguales ? ` · ${iguales} sin cambio` : ''}.
-        ${cambian ? 'Revisa los marcados en la lista y toca <b>Guardar cambios</b>. Todavía no se guardó nada.' : ''}
-        ${noHay.length ? `<div class="muted" style="margin-top:6px">No encontré en la app (se ignoran): ${esc(noHay.slice(0, 12).join(', '))}${noHay.length > 12 ? ' y ' + (noHay.length - 12) + ' más' : ''}.</div>` : ''}
-        ${malos.length ? `<div class="muted" style="margin-top:6px">Precio no válido (se ignora): ${esc(malos.join(', '))}.</div>` : ''}</div>`;
-      const primero = m.querySelector('tr.pr-chg'); if (primero) primero.scrollIntoView({ block: 'center' });
-    } catch (err) { msg.innerHTML = '<div class="aviso mal">No pude leer ese archivo: ' + esc(err.message || err) + '</div>'; }
-  };
-}
-
-/* ============================ PRECIOS DE LISTA (v122) ============================ */
-// Precio de lista de cada producto (hoja PRODUCTOS, columna precio). Lo usa la diferencia de kilos en plata (preciosKg_).
-function listarPrecios(token) {
-  auth_(token, ['ADMIN', 'SUPERVISOR']);
-  return read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA' && p.categoria !== 'REVISAR')
-    .sort((a, b) => (a.orden || 999) - (b.orden || 999))
-    .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria || '', unidad: p.unidad === 'KG' ? 'KG' : 'UN', precio: num_(p.precio) }));
-}
-/** cambios: [{codigo, precio}]. Solo cambia el precio de los productos indicados. */
-function guardarPrecios(token, cambios) {
-  const u = auth_(token, ['ADMIN', 'SUPERVISOR']);
-  cambios = (cambios || []).slice(0, 500);
-  if (!cambios.length) throw new Error('No hay cambios para guardar.');
-  return withLock_(() => {
-    const por = {}; read_('PRODUCTOS').forEach(p => por[codeKey_(p.codigo)] = p);
-    let n = 0; const log = [];
-    cambios.forEach(c => {
-      const p = por[codeKey_(c.codigo)]; if (!p) return;
-      const v = Math.round(Number(String(c.precio).replace(',', '.')) * 100) / 100;
-      if (!(v >= 0) || v > 100000000) throw new Error('Precio no válido en ' + p.nombre + '.');
-      if (num_(p.precio) === v) return;
-      log.push(p.nombre + ': ' + num_(p.precio) + ' → ' + v); p.precio = v; updateRow_('PRODUCTOS', p._row, p); n++;
-    });
-    if (log.length) Logger.log('Precios cambiados por ' + u.usuario + ' (' + now_() + '): ' + log.join(' | '));
-    limpiarCache_('PRODUCTOS');
-    return { cambiados: n };
-  });
-}
 
 
 /* ============ NOTAS DE CRÉDITO POR EMITIR (v127) ============ */
