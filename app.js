@@ -1538,7 +1538,7 @@ async function vDevoluciones(m) {
         <div><label class="f" for="dv_p">Producto</label><select class="in" id="dv_p"><option value="">Elige un producto…</option>${opcProd}</select></div>
         <div><label class="f" for="dv_c">Cantidad <span class="muted" id="dv_u"></span></label><input class="in n" id="dv_c" inputmode="decimal" placeholder="0"></div>
         <div><label class="f" for="dv_oc">N° nota de crédito <span class="muted">(opcional, lo agrega la encargada)</span></label><input class="in" id="dv_oc" inputmode="numeric" autocomplete="off"></div>
-        <div><label class="f" for="dv_mt">Monto a descontar <span class="muted">(vacío = cantidad × precio de lista)</span></label><input class="in n" id="dv_mt" inputmode="numeric" placeholder="$0"></div>
+        <div><label class="f" for="dv_mt">Monto a descontar <span class="muted">(vacío = cantidad × precio de Mi DTE)</span></label><input class="in n" id="dv_mt" inputmode="numeric" placeholder="$0"></div>
         <div><label class="f" for="dv_o">Viene de</label><select class="in" id="dv_o"><option value="">Cliente / otro</option>${opcVend('')}</select></div>
         <div><label class="f" for="dv_cl">Cliente (si corresponde)</label><input class="in" id="dv_cl" autocomplete="off"></div>
         <div><label class="f" for="dv_m">Motivo</label><select class="in" id="dv_m">${MOTIVOS_DEV.map(x => `<option>${x}</option>`).join('')}</select></div>
@@ -3540,7 +3540,7 @@ async function vPrecios(m) {
       <td><input class="in pr-in" inputmode="decimal" autocomplete="off" value="${p.precio ? Math.round(p.precio * 100) / 100 : ''}" placeholder="Sin precio" aria-label="Precio de ${esc(p.nombre)}"></td></tr>`;
   const sec = (tit, arr) => arr.length ? `<h3 class="pr-h">${tit}</h3><div class="tw"><table class="pr-t"><tbody>${arr.map(fila).join('')}</tbody></table></div>` : '';
   render(m, `<h2>Precios</h2>
-    <p class="lead" style="margin:0 0 12px">Precio de lista de cada producto. Se usa para calcular en plata los kilos que faltan o sobran de cada vendedor. No cambia lo que ya está facturado en Mi DTE.</p>
+    <p class="lead" style="margin:0 0 12px">Precio de referencia. La app valoriza los kilos y las devoluciones al precio con que Mi DTE facturó ese producto ese día (incluye descuentos); este precio solo se usa si ese día no se facturó.</p>
     <div class="row pr-bar"><button class="btn cu sm" id="pxu">Subir listado de precios (Excel)</button><button class="btn ghost sm" id="pxd">Bajar planilla para editar</button>
       <input type="file" id="pxf" accept=".xlsx,.xls,.csv" class="sr"></div>
     <div id="pxmsg"></div>

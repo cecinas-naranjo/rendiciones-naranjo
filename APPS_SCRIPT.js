@@ -2877,7 +2877,12 @@ function asegurarColsDevoluciones_() {
   if (hecho) { MEMO_.DEVOLUCIONES = null; SLICE_ = {}; }
 }
 /** Valor en pesos de una devolución: cantidad × precio de lista (PRODUCTOS.precio). 0 si el producto no tiene precio. */
-function valorDevolucion_(p, cantidad) { return Math.round(num_(cantidad) * num_(p.precio)); }
+function valorDevolucion_(p, cantidad, fecha, origen) {
+  // v152: al precio con que Mi DTE facturó ese producto ese día (del vendedor de la ruta si se sabe); si no se facturó, el precio de lista
+  let pr = 0;
+  try { const pk = preciosKg_(byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia))), c = codeKey_(p.codigo); pr = pk[(origen || '') + '|' + c] || pk[c] || 0; } catch (e) {}
+  return Math.round(num_(cantidad) * (pr > 0 ? pr : num_(p.precio)));
+}
 
 function listarDevoluciones(token, fecha) {
   const u = auth_(token, DEV_ROLES.concat(['VENDEDOR']));
@@ -2898,7 +2903,7 @@ function guardarDevolucion(token, fecha, o) {
   if (!p) throw new Error('Elige el producto.');
   return withLock_(() => {
     asegurarColsDevoluciones_();
-    const monto = Math.round(num_(o.monto)) > 0 ? Math.round(num_(o.monto)) : valorDevolucion_(p, cantidad);
+    const monto = Math.round(num_(o.monto)) > 0 ? Math.round(num_(o.monto)) : valorDevolucion_(p, cantidad, fecha, String(o.origen || ''));
     const r = { id: uid_(), fecha, tipo, monto, origen: String(o.origen || ''), cliente: String(o.cliente || '').trim(), rut: String(o.rut || '').trim(), codigo: codeKey_(p.codigo), producto: p.nombre,
       unidad: p.unidad, cantidad, nota_credito: String(o.nota_credito || '').trim(), motivo: String(o.motivo || '').trim(), obs: String(o.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
     append_('DEVOLUCIONES', [r]); return r;
@@ -2943,13 +2948,17 @@ function borrarDevolucion(token, id) {
   });
 }
 
-/** Precio por kilo de cada producto ese día = total facturado / kilos facturados (Informe de ventas). Si no se facturó, el de la lista de precios. */
+/** v152: PRECIO DE MI DTE. Precio por kilo = total facturado / kilos facturados ese día (Informe de ventas), así un descuento del día se toma tal cual.
+ * Claves del resultado: «codigo» = promedio del día para ese producto; «vendedor|codigo» = promedio de ESE vendedor (sus clientes pueden tener otro precio).
+ * Quien lo usa busca primero «vendedor|codigo» y si no hay, «codigo». Si ese día no se facturó el producto, queda el precio de la lista (PRODUCTOS.precio). */
 function preciosKg_(detV) {
-  const t = {}, q = {};
-  detV.forEach(x => { const c = codeKey_(x.codigo); t[c] = (t[c] || 0) + num_(x.total); q[c] = (q[c] || 0) + num_(x.cantidad); });
+  const t = {}, q = {}, tv = {}, qv = {};
+  detV.forEach(x => { const c = codeKey_(x.codigo), k = x.vendedor + '|' + c, cant = num_(x.cantidad), tot = num_(x.total);
+    t[c] = (t[c] || 0) + tot; q[c] = (q[c] || 0) + cant; tv[k] = (tv[k] || 0) + tot; qv[k] = (qv[k] || 0) + cant; });
   const p = {};
-  read_('PRODUCTOS').forEach(x => { const c = codeKey_(x.codigo); p[c] = num_(x.precio) > 0 ? num_(x.precio) : (q[c] > 0 ? t[c] / q[c] : 0); });   // v121: precio de LISTA (como la planilla manual); si no tiene, el promedio facturado
+  read_('PRODUCTOS').forEach(x => { const c = codeKey_(x.codigo); p[c] = q[c] > 0 ? t[c] / q[c] : num_(x.precio); });
   Object.keys(q).forEach(c => { if (!(c in p)) p[c] = q[c] > 0 ? t[c] / q[c] : 0; });
+  Object.keys(qv).forEach(k => { if (qv[k] > 0) p[k] = tv[k] / qv[k]; });
   return p;
 }
 /** Kilos de un vendedor: salida − retorno vs facturado, por producto, con 2 decimales, y la diferencia valorizada en pesos
@@ -2961,7 +2970,7 @@ function kilosDe_(v, desp, detV, unidad, precios, anul) {
   detV.filter(x => x.vendedor === v && unidad[codeKey_(x.codigo)] !== 'UN').forEach(x => { it(codeKey_(x.codigo), x.producto).facturado += num_(x.cantidad); });
   (anul || []).filter(x => x.vendedor === v).forEach(x => { it(x.codigo, x.producto).facturado -= x.kg; });     // kilos de folios anulados (aprobados): no se vendieron
   const r2 = n => Math.round(n * 100) / 100, L = Object.keys(m).map(c => m[c]);
-  const detalle = L.map(o => { const dif = o.salida - o.retorno - o.facturado, pr = precios[o.codigo] || 0;
+  const detalle = L.map(o => { const dif = o.salida - o.retorno - o.facturado, pr = precios[v + '|' + o.codigo] || precios[o.codigo] || 0;
     return { codigo: o.codigo, producto: o.producto, salida: r2(o.salida), retorno: r2(o.retorno), facturado: r2(o.facturado), diferencia: r2(dif), precio: Math.round(pr), monto: Math.round(dif * pr) }; });
   const salida = L.reduce((a, o) => a + o.salida, 0), retorno = L.reduce((a, o) => a + o.retorno, 0), fact = L.reduce((a, o) => a + o.facturado, 0);
   return { salida: r2(salida), retorno: r2(retorno), vendido: r2(salida - retorno), facturado: r2(fact), diferencia: r2(salida - retorno - fact),
@@ -3504,7 +3513,7 @@ function generarArchivo_(fecha, r, borrador) {
   byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)).forEach(x => {
     const k = x.vendedor + '|' + codeKey_(x.codigo); fact[k] = (fact[k] || 0) + num_(x.cantidad); });
   const kilos = byFecha_('DESPACHO', fecha).map(k => ({ vendedor: k.vendedor, producto: k.producto, salida: num_(k.salida), retorno: num_(k.retorno),
-    facturado: Math.round((fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0) * 100) / 100, precio: Math.round(preciosK[codeKey_(k.codigo)] || 0) }));
+    facturado: Math.round((fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0) * 100) / 100, precio: Math.round(preciosK[k.vendedor + '|' + codeKey_(k.codigo)] || preciosK[codeKey_(k.codigo)] || 0) }));
   // Productos facturados por kilo que NO tienen salida anotada en Despacho: también van en la tabla (salida 0), para que cuadre con el RESUMEN
   { const vistos = {}; kilos.forEach(k => vistos[k.vendedor + '|' + k.producto] = 1);
     const uni = {}; read_('PRODUCTOS').forEach(p => uni[codeKey_(p.codigo)] = p.unidad);
@@ -3513,7 +3522,7 @@ function generarArchivo_(fecha, r, borrador) {
     byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia) && uni[codeKey_(x.codigo)] !== 'UN').forEach(x => {
       const k = x.vendedor + '|' + codeKey_(x.codigo); if (!vistoC[k]) sinSalida[k] = { vendedor: x.vendedor, producto: x.producto, codigo: codeKey_(x.codigo) }; });
     Object.keys(sinSalida).forEach(k => { const o = sinSalida[k];
-      kilos.push({ vendedor: o.vendedor, producto: o.producto + ' (sin salida anotada)', salida: 0, retorno: 0, facturado: Math.round((fact[k] || 0) * 100) / 100, precio: Math.round(preciosK[o.codigo] || 0) }); }); }
+      kilos.push({ vendedor: o.vendedor, producto: o.producto + ' (sin salida anotada)', salida: 0, retorno: 0, facturado: Math.round((fact[k] || 0) * 100) / 100, precio: Math.round(preciosK[k] || preciosK[o.codigo] || 0) }); }); }
   // RUT de los clientes de cobranza: por el folio que pagan y, si no, por el nombre del cliente
   const rutFolio = {}, rutNombre = {};
   read_('DOCUMENTOS').forEach(d => { if (!d.rut) return; rutFolio[String(d.folio).replace(/\D/g, '')] = d.rut; rutNombre[normTxt_(d.cliente)] = d.rut; });
