@@ -3305,8 +3305,26 @@ Hoja_.prototype.tabla = function (titulo, cols, filas, vacio) {
   this.fila([]);
   return { ini, fin, tot, col: i => colL_(i + 1) };
 };
+/** v151: setValues interpreta las fórmulas con el idioma de la planilla. En es_CL (y otros con coma decimal) el separador de argumentos es «;» y
+ * los decimales llevan coma, así que =ROUND(B1-C1,2) o =IF(..,"",..) daban #ERROR!. Se adapta cada fórmula al idioma del archivo. */
+function comaDecimal_(ss) {
+  try { return /^(es|pt|de|fr|it|nl|ru|pl|tr|da|sv|nb|no|fi|cs|id|vi|el|hu|ro|uk|bg|hr|sk|sl|sr|lt|lv|et)/i.test(String(ss.getSpreadsheetLocale() || '')); } catch (e) { return false; }
+}
+function formulaLocal_(f) {
+  let out = '', q = false;
+  for (let i = 0; i < f.length; i++) {
+    const c = f[i];
+    if (c === '"') { q = !q; out += c; continue; }
+    if (q) { out += c; continue; }
+    if (c === ',') out += ';';
+    else if (c === '.' && /\d/.test(f[i - 1] || '') && /\d/.test(f[i + 1] || '')) out += ',';
+    else out += c;
+  }
+  return out;
+}
 Hoja_.prototype.escribir = function (anchos) {
   const sh = this.sh;
+  if (this.g.length && comaDecimal_(sh.getParent())) this.g = this.g.map(r => r.map(x => typeof x === 'string' && x.charAt(0) === '=' ? formulaLocal_(x) : x));
   if (this.g.length) sh.getRange(1, 1, this.g.length, this.W).setValues(this.g);
   sh.getRange(1, 1, Math.max(this.g.length, 1), this.W).setFontFamily(EST.font).setFontSize(10);
   this.ops.forEach(o => o.f(sh.getRange(o.r, o.c, o.nr, o.nc)));
