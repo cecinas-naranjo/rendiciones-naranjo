@@ -722,3 +722,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v158 — Se quitó «Cargar salida desde la guía» de Despacho (solo frontend: app.js, sw.js)
 - Pedido del dueño: la salida se anota a mano. Ya no aparece el botón; el servidor sigue devolviendo `guias` (sin uso).
+
+## v159 — «El tiempo de espera para obtener el candado ha expirado» al registrar un cobro (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Causa: `actualizarArchivosAbiertos_` (disparador `calentar`, cada 5 min tras cualquier escritura) y `vistaPreviaRendicion` armaban la planilla de rendición DENTRO de `withLock_`. Generar una Google Sheet tarda decenas de segundos y, con el candado tomado, los guardados de los vendedores esperaban 20 s y fallaban. Ahora ambos arman la planilla SIN candado (solo leen la app y escriben en Drive). `withLock_` espera 30 s. `cerrarRendicion` sigue con candado (necesita ser atómico). **Regla: nada lento (Drive/Sheets) dentro de `withLock_`.**
+- Solo sintaxis verificada.

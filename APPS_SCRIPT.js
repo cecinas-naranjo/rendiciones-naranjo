@@ -362,7 +362,8 @@ function actualizarArchivosAbiertos_() {
   const fechas = Object.keys(props).filter(k => /^ARCH_\d{4}-\d{2}-\d{2}$/.test(k)).map(k => k.slice(5)).sort().reverse();
   const cerradas = {}; read_('RENDICIONES').forEach(x => { if (x.estado === 'CERRADA') cerradas[x.fecha] = 1; });
   fechas.filter(f => !cerradas[f]).slice(0, 2).forEach(f => {
-    try { withLock_(() => generarArchivo_(f, resumen_(f), true)); } catch (e) { Logger.log('Archivo ' + f + ': ' + e); }
+    // v159: SIN el candado. Armar la planilla tarda decenas de segundos y, con el candado tomado, nadie podía guardar ("tiempo de espera del candado").
+    try { FRESCO_ = true; MEMO_ = {}; SLICE_ = {}; generarArchivo_(f, resumen_(f), true); } catch (e) { Logger.log('Archivo ' + f + ': ' + e); }
   });
 }
 const ARCH_TABLAS_ = { DOCUMENTOS: 1, PAGOS: 1, DESCUENTOS: 1, DESPACHO: 1, VENTAS_DETALLE: 1, COBRANZA: 1, GASTOS: 1, DEPOSITOS: 1, PROVEEDORES: 1, CONSUMO: 1, DEVOLUCIONES: 1, CONTEO_EFECTIVO: 1, CAJA_CHICA: 1 };
@@ -600,7 +601,7 @@ function deleteRows_(name, rows) {
 
 function withLock_(fn) {
   const lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(30000);
   try { FRESCO_ = true; MEMO_ = {}; SLICE_ = {}; return fn(); } finally { lock.releaseLock(); }
 }
 
@@ -3254,11 +3255,11 @@ function cerrarRendicion(token, fecha, forzar) {
 /** Genera el archivo tal como quedaría, sin cerrar el día. */
 function vistaPreviaRendicion(token, fecha) {
   auth_(token, ['RENDICION','SUPERVISOR']);
-  return withLock_(() => {
-    const reg = read_('RENDICIONES').find(x => x.fecha === fecha);
-    if (reg && reg.estado === 'CERRADA' && reg.archivo_url) return { url: reg.archivo_url };      // día cerrado: ya está el definitivo
-    return { url: generarArchivo_(fecha, resumen_(fecha), true) };
-  });
+  // v159: sin el candado (solo lee la app y escribe en la planilla de Drive; con el candado bloqueaba los guardados de todos).
+  FRESCO_ = true; MEMO_ = {}; SLICE_ = {};
+  const reg = read_('RENDICIONES').find(x => x.fecha === fecha);
+  if (reg && reg.estado === 'CERRADA' && reg.archivo_url) return { url: reg.archivo_url };      // día cerrado: ya está el definitivo
+  return { url: generarArchivo_(fecha, resumen_(fecha), true) };
 }
 
 function reabrirRendicion(token, fecha) {
