@@ -2583,7 +2583,9 @@ async function vImportar(m) {
     if (!dte.length && !det.length) return '';
     if (!dte.length) return 'Falta el informe <b>Ventas Diarias</b> (los folios y sus totales).';
     if (!det.length) return 'Falta el <b>Informe de ventas</b> (los kilos por producto).';
-    const f = ls => [...new Set(ls.flatMap(l => l.filas.map(x => isoFecha(x.Fecha))))].sort();
+    // v162: las notas de crédito se emiten otro día (p. ej. el informe del 11 trae NC del 12): no cuentan para comparar las fechas
+    const esNC = (l, x) => /nota de cr/i.test(l.tipo === 'dte' ? x.Documento : x.Nombre);
+    const f = ls => [...new Set(ls.flatMap(l => l.filas.filter(x => !esNC(l, x)).map(x => isoFecha(x.Fecha))))].sort();
     const a = f(dte), b = f(det);
     if (a.join() !== b.join()) return `Los dos informes deben ser de las mismas fechas. Ventas Diarias trae ${a.map(fcorta).join(', ')} y el Informe de ventas trae ${b.map(fcorta).join(', ')}.`;
     return '';
@@ -2647,7 +2649,25 @@ async function vImportar(m) {
     const infoAntes = aplicarAntes();
     const pintar = () => {
     /** Las notas de crédito suelen emitirse otro día; la encargada les pone la fecha de la factura que corrigen para que queden en ese día. */
-    const ncs = () => (leidos.find(l => !l.error && l.tipo === 'dte') || { filas: [] }).filas.filter(f => /nota de cr/i.test(f.Documento));
+    const ncs = () => {
+      const r = (leidos.find(l => !l.error && l.tipo === 'dte') || { filas: [] }).filas.filter(f => /nota de cr/i.test(f.Documento)), vistos = new Set(r.map(f => String(f.Folio)));
+      // v162: NC que solo vienen en el Informe de ventas (p. ej. emitidas el 12 y no están en Ventas Diarias del 11)
+      for (const l of leidos) { if (l.error || l.tipo !== 'detalle') continue;
+        const m = new Map();
+        for (const x of l.filas) { if (!/nota de cr/i.test(x.Nombre) || vistos.has(String(x.Folio))) continue;
+          const o = m.get(String(x.Folio)) || { Folio: x.Folio, 'Nombre Cliente': x['Razon social'], Total: 0, Fecha: x.Fecha }; o.Total += Number(x.TOTAL) || (Number(x.Cantidad) * Number(x.Precio)) || 0; m.set(String(x.Folio), o); }
+        for (const o of m.values()) { r.push(o); vistos.add(String(o.Folio)); } }
+      return r; };
+    // v162: una NC con fecha posterior a los días del informe pasa sola al último día (como hace la encargada); se puede cambiar abajo
+    const autoNC = () => {
+      const dias = new Set(); let max = '';
+      for (const l of leidos) { if (l.error || (l.tipo !== 'dte' && l.tipo !== 'detalle')) continue;
+        for (const x of l.filas) { if (/nota de cr/i.test(l.tipo === 'dte' ? x.Documento : x.Nombre)) continue; const d = isoFecha(x.Fecha); if (d) { dias.add(d); if (d > max) max = d; } } }
+      if (!max) return;
+      for (const l of leidos) { if (l.error || (l.tipo !== 'dte' && l.tipo !== 'detalle')) continue;
+        for (const x of l.filas) { if (!/nota de cr/i.test(l.tipo === 'dte' ? x.Documento : x.Nombre) || x._ncMovida) continue;
+          const d = isoFecha(x.Fecha); if (d && !dias.has(d) && d > max) moverNC(x.Folio, max); } }
+    };
     const tarjetaNC = () => { const n = ncs(); if (!n.length) return '';
       return `<div class="card ordc"><b>Notas de crédito (${n.length})</b>
         <p class="muted" style="margin:4px 0 8px">Si una nota corrige una factura de otro día, pon la fecha de esa factura: la nota queda en ese día, con su detalle.</p>
@@ -2663,6 +2683,7 @@ async function vImportar(m) {
           else { const ant = typeof f._fo === 'number' ? f._fo % 1 : 0; f.Fecha = iso; if (typeof f._fo === 'number') f._fo = Math.floor(Date.UTC(+a, m - 1, +d) / 864e5 + 25569) + ant; }
         } }
     };
+    autoNC();
     const resumenOrden = () => {
       const d = leidos.find(l => l.orden && l.tipo === 'dte'), k = leidos.find(l => l.orden && l.tipo === 'detalle'), o = d && d.orden, tot = o ? o.SUPERMERCADO + o.DISTRIBUIDORA + o.BODEGA : 0;
       const calc = k ? k.orden.completadas : 0;

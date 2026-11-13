@@ -732,3 +732,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v161 — Despacho: borrar una salida ahora sí la borra (requiere pegar APPS_SCRIPT.js COMPLETO)
 - Bug: si el bodeguero anotaba una salida por error y después la vaciaba, `saveDespacho` ignoraba la fila vacía y la salida vieja quedaba guardada; el vendedor figuraba «Retorno 11 de 12» porque el producto fantasma nunca tenía retorno. Ahora, si salida, retorno y unidades quedan todos vacíos, la fila de DESPACHO se elimina (`deleteRows_`). Para arreglar un día ya afectado: abrir ese vendedor, dejar vacío el producto equivocado y Guardar. Solo sintaxis verificada.
+
+## v162 — Informe de ventas con notas de crédito de otro día (solo frontend: app.js, sw.js)
+- Caso 11-11: el Informe de ventas del 11 traía NC emitidas el 12 (folios 1425–1427) y Ventas Diarias solo el 11, por lo que «las mismas fechas» fallaba y no aparecía Importar. Ahora `requisitos` ignora las notas de crédito al comparar fechas; las NC con fecha posterior a los días del informe pasan solas al último día (`autoNC`, como hace la encargada) y la tarjeta «Notas de crédito» también lista las que solo vienen en el Informe de ventas (se puede cambiar la fecha de cada una). Solo sintaxis verificada.
