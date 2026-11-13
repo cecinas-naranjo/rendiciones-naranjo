@@ -2934,7 +2934,7 @@ async function vResumen(m) {
     <h3>Otros movimientos</h3><div class="kpis"><div><span>Proveedores</span><b>${clp(t.proveedores)}</b></div><div><span>Consumo (venta en bodega)</span><b>${clp(t.consumo)}</b></div></div>
     <div class="row" style="margin-top:18px;justify-content:flex-end">
       ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
-        : '<button class="btn ghost" id="pv">Ver cómo quedaría</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
+        : '<button class="btn ghost" id="pv">Actualizar borrador</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
     <div id="lnk"></div>`);
   // Avance de vendedores (v78): detallado, adelantos y última vez que el servidor recibió algo de cada uno
   api('getAvance', S.sess.token, S.fecha).then(av => {
@@ -2969,7 +2969,7 @@ async function vResumen(m) {
   const pv = $('#pv'); if (pv) pv.onclick = async () => {
     pv.disabled = true;
     try { const r2 = await api('vistaPreviaRendicion', S.sess.token, S.fecha);
-      enlace(r2.url, r2.cerrada ? 'Este día está cerrado: este es el archivo definitivo.' : 'Planilla del día al día con lo último. Es siempre el mismo archivo: se actualiza solo cuando hay cambios y, al cerrar el día, queda como el definitivo.'); }
+      enlace(r2.url, r2.cerrada ? 'Este día está cerrado: este es el archivo definitivo.' : 'Borrador actualizado con lo último. Es siempre el mismo archivo: toca «Actualizar borrador» cuando quieras verlo al día y, al cerrar el día, queda como el definitivo.'); }
     finally { pv.disabled = false; } };
   $$('select[data-fk]', m).forEach(s => s.onchange = async () => { if (!s.value) return;
     await api('asignarVendedor', S.sess.token, s.dataset.fk, s.value); toast('Asignado'); ir('resumen'); });

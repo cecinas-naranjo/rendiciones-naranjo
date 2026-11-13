@@ -354,7 +354,7 @@ function calentar() {
   try { conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_()); } catch (e) {}
   try { conCache_('inv|' + hoy, ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(hoy)); } catch (e) {}
   FRESCO_ = true;
-  try { const c = CacheService.getScriptCache(); if (c.get('arch_sucio')) { c.remove('arch_sucio'); actualizarArchivosAbiertos_(); } } catch (e) { Logger.log('actualizarArchivosAbiertos_: ' + e); }
+  // v160: el borrador ya no se rearma solo (hacía esperar los guardados); se actualiza con el botón «Actualizar borrador».
 }
 /** v107: rearma las planillas de rendición (las que ya se generaron con «Ver cómo quedaría») de los días que no están cerrados. Máx. 2, las más recientes. */
 function actualizarArchivosAbiertos_() {

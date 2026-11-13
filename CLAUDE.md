@@ -726,3 +726,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v159 — «El tiempo de espera para obtener el candado ha expirado» al registrar un cobro (requiere pegar APPS_SCRIPT.js COMPLETO)
 - Causa: `actualizarArchivosAbiertos_` (disparador `calentar`, cada 5 min tras cualquier escritura) y `vistaPreviaRendicion` armaban la planilla de rendición DENTRO de `withLock_`. Generar una Google Sheet tarda decenas de segundos y, con el candado tomado, los guardados de los vendedores esperaban 20 s y fallaban. Ahora ambos arman la planilla SIN candado (solo leen la app y escriben en Drive). `withLock_` espera 30 s. `cerrarRendicion` sigue con candado (necesita ser atómico). **Regla: nada lento (Drive/Sheets) dentro de `withLock_`.**
 - Solo sintaxis verificada.
+
+## v160 — Botón «Actualizar borrador» y sin rearmado automático (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Pedido del dueño: en vez de rearmar el borrador solo, un botón. «Ver cómo quedaría» se llama ahora «Actualizar borrador» (mismo `vistaPreviaRendicion`, mismo archivo). `calentar()` ya no llama `actualizarArchivosAbiertos_` (queda definida, sin uso). Reemplaza la parte «Se actualiza solo» de v107.
