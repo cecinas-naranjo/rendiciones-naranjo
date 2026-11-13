@@ -1715,11 +1715,7 @@ async function vDespacho(m) {
   $('#dq', m).oninput = e => { S.dq = e.target.value; aplicarVis(); };
   $('#dchips', m).onclick = e => { const b = e.target.closest('button'); if (!b) return; S.dcat = b.dataset.c; aplicarVis(); };
   // carga sugerida y guías (solo en Salida)
-  $('#dvg', m).innerHTML = r.guias.map(g => `<button class="btn ghost sm" type="button" data-g="${esc(g.folio)}">Cargar salida desde la guía ${esc(g.folio)}</button>`).join('');
-  $('#dvg', m).onclick = e => { const g = e.target.dataset.g; if (!g) return;
-    const guia = r.guias.find(x => x.folio === g);
-    filas.forEach(el => { const k = guia.lineas[el.dataset.c]; if (k !== undefined) inp(el, 'salida').value = Math.round(k * 1000) / 1000; });
-    sucio = true; aplicarVis(); calc(); toast('Salida cargada desde la guía ' + g + '. Revisa y guarda.'); };
+  // (v158) la salida se anota a mano: ya no hay botón «Cargar salida desde la guía»
   if (S.vend && !pseudo) api('getSugerido', S.sess.token, S.fecha, S.vend).then(sg => {
     if (!document.body.contains(m) || $('#sgc', m) === null) return;
     const nom = nomDe(S.vend);
