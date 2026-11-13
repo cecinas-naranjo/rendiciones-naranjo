@@ -729,3 +729,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v160 — Botón «Actualizar borrador» y sin rearmado automático (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Pedido del dueño: en vez de rearmar el borrador solo, un botón. «Ver cómo quedaría» se llama ahora «Actualizar borrador» (mismo `vistaPreviaRendicion`, mismo archivo). `calentar()` ya no llama `actualizarArchivosAbiertos_` (queda definida, sin uso). Reemplaza la parte «Se actualiza solo» de v107.
+
+## v161 — Despacho: borrar una salida ahora sí la borra (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Bug: si el bodeguero anotaba una salida por error y después la vaciaba, `saveDespacho` ignoraba la fila vacía y la salida vieja quedaba guardada; el vendedor figuraba «Retorno 11 de 12» porque el producto fantasma nunca tenía retorno. Ahora, si salida, retorno y unidades quedan todos vacíos, la fila de DESPACHO se elimina (`deleteRows_`). Para arreglar un día ya afectado: abrir ese vendedor, dejar vacío el producto equivocado y Guardar. Solo sintaxis verificada.

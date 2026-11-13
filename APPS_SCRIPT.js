@@ -904,7 +904,7 @@ function saveDespacho(token, fecha, vendedor, filas) {
     const bloqRet = !!ventanaRA_(fecha).ocultas[vendedor];   // v113: el día antes de rendir, el retorno no se puede anotar
     const prevMap = {}; if (ventanaRA_(fecha).trae[vendedor]) byFechaRaw_('DESPACHO', sumarDias_(fecha, -1)).filter(r => r.vendedor === vendedor).forEach(r => prevMap[codeKey_(r.codigo)] = r);   // v110: la pantalla muestra salida+retorno de los dos días; aquí se guarda solo lo de este día
     const resta = (v, prev) => { if (v === '' || v === undefined || v === null || !prev) return v; const r = num_(v) - num_(prev); return r > 0 ? Math.round(r * 1000) / 1000 : ''; };
-    const nuevos = [];
+    const nuevos = [], borrar = [];
     filas.forEach(f => {
       const pv = prevMap[f.codigo] || null;
       const e = map[f.codigo];
@@ -913,7 +913,7 @@ function saveDespacho(token, fecha, vendedor, filas) {
       const un = (nuevo, previo) => nuevo === undefined ? (previo === undefined ? '' : previo) : (nuevo === '' || nuevo === null ? '' : num_(nuevo));   // unidades (v77): si el cliente no las manda, se conserva lo guardado
       const salida_un = pv && f.salidaUn !== undefined ? resta(un(f.salidaUn, ''), pv.salida_un) : un(f.salidaUn, e && e.salida_un), retorno_un = bloqRet ? (e && e.retorno_un !== undefined ? e.retorno_un : '') : (pv && f.retornoUn !== undefined ? resta(un(f.retornoUn, ''), pv.retorno_un) : un(f.retornoUn, e && e.retorno_un));
       if (e) {
-        if (salida === '' && retorno === '' && salida_un === '' && retorno_un === '') return;
+        if (salida === '' && retorno === '' && salida_un === '' && retorno_un === '') { borrar.push(e._row); return; }      // v161: si se vació todo, la fila se elimina (antes quedaba la salida vieja y el retorno nunca cuadraba)
         Object.assign(e, { salida, retorno, salida_un, retorno_un, obs: f.obs || '', actualizado_por: u.usuario, actualizado: now_() });
         updateRow_('DESPACHO', e._row, e);
       } else if (salida !== '' || retorno !== '' || salida_un !== '' || retorno_un !== '') {
@@ -923,6 +923,7 @@ function saveDespacho(token, fecha, vendedor, filas) {
       }
     });
     append_('DESPACHO', nuevos);
+    if (borrar.length) deleteRows_('DESPACHO', borrar);
     return true;
   });
 }
