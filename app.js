@@ -1619,6 +1619,8 @@ async function vDespacho(m) {
     <div id="sgc"></div>
     <div id="vac" class="vac" hidden></div>
     <div id="bdev" class="bdev" hidden></div>
+    <div class="dtool" id="dtool"><input class="in" id="dq" type="search" placeholder="Buscar producto (ej. longaniza, queso)…" autocomplete="off" value="${esc(S.dq || '')}">
+      <div class="dchips" id="dchips"><button type="button" data-c="">Todos</button>${orden.map(c => `<button type="button" data-c="${esc(c)}">${esc(CATS[c] || c)}</button>`).join('')}</div></div>
     <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span><span></span></div>
     <div id="dt" class="dt dm-${S.dmod} todos">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
       return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
@@ -1639,13 +1641,18 @@ async function vDespacho(m) {
   function pintarVend(u, nS, nR) { const e = $('[data-st="' + u + '"]', m); if (!e) return; const [t, c] = estado(nS, nR); e.textContent = t; e.className = 'dvst ' + c; }
   function aplicarVis() {
     const modo = S.dmod; let vis = 0;
+    const q = norm(S.dq || ''), cat = S.dcat || '', filtrando = !!(q || cat);
+    $$('#dchips button', m).forEach(b => b.classList.toggle('on', b.dataset.c === cat));
     filas.forEach(el => {
       const s = S0(el), rt = R0(el), tieneS = s !== '' && dec(s) > 0;
       const rel = r.retornoBloqueado && modo === 'retorno' ? false : modo === 'salida' ? (s !== '' || rt !== '' || el.dataset.sg !== undefined || guiaTiene(el)) : (tieneS || rt !== '');
-      el.classList.toggle('oc', !rel); if (rel) vis++;
+      const coincide = (!q || norm($('.pn', el).textContent).indexOf(q) >= 0) && (!cat || el.dataset.cat === cat);
+      el.classList.toggle('fx', !coincide);                          // v156: el buscador y las categorías esconden el resto
+      el.classList.toggle('oc', filtrando ? false : !rel); if (rel && coincide) vis++;
     });
+    $$('.catl', dt).forEach(l => { let n = l.nextElementSibling, hay = false; while (n && !n.classList.contains('catl')) { if (!n.classList.contains('fx')) hay = true; n = n.nextElementSibling; } l.classList.toggle('fx', !hay); });
     const ocultos = filas.length - vis, mas = $('#mas', m), todos = dt.classList.contains('todos');
-    mas.hidden = !ocultos && !todos; mas.textContent = todos ? 'Mostrar solo los productos del día' : `Agregar otro producto (${ocultos} más)`;
+    mas.hidden = filtrando || (!ocultos && !todos); mas.textContent = todos ? 'Mostrar solo los productos del día' : `Agregar otro producto (${ocultos} más)`;
     const bloq = modo === 'retorno' && !!r.retornoBloqueado, sig = new Date(S.fecha + 'T12:00:00'); sig.setDate(sig.getDate() + 1);
     const vacio = modo === 'retorno' && !filas.some(el => { const s = S0(el); return s !== '' && dec(s) > 0; });
     const vac = $('#vac', m); vac.hidden = !(vacio || bloq) || (todos && !bloq);
@@ -1703,8 +1710,10 @@ async function vDespacho(m) {
     i.value = v === 0 && i.value === '' ? '' : String(v); sucio = true; calc(); };
   dt.addEventListener('focusin', e => { if (e.target.matches('input')) setTimeout(() => e.target.select && e.target.select(), 0); });
   dt.addEventListener('keydown', e => { if (e.key !== 'Enter' || !e.target.matches('input')) return; e.preventDefault();
-    const ins = $$('.pr:not(.oc) .nin[data-w=' + S.dmod + '] input', dt), i = ins.indexOf(e.target); if (ins[i + 1]) ins[i + 1].focus(); else e.target.blur(); });
+    const ins = $$('.pr:not(.fx) .nin[data-w=' + S.dmod + '] input', dt).filter(x => x.offsetParent), i = ins.indexOf(e.target); if (ins[i + 1]) ins[i + 1].focus(); else e.target.blur(); });
   $('#mas', m).onclick = () => { dt.classList.toggle('todos'); aplicarVis(); };
+  $('#dq', m).oninput = e => { S.dq = e.target.value; aplicarVis(); };
+  $('#dchips', m).onclick = e => { const b = e.target.closest('button'); if (!b) return; S.dcat = b.dataset.c; aplicarVis(); };
   // carga sugerida y guías (solo en Salida)
   $('#dvg', m).innerHTML = r.guias.map(g => `<button class="btn ghost sm" type="button" data-g="${esc(g.folio)}">Cargar salida desde la guía ${esc(g.folio)}</button>`).join('');
   $('#dvg', m).onclick = e => { const g = e.target.dataset.g; if (!g) return;

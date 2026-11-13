@@ -1187,3 +1187,11 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 /* v154: Inventario con todas las secciones juntas */
 .invsec{margin:18px 0 6px;font-size:17px;color:var(--cafe,#2A1F1A)}
 .invsec .muted{font-weight:400;font-size:14px}
+
+/* v156: Despacho con buscador y categorías */
+.dt .pr.fx,.dt .catl.fx{display:none!important}
+.dtool{position:sticky;top:0;z-index:6;background:var(--bg,#F2F1EF);padding:8px 0 6px;margin:6px 0 4px}
+.dtool .in{width:100%;font-size:17px;min-height:46px}
+.dchips{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;-webkit-overflow-scrolling:touch}
+.dchips button{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 14px;font:inherit;font-size:14.5px;font-weight:600;color:var(--ink,#2A1F1A);cursor:pointer;min-height:40px}
+.dchips button.on{background:#FBE9DD;border-color:var(--cu,#C2571A);color:#8A3A0C}
