@@ -1195,3 +1195,14 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .dchips{display:flex;gap:6px;overflow-x:auto;padding:8px 0 2px;-webkit-overflow-scrolling:touch}
 .dchips button{flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 14px;font:inherit;font-size:14.5px;font-weight:600;color:var(--ink,#2A1F1A);cursor:pointer;min-height:40px}
 .dchips button.on{background:#FBE9DD;border-color:var(--cu,#C2571A);color:#8A3A0C}
+
+/* Despacho más delgado v157 */
+.dt .pr{padding:2px 12px 2px 10px;gap:2px 10px;min-height:0}
+.dt .pr .pn{font-size:14.5px;line-height:1.15}
+.dt .pr .rf{font-size:12.5px}
+.dt .nin input.in{min-height:32px;height:32px;font-size:15.5px;padding:1px 6px;border-radius:8px}
+.dt .nin button{width:32px;height:32px;font-size:18px;border-radius:8px}
+.dt .dvx button{width:30px;height:30px}
+.dt .catl{padding:5px 12px;font-size:12.5px}
+.dt .dth{padding:5px 12px}
+@media (max-width:480px){.dt .pr{padding:4px 10px}.dt .nin input.in{min-height:34px;height:34px}}

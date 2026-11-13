@@ -716,3 +716,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v156 — Despacho: buscador y categorías para encontrar los productos (solo frontend: app.js, style.css, sw.js)
 - Pedido del dueño: que al bodeguero le sea más fácil encontrar los productos en Despacho (Salida/Retorno). Barra fija arriba de la tabla (`#dtool`): buscador «Buscar producto…» (sin tildes, `S.dq`) y chips por categoría (`#dchips`, `S.dcat`: Todos, Productos propios, Cárnicos, Congelados, Lácteos, Laminados…). Al buscar o elegir una categoría se muestran todos los que coinciden (aunque no tengan salida) y se esconden el resto y los títulos vacíos (`.fx`). Enter pasa solo entre los visibles (antes saltaba los «otros productos» en la vista «Todos»). Sin cambios en el servidor.
+
+## v157 — Despacho más delgado (solo frontend: style.css, sw.js)
+- Pedido del dueño: filas de producto más delgadas como en Inventario. Bloque final de style.css «Despacho más delgado v157»: campos de 32 px (antes 46–50), letra 15,5, padding vertical 2 px, ícono de devolución de 30 px. Móvil mantiene 2 columnas. Sin cambios en el servidor. Solo CSS.
