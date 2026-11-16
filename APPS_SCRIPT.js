@@ -37,9 +37,10 @@ const CFG = {
   // v168: nombre que se muestra en la app (el nombre interno no cambia, así no se pierde lo ya guardado)
   // v169: orden de Despacho = el de las planillas de papel del bodeguero (3 bloques). Nombres como en la nómina del inventario; lo que no esté aquí va al final de su bloque.
   DESPACHO_PLANILLA: [
-    ['Productos terminados y cárnicos', ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'ARROLLADO C/AJI', 'ARROLLADO SIN CUERO', 'Q. CABEZA', 'S. CERVEZA', 'M. LISA', 'M. JAMONADA', 'JAMON SANDWICH', 'JAMON ACARAMELADO', 'JAMON AHUMADO', 'CHULETA AHUMADA', 'COSTILLAR', 'CAZUELA']],
+    ['Productos terminados', ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'ARROLLADO C/AJI', 'ARROLLADO SIN CUERO', 'Q. CABEZA', 'S. CERVEZA', 'M. LISA', 'M. JAMONADA', 'JAMON SANDWICH', 'JAMON ACARAMELADO', 'JAMON AHUMADO']],
+    ['Cárnicos', ['CHULETA AHUMADA', 'COSTILLAR', 'CAZUELA', 'CAZUELA AHUMADA', 'TAPABARRIGA', 'MECHADA CAMPESTRE', 'MECHADA CERDO BBQ', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5']],
     ['Congelados y verduras', ['CHOCLO M.V', 'ARVEJA M.V', 'PRIMAVERA M.V', 'POROTO VERDE M.V', 'SOFRITO M.V', 'CHOCLO TROZITO', 'EMPANADA QUESO 16X600', 'EMPANADA PINO 16X600', 'EMPANADA QUESO CAMARON', 'SOPAIPILLA 20X12', 'SOPAIPILLA 20X48', 'PASTA CHOCLO 15X1', 'EMPANADA QUESO 3X3']],
-    ['Mechadas, molida, quesos y otros', ['MECHADA CAMPESTRE', 'MECHADA CERDO BBQ', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5', 'PAPAS FRITAS', 'GAUDA LAM. RIG. 24X500G HUILCO', 'QUESO CREMA TONADITA CHEDDAR 200GR', 'MANTEQUILLA TONADITA 125GR 24X1', 'UNTABLE TONADITA', 'QUESO CREMA TONADITA 100GR 20X1', 'MANTEQUILLA TONADITA 250GR 12X1']]
+    ['Quesos y otros', ['PAPAS FRITAS', 'GAUDA LAM. RIG. 24X500G HUILCO', 'QUESO CREMA TONADITA CHEDDAR 200GR', 'MANTEQUILLA TONADITA 125GR 24X1', 'UNTABLE TONADITA', 'QUESO CREMA TONADITA 100GR 20X1', 'MANTEQUILLA TONADITA 250GR 12X1']]
   ],
   RENOMBRAR: { 'CHULETA AHUMADA': 'CHULETA' },
   // v167: cortes de carne que deben salir en «Cárnicos» (en la hoja PRODUCTOS algunos quedaron en Productos propios o Congelados). Nombre del inventario.
@@ -883,7 +884,7 @@ function despPos_(p) {
   if (!MEMO_.__dp) { MEMO_.__dp = {}; CFG.DESPACHO_PLANILLA.forEach(([t, l], gi) => l.forEach((n, i) => MEMO_.__dp[claveInv_(n)] = { gi, o: gi * 1000 + i })); }
   const x = MEMO_.__dp[claveInv_(p.nombre_inv || p.nombre)];
   if (x) return { g: CFG.DESPACHO_PLANILLA[x.gi][0], o: x.o };
-  const gi = { TERMINADOS: 0, CONGELADOS: 1, LAMINADOS: 2 }[p.seccion] || 0;
+  const gi = { TERMINADOS: 0, CONGELADOS: 2, LAMINADOS: 3 }[p.seccion] || 0;
   return { g: CFG.DESPACHO_PLANILLA[gi][0], o: gi * 1000 + 500 + ordenNomina_(p) % 500 };
 }
 function nombreVis_(t) { const k = claveInv_(t); for (const n in CFG.RENOMBRAR) if (claveInv_(n) === k) return CFG.RENOMBRAR[n]; return t; }
