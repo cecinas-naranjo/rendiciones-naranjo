@@ -1607,12 +1607,14 @@ async function vDespacho(m) {
   const cats = {};
   S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
   const orden = Object.keys(cats).sort((a, b) => (Object.keys(CATS).indexOf(a) + 99) % 99 - (Object.keys(CATS).indexOf(b) + 99) % 99);
-  // v164: productos que se anotan en PACKS (empanadas, sopaipillas…): en pantalla se ve el número de packs y al guardar se pasa a unidades
-  const palabra = p => p.modo === 'PACK_ANOTA' ? 'packs' : p.modo === 'CAJA' ? 'cajas' : 'un';
-  const nin = (k, p, v) => { const w = k.replace('Un', ''), un = k !== w;
-    if (p.modo === 'PACK_ANOTA' && p.pack && !un && v !== '' && v != null) v = Math.round(Number(v) / p.pack * 1000) / 1000;
-    return `<div class="nin" data-w="${w}"><input class="in n" data-k="${k}" inputmode="decimal" enterkeyhint="next" aria-label="${w === 'salida' ? 'Salida' : 'Retorno'}${un ? ' en unidades' : p.unidad === 'UN' ? ' en ' + palabra(p) : ' en kilos'} ${esc(p.nombre)}" placeholder="0" value="${val(v)}"></div>`; };
-  const notaUn = p => p.modo === 'PACK_ANOTA' ? `<small class="pkn">en packs de ${p.pack} un</small>` : p.modo === 'CAJA' ? '<small class="pkn">en cajas</small>' : p.modo === 'PACK_VENTA' ? `<small class="pkn">en unidades (pack de ${p.pack})</small>` : '';
+  // v164/v165: productos con pack o caja: dos campos lado a lado, como los kilos y unidades de los terminados. Uno es el que se guarda (`salida`/`retorno`) y el otro se calcula (`salidaX`/`retornoX`).
+  //   PACK_ANOTA / PACK_VENTA: se guarda en UNIDADES y el otro campo muestra los packs. CAJA: se guarda en CAJAS y el otro campo muestra las unidades.
+  const conPk = p => p.unidad === 'UN' && p.pack > 0 && (p.modo === 'PACK_ANOTA' || p.modo === 'PACK_VENTA' || p.modo === 'CAJA');
+  const palabra = p => p.modo === 'CAJA' ? 'cajas' : 'un';
+  const nin = (k, p, v) => { const w = k.replace('Un', '').replace('X', ''), un = k !== w;
+    return `<div class="nin" data-w="${w}"><input class="in n" data-k="${k}" inputmode="decimal" enterkeyhint="next" aria-label="${w === 'salida' ? 'Salida' : 'Retorno'}${/X$/.test(k) ? (p.modo === 'CAJA' ? ' en unidades' : ' en packs') : un ? ' en unidades' : p.unidad === 'UN' ? ' en ' + palabra(p) : ' en kilos'} ${esc(p.nombre)}" placeholder="0" value="${val(v)}"></div>`; };
+  const deriv = (p, v) => v === '' || v == null ? '' : Math.round((p.modo === 'CAJA' ? Number(v) * p.pack : Number(v) / p.pack) * 100) / 100;
+  const notaUn = p => conPk(p) ? `<small class="pkn">${p.modo === 'CAJA' ? 'caja' : 'pack'} de ${p.pack} un</small>` : '';
   // Productos que se pesan (kilos) pero el inventario cuenta por unidad: además de los kilos se anotan las unidades
   const conUn = p => p.unidad !== 'UN' && p.inv === 'UN';
   render(m, `<h2>Despacho y retorno</h2><p class="lead">${fechaLarga(S.fecha)}</p>
@@ -1629,10 +1631,10 @@ async function vDespacho(m) {
       <div class="dchips" id="dchips"><button type="button" data-c="">Todos</button>${orden.map(c => `<button type="button" data-c="${esc(c)}">${esc(CATS[c] || c)}</button>`).join('')}</div></div>
     <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span><span></span></div>
     <div id="dt" class="dt dm-${S.dmod} todos">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
-      return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}" data-obs="${esc(f.obs || '')}" data-pk="${p.modo === 'PACK_ANOTA' ? p.pack : ''}" data-w="${palabra(p)}">
+      return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}" data-obs="${esc(f.obs || '')}" data-pk="${conPk(p) ? p.pack : ''}" data-cj="${p.modo === 'CAJA' ? 1 : ''}" data-w="${palabra(p)}">
         <div class="pn">${esc(p.nombre)}${notaUn(p)}${pseudo || r.retornoBloqueado ? '' : `<span class="dvq" data-dq="${esc(p.codigo)}"></span>`}</div><div class="rf"></div>
-        <div class="cl kgc" data-col="Kilos">${p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
-        <div class="cl unc" data-col="Unidades">${p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}</div>
+        <div class="cl kgc" data-col="${conPk(p) ? (p.modo === 'CAJA' ? 'Cajas' : 'Packs') : 'Kilos'}">${conPk(p) ? (p.modo === 'CAJA' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : nin('salidaX', p, deriv(p, f.salida)) + nin('retornoX', p, deriv(p, f.retorno))) : p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
+        <div class="cl unc" data-col="Unidades">${conPk(p) ? (p.modo === 'CAJA' ? nin('salidaX', p, deriv(p, f.salida)) + nin('retornoX', p, deriv(p, f.retorno)) : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)) : p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}</div>
         <div class="dvx">${pseudo || r.retornoBloqueado ? '' : `<button type="button" class="dvb" data-dc="${esc(p.codigo)}" data-tip="Devolución / merma" aria-label="Devolución o merma">${icon('box')}</button>`}</div>
         <div class="st"></div></div>`; }).join('')).join('')}</div>
     <button type="button" class="btn ghost sm" id="mas" hidden></button>
@@ -1694,7 +1696,6 @@ async function vDespacho(m) {
       } else if (el.dataset.sg !== undefined) {
         rf = `<span class="sug"><b>${esc(el.dataset.sgt)}</b></span>`;
       }
-      if (el.dataset.pk) { const q = S.dmod === 'salida' ? s : rt; if (q !== '' && dec(q) > 0) h += `<span class="okt">= ${nk(Math.round(dec(q) * Number(el.dataset.pk) * 100) / 100)} un</span>`; }
       st.innerHTML = h; $('.rf', el).innerHTML = rf;
       const hecho = (S.dmod === 'salida' ? s : rt) !== ''; el.classList.toggle('ok', hecho);
       if (s !== '' && dec(s) > 0) nS++; if (rt !== '' && s !== '' && dec(s) > 0) nR++; if (hecho) nSv++;
@@ -1710,14 +1711,18 @@ async function vDespacho(m) {
     S.vend = b.dataset.u; ir('despacho'); };
   $('#dvs', m).onclick = cambiar; if ($('#dsub', m)) $('#dsub', m).onclick = cambiar;
   $('#seg', m).onclick = e => { const b = e.target.closest('button'); if (b) poner(b.dataset.m); };
-  dt.oninput = () => { sucio = true; calc(); };
+  dt.oninput = e => { const t = e.target, k = t && t.dataset && t.dataset.k, el = t && t.closest && t.closest('.pr');
+    if (k && el && el.dataset.pk) { const pk = Number(el.dataset.pk), cj = !!el.dataset.cj, w = k.replace('X', ''), esX = /X$/.test(k), o = inp(el, esX ? w : w + 'X');
+      if (o) { const x = dec(t.value); const mult = esX ? (cj ? 1 / pk : pk) : (cj ? pk : 1 / pk);   // X es el campo calculado; al escribir en él se actualiza el que se guarda y viceversa
+        o.value = t.value === '' ? '' : String(Math.round(x * mult * 100) / 100); } }
+    sucio = true; calc(); };
   dt.onclick = e => { const b = e.target.closest('.mn,.pl'); if (!b) return;
     const el = b.closest('.pr'), i = $('input', b.parentNode), paso = el.dataset.u === 'UN' || /Un$/.test(i.dataset.k) ? 1 : 0.5;
     const v = Math.max(0, Math.round((dec(i.value) + (b.classList.contains('pl') ? paso : -paso)) * 1000) / 1000);
     i.value = v === 0 && i.value === '' ? '' : String(v); sucio = true; calc(); };
   dt.addEventListener('focusin', e => { if (e.target.matches('input')) setTimeout(() => e.target.select && e.target.select(), 0); });
   dt.addEventListener('keydown', e => { if (e.key !== 'Enter' || !e.target.matches('input')) return; e.preventDefault();
-    const ins = $$('.pr:not(.fx) .nin[data-w=' + S.dmod + '] input', dt).filter(x => x.offsetParent), i = ins.indexOf(e.target); if (ins[i + 1]) ins[i + 1].focus(); else e.target.blur(); });
+    const ins = $$('.pr:not(.fx) .nin[data-w=' + S.dmod + '] input', dt).filter(x => x.offsetParent && !/X$/.test(x.dataset.k)), i = ins.indexOf(e.target); if (ins[i + 1]) ins[i + 1].focus(); else e.target.blur(); });
   $('#mas', m).onclick = () => { dt.classList.toggle('todos'); aplicarVis(); };
   $('#dq', m).oninput = e => { S.dq = e.target.value; aplicarVis(); };
   $('#dchips', m).onclick = e => { const b = e.target.closest('button'); if (!b) return; S.dcat = b.dataset.c; aplicarVis(); };
@@ -1758,10 +1763,11 @@ async function vDespacho(m) {
       if (esUN) { sumar(inp(el, 'salida'), unv); if (unv > 0) partes.push('+' + unv + ' ' + (el.dataset.w || 'un')); }
       else { sumar(inp(el, 'salida'), kgv); if (kgv > 0) partes.push('+' + kgv + ' kg'); const iu = inp(el, 'salidaUn'); if (iu && unv > 0) { sumar(iu, unv); partes.push('+' + unv + ' un'); } }
       el.dataset.obs = (el.dataset.obs ? el.dataset.obs + ' | ' : '') + 'EXTRA ' + hora + ' ' + partes.join(' · ');
+      { const cn = inp(el, 'salida'), dx = inp(el, 'salidaX'); if (cn && dx && el.dataset.pk) { const pk = Number(el.dataset.pk), x = dec(cn.value); dx.value = String(Math.round(x * (el.dataset.cj ? pk : 1 / pk) * 100) / 100); } }
       sucio = true; calc(); pintarExtras();
       await guardar(false);
     }); }
-  const aUn = (el, x) => { x = String(x).replace(',', '.'); const pk = Number(el.dataset.pk) || 0; return pk && x !== '' && isFinite(parseFloat(x)) ? String(Math.round(parseFloat(x) * pk * 1000) / 1000) : x; };   // v164: packs → unidades
+  const aUn = (el, x) => String(x).replace(',', '.');
   const guardar = async sigue => {
     const datos = filas.map(el => { const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn'), o = { codigo: el.dataset.c, salida: aUn(el, S0(el)), retorno: aUn(el, R0(el)), obs: el.dataset.obs || '' };
       if (su) { o.salidaUn = su.value.replace(',', '.'); o.retornoUn = ru.value.replace(',', '.'); } return o; });
@@ -1828,7 +1834,7 @@ function abrirSalidaExtra(nombre, filas, conUn, alAgregar) {
   lista(); $('#sxQ', ov).oninput = lista;
   $('#sxL', ov).onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; sel = prods.find(p => String(p.codigo) === b.dataset.c);
     const esUN = sel.unidad === 'UN', tieneUn = esUN || conUn(sel);
-    $('#sxF', ov).hidden = false; $('#sxN', ov).textContent = sel.nombre; $('#sxUl', ov).textContent = sel.modo === 'PACK_ANOTA' ? 'Packs' : sel.modo === 'CAJA' ? 'Cajas' : 'Unidades'; $('#sxKw', ov).hidden = esUN; $('#sxUw', ov).hidden = !tieneUn;
+    $('#sxF', ov).hidden = false; $('#sxN', ov).textContent = sel.nombre; $('#sxUl', ov).textContent = sel.modo === 'CAJA' ? 'Cajas' : 'Unidades'; $('#sxKw', ov).hidden = esUN; $('#sxUw', ov).hidden = !tieneUn;
     $('#sxOk', ov).disabled = false; lista(); setTimeout(() => (esUN ? $('#sxU', ov) : $('#sxK', ov)).focus(), 30); };
   $('#sxOk', ov).onclick = async () => {
     if (!sel) return;

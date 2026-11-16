@@ -3872,7 +3872,7 @@ function sugerido_(fecha, vendedor) {
     const prom = vals.reduce((a, v) => a + v, 0) / vals.length * (1 + COL);
     const kgU = kgUnidad_(p), esUN = String(p.unidad).toUpperCase() === 'UN';
     if (esUN) {
-      const fp = modoDe_(p) === 'PACK_VENTA' ? packDe_(p) : 1;                // v164: Mi DTE vende por pack y la bodega cuenta unidades
+      const fp = modoDe_(p) === 'PACK_VENTA' || modoDe_(p) === 'PACK_ANOTA' ? packDe_(p) : 1;                // v164: Mi DTE vende por pack y la bodega cuenta unidades
       const un = Math.round(prom * fp); if (un > 0) { items[c] = { un, kg: 0, kgUn: 0, ult: Math.round(ult * fp) }; totalUn += un; } return; }
     if (kgU) { const un = Math.round(prom / kgU), kg = Math.round(un * kgU * 10) / 10; if (un > 0) { items[c] = { un, kg, kgUn: kgU, ult: Math.round(ult / kgU) }; totalKg += kg; totalUn += un; } return; }
     const kg = Math.round(prom * 2) / 2; if (kg > 0) { items[c] = { un: 0, kg, kgUn: 0, ult: Math.round(ult * 10) / 10 }; totalKg += kg; }
