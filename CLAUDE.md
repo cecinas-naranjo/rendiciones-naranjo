@@ -748,3 +748,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v165 — Despacho: packs/cajas y unidades lado a lado (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Como los terminados (kilos + unidades), los productos con pack/caja (`conPk`) muestran DOS campos: columna 1 = Packs (o Cajas), columna 2 = Unidades. Uno se guarda (`salida`/`retorno`) y el otro se calcula al escribir (`salidaX`/`retornoX`, no se guarda): PACK_ANOTA/PACK_VENTA guardan UNIDADES (el campo de packs es derivado); CAJA guarda CAJAS (el de unidades es derivado). Escribir en cualquiera actualiza el otro. Se revierte la conversión al guardar de v164 (`aUn` ahora no convierte). Sugerido de PACK_ANOTA también ×pack (queda en unidades). Inventario sigue como v164. Solo sintaxis verificada.
+
+## v166 — Despacho: filas del mismo alto (solo frontend: style.css, sw.js)
+- La nota «pack de N un» (`.pkn`) ocupaba una segunda línea y las filas quedaban de distinto alto. Ahora va en la misma línea del nombre y todas las `.dt .pr` miden al menos 44 px. Solo CSS.

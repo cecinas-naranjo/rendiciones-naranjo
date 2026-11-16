@@ -1218,3 +1218,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 /* v164: packs / cajas */
 .pkn{display:block;font-size:12px;font-weight:400;color:#8a7f78;line-height:1.2}
 .pkq{font-size:12px;font-weight:400;color:#8a7f78}
+
+/* v166: filas de Despacho todas del mismo alto; el tamaño del pack va en la misma línea del nombre */
+.dt .pr{min-height:44px;align-items:center}
+.dt .pr .pn .pkn{display:inline;margin-left:8px;font-size:12px;white-space:nowrap}
