@@ -751,3 +751,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v166 — Despacho: filas del mismo alto (solo frontend: style.css, sw.js)
 - La nota «pack de N un» (`.pkn`) ocupaba una segunda línea y las filas quedaban de distinto alto. Ahora va en la misma línea del nombre y todas las `.dt .pr` miden al menos 44 px. Solo CSS.
+
+## v167 — Cárnicos en su categoría (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
+- Tapabarriga, chuleta ahumada, cazuela, costillar, carne molida 10/5 y mechadas (campestre, cerdo BBQ) salían en Productos propios o Congelados porque PRODUCTOS.categoria no los tenía como CARNICOS. `CFG.CARNICOS` + `categoriaDe_(p)` fuerzan «Cárnicos» en `catalogo()` (Despacho y categorías del orden de informes). No cambia la hoja PRODUCTOS. Para mover otro producto, agregar su nombre del inventario a la lista. Solo sintaxis verificada.

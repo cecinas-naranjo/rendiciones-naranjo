@@ -34,6 +34,8 @@ const CFG = {
   //   modo 'PACK_VENTA'  = Mi DTE vende por pack y el bodeguero cuenta unidades (la carga sugerida se multiplica por pack)
   //   modo 'CAJA'        = se vende y se cuenta por caja/pack (solo cambia el rótulo; pack = unidades que trae, informativo)
   NO_VIGENTES: ['P.LAM-CERVECERO 150G'],
+  // v167: cortes de carne que deben salir en «Cárnicos» (en la hoja PRODUCTOS algunos quedaron en Productos propios o Congelados). Nombre del inventario.
+  CARNICOS: ['TAPABARRIGA', 'CHULETA AHUMADA', 'CAZUELA', 'COSTILLAR', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5', 'MECHADA CAMPESTRE', 'MECHADA CERDO BBQ'],
   UNIDADES: {
     'ARROLLADO C/AJI': { kgUn: 3 }, 'ARROLLADO SIN CUERO': { kgUn: 3 }, 'Q. CABEZA': { kgUn: 3 }, 'S. CERVEZA': { kgUn: 1.5 },
     'M. LISA': { kgUn: 2.8 }, 'M. JAMONADA': { kgUn: 2.8 }, 'JAMON SANDWICH': { kgUn: 3 }, 'JAMON ACARAMELADO': { kgUn: 2.5 }, 'JAMON AHUMADO': { kgUn: 2.5 },
@@ -867,6 +869,7 @@ function vigente_(p) {
   const k = claveInv_(p.nombre_inv || p.nombre);
   return !CFG.NO_VIGENTES.some(n => claveInv_(n) === k);
 }
+function categoriaDe_(p) { return CFG.CARNICOS.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre)) && p.seccion !== 'CAMARA' ? 'CARNICOS' : p.categoria; }
 function packDe_(p) { const c = cfgUn_(p); return c && c.pack ? c.pack : 0; }
 function modoDe_(p) { const c = cfgUn_(p); return c && c.modo ? c.modo : ''; }
 
@@ -878,9 +881,9 @@ function catalogo(token) {
     // v155: Despacho usa los mismos productos y el mismo orden que la nómina del bodeguero (lo oculto del inventario no sale)
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && vigente_(p))
       .sort((a, b) => ordenNomina_(a) - ordenNomina_(b))
-      .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p), pack: packDe_(p), modo: modoDe_(p) })),
+      .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: categoriaDe_(p), unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p), pack: packDe_(p), modo: modoDe_(p) })),
     // v164: todos los productos (también los que ya no salen en la app) solo para ordenar los informes de Mi DTE por categoría
-    todosProductos: read_('PRODUCTOS').filter(p => p.seccion !== 'CAMARA').map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria })),
+    todosProductos: read_('PRODUCTOS').filter(p => p.seccion !== 'CAMARA').map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: categoriaDe_(p) })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, rindeAntes: parseDiasRA_(v.emite_antes).map(i => DIAS_RA_[i]).join(','), deposita: esSi_(v.deposita) || conDeposito[v.usuario] === 1 })),
     formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
   };
