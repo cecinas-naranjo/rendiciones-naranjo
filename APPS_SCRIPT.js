@@ -28,7 +28,25 @@ const CFG = {
     ['PACK ENVASADO MORTADELA JAMONADA 150G', 'P.LAM-JAMONADA 150G'], ['PACK ENVASADO MORTADELA LISA 150G', 'P.LAM-LISA 150G'], ['PACK ENVASADO QUESO CABEZA 150G', 'P.LAM-QUESO CABEZA 150G'],
     ['CHULETA VETADA', 'CHULETA AHUMADA']],   // v147: Mi DTE factura la chuleta como «CHULETA VETADA»; en bodega es la «CHULETA AHUMADA»
   VENTA_EN_KILOS: ['COSTILLAR', 'CHULETA'],   // productos que se venden y se pesan en kilos aunque la hoja PRODUCTOS diga UN (parte del nombre)
-  INV_EN_KILOS: ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'COSTILLAR', 'LONGANIZA', 'PATE DE CERDO', 'COSTILLAR DE CERDO AHUMADO ENV.'],   // nombre en la planilla de inventario o nombre de venta   // productos terminados que el inventario lleva en kilos; el resto de terminados va en unidades
+  // v164: listado vigente de productos (el resto no sale en la app) y cómo se cuenta cada uno. Clave = nombre del inventario.
+  //   kgUn = kilos de 1 unidad (se vende por kilo y el bodeguero cuenta unidades)
+  //   modo 'PACK_ANOTA'  = el bodeguero anota PACKS y la app guarda UNIDADES (pack = unidades por pack)
+  //   modo 'PACK_VENTA'  = Mi DTE vende por pack y el bodeguero cuenta unidades (la carga sugerida se multiplica por pack)
+  //   modo 'CAJA'        = se vende y se cuenta por caja/pack (solo cambia el rótulo; pack = unidades que trae, informativo)
+  NO_VIGENTES: ['P.LAM-CERVECERO 150G'],
+  UNIDADES: {
+    'ARROLLADO C/AJI': { kgUn: 3 }, 'ARROLLADO SIN CUERO': { kgUn: 3 }, 'Q. CABEZA': { kgUn: 3 }, 'S. CERVEZA': { kgUn: 1.5 },
+    'M. LISA': { kgUn: 2.8 }, 'M. JAMONADA': { kgUn: 2.8 }, 'JAMON SANDWICH': { kgUn: 3 }, 'JAMON ACARAMELADO': { kgUn: 2.5 }, 'JAMON AHUMADO': { kgUn: 2.5 },
+    'EMPANADA QUESO 16X600': { modo: 'PACK_ANOTA', pack: 8 }, 'EMPANADA PINO 16X600': { modo: 'PACK_ANOTA', pack: 8 }, 'EMPANADA QUESO CAMARON': { modo: 'PACK_ANOTA', pack: 8 },
+    'SOPAIPILLA 20X12': { modo: 'PACK_ANOTA', pack: 5 }, 'SOPAIPILLA 20X48': { modo: 'PACK_ANOTA', pack: 5 }, 'EMPANADA QUESO 3X3': { modo: 'PACK_ANOTA', pack: 3 },
+    'PAPAS FRITAS': { modo: 'CAJA', pack: 4 },
+    'P.LAM-JAMONADA 150G': { modo: 'CAJA', pack: 10 }, 'P.LAM-LISA 150G': { modo: 'CAJA', pack: 10 }, 'P.LAM-ARROLLADO CON AJI 150G': { modo: 'CAJA', pack: 10 },
+    'P.LAM-ARROLLADO 150G': { modo: 'CAJA', pack: 10 }, 'P.LAM-QUESO CABEZA 150G': { modo: 'CAJA', pack: 10 },
+    'GAUDA LAM. RIG. 24X500G HUILCO': { modo: 'PACK_VENTA', pack: 3 }, 'QUESO CREMA TONADITA CHEDDAR 200GR': { modo: 'PACK_VENTA', pack: 10 },
+    'MANTEQUILLA TONADITA 250GR 12X1': { modo: 'PACK_VENTA', pack: 6 }, 'QUESO CREMA TONADITA 100GR 20X1': { modo: 'PACK_VENTA', pack: 10 }, 'MANTEQUILLA TONADITA 125GR 24X1': { modo: 'PACK_VENTA', pack: 12 },
+    'CHOCLO M.V': { modo: 'CAJA' }, 'ARVEJA M.V': { modo: 'CAJA' }, 'PRIMAVERA M.V': { modo: 'CAJA' }, 'POROTO VERDE M.V': { modo: 'CAJA' }, 'SOFRITO M.V': { modo: 'CAJA' }, 'CHOCLO TROZITO': { modo: 'CAJA' }
+  },
+  INV_EN_KILOS: ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'COSTILLAR', 'LONGANIZA', 'PATE DE CERDO', 'COSTILLAR DE CERDO AHUMADO ENV.', 'TAPABARRIGA', 'CHULETA AHUMADA', 'CAZUELA', 'CAZUELA AHUMADA'],   // nombre en la planilla de inventario o nombre de venta   // productos terminados que el inventario lleva en kilos; el resto de terminados va en unidades
   // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
   INFORMES_FOLDER_ID: '',
   // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
@@ -838,15 +856,31 @@ function vendedores_() {
 
 const ordenNomina_ = p => { const r = { TERMINADOS: 0, CONGELADOS: 1, LAMINADOS: 2 }[p.seccion];
   return r !== undefined && p.orden_inv !== '' && p.orden_inv !== undefined && p.orden_inv !== null ? r * 10000 + num_(p.orden_inv) : 90000 + (num_(p.orden) || 999); };
+/** v164: configuración de unidades de un producto (ver CFG.UNIDADES). */
+function cfgUn_(p) {
+  if (!MEMO_.__cu) { MEMO_.__cu = {}; Object.keys(CFG.UNIDADES).forEach(k => MEMO_.__cu[claveInv_(k)] = CFG.UNIDADES[k]); }
+  return MEMO_.__cu[claveInv_(p.nombre_inv || p.nombre)] || null;
+}
+/** v164: producto del listado vigente (terminados, congelados y laminados de la nómina). Cámara va solo en Inventario. */
+function vigente_(p) {
+  if (!p.seccion || p.seccion === 'CAMARA' || invOculto_(p)) return false;
+  const k = claveInv_(p.nombre_inv || p.nombre);
+  return !CFG.NO_VIGENTES.some(n => claveInv_(n) === k);
+}
+function packDe_(p) { const c = cfgUn_(p); return c && c.pack ? c.pack : 0; }
+function modoDe_(p) { const c = cfgUn_(p); return c && c.modo ? c.modo : ''; }
+
 function catalogo(token) {
   auth_(token);
   const conDeposito = {}; read_('DEPOSITOS').forEach(d => conDeposito[d.vendedor] = 1);   // quien ya depositó antes sigue viendo el botón
   return {
     hoy: hoy_(), distribuidores: CFG.DISTRIBUIDORES,
     // v155: Despacho usa los mismos productos y el mismo orden que la nómina del bodeguero (lo oculto del inventario no sale)
-    productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && p.seccion !== 'CAMARA' && !invOculto_(p))
+    productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && vigente_(p))
       .sort((a, b) => ordenNomina_(a) - ordenNomina_(b))
-      .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p) })),
+      .map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria, unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p), pack: packDe_(p), modo: modoDe_(p) })),
+    // v164: todos los productos (también los que ya no salen en la app) solo para ordenar los informes de Mi DTE por categoría
+    todosProductos: read_('PRODUCTOS').filter(p => p.seccion !== 'CAMARA').map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: p.categoria })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, rindeAntes: parseDiasRA_(v.emite_antes).map(i => DIAS_RA_[i]).join(','), deposita: esSi_(v.deposita) || conDeposito[v.usuario] === 1 })),
     formas: FORMAS_APP, bancos: BANCOS, bancosCheque: BANCOS_CHEQUE
   };
@@ -1812,9 +1846,10 @@ function asegurarColsProductos_() {
 const invOculto_ = p => p.inv_oculto === true || String(p.inv_oculto).toUpperCase() === 'TRUE';
 function productosInv_(conOcultos) {
   const orden = {}; INV_ITEMS.forEach((x, i) => orden[x[0] + '|' + claveInv_(x[1])] = i * 10);
-  return read_('PRODUCTOS').filter(p => p.seccion && String(p.activo).toUpperCase() !== 'FALSE' && (conOcultos || !invOculto_(p)))
+  const noVig = p => CFG.NO_VIGENTES.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre));
+  return read_('PRODUCTOS').filter(p => p.seccion && String(p.activo).toUpperCase() !== 'FALSE' && (conOcultos || (!invOculto_(p) && !noVig(p))))
     .map(p => { const k = p.seccion + '|' + claveInv_(p.nombre_inv || p.nombre);
-      return { codigo: codeKey_(p.codigo), nombre: p.nombre_inv || p.nombre, seccion: p.seccion, unidad: unidadInv_(p), unidadVenta: p.unidad, kgUn: kgUnidad_(p), oculto: invOculto_(p),
+      return { codigo: codeKey_(p.codigo), nombre: p.nombre_inv || p.nombre, seccion: p.seccion, unidad: unidadInv_(p), unidadVenta: p.unidad, kgUn: kgUnidad_(p), pack: packDe_(p), modo: modoDe_(p), oculto: invOculto_(p),
         orden: p.orden_inv !== '' && p.orden_inv !== undefined && p.orden_inv !== null ? num_(p.orden_inv) : (orden[k] !== undefined ? orden[k] : 5000 + num_(p.orden)) }; })
     .sort((a, b) => a.orden - b.orden);
 }
@@ -3800,6 +3835,8 @@ function kpis_(desde, hasta) {
 // Qué debería llevar un vendedor un día de venta: lo que vendió en promedio por día de venta el mes anterior (de lo facturado).
 // Las cecinas (PROPIOS por kilo) se dan también en unidades (CFG.KG_POR_UNIDAD).
 function kgUnidad_(p) {
+  const cu = cfgUn_(p); if (cu && cu.kgUn) return cu.kgUn;                  // v164: kilos por unidad definidos con el bodeguero
+  if (p.seccion === 'TERMINADOS' && unidadInv_(p) === 'KG') return 0;      // se cuenta en kilos: sin conversión
   if (String(p.categoria).toUpperCase() !== 'PROPIOS' || String(p.unidad).toUpperCase() === 'UN') return 0;
   const c = CFG.KG_POR_UNIDAD, k = codeKey_(p.codigo);
   if (CFG.SOLO_KILOS.indexOf(k) >= 0 || /LONGANIZA|PATE/i.test(String(p.nombre))) return 0;
@@ -3829,12 +3866,14 @@ function sugerido_(fecha, vendedor) {
   det.forEach(x => { const c = codeKey_(x.codigo), o = porDia[c] = porDia[c] || {}; o[x.fecha] = (o[x.fecha] || 0) + num_(x.cantidad); });
   const items = {}; let totalKg = 0, totalUn = 0;
   read_('PRODUCTOS').forEach(p => {
-    const c = codeKey_(p.codigo), d = porDia[c]; if (!d || p.seccion === 'CAMARA') return;
+    const c = codeKey_(p.codigo), d = porDia[c]; if (!d || !vigente_(p)) return;
     const vals = fechas.map(f => d[f] || 0), ult = vals[0];
     if (vals.length >= 3) vals.splice(vals.indexOf(Math.min.apply(null, vals)), 1);          // se descarta el día más bajo
     const prom = vals.reduce((a, v) => a + v, 0) / vals.length * (1 + COL);
     const kgU = kgUnidad_(p), esUN = String(p.unidad).toUpperCase() === 'UN';
-    if (esUN) { const un = Math.round(prom); if (un > 0) { items[c] = { un, kg: 0, kgUn: 0, ult: Math.round(ult) }; totalUn += un; } return; }
+    if (esUN) {
+      const fp = modoDe_(p) === 'PACK_VENTA' ? packDe_(p) : 1;                // v164: Mi DTE vende por pack y la bodega cuenta unidades
+      const un = Math.round(prom * fp); if (un > 0) { items[c] = { un, kg: 0, kgUn: 0, ult: Math.round(ult * fp) }; totalUn += un; } return; }
     if (kgU) { const un = Math.round(prom / kgU), kg = Math.round(un * kgU * 10) / 10; if (un > 0) { items[c] = { un, kg, kgUn: kgU, ult: Math.round(ult / kgU) }; totalKg += kg; totalUn += un; } return; }
     const kg = Math.round(prom * 2) / 2; if (kg > 0) { items[c] = { un: 0, kg, kgUn: 0, ult: Math.round(ult * 10) / 10 }; totalKg += kg; }
   });

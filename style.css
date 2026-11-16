@@ -1214,3 +1214,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .sxl{max-height:190px;overflow:auto;margin-top:8px;border:1px solid #e5e3df;border-radius:10px}
 .sxi{display:block;width:100%;text-align:left;padding:9px 12px;border:0;border-bottom:1px solid #eee;background:#fff;font:inherit}
 .sxi.on{background:#fbe9dd;font-weight:700}
+
+/* v164: packs / cajas */
+.pkn{display:block;font-size:12px;font-weight:400;color:#8a7f78;line-height:1.2}
+.pkq{font-size:12px;font-weight:400;color:#8a7f78}
