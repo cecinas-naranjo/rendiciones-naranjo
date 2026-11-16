@@ -35,6 +35,12 @@ const CFG = {
   //   modo 'CAJA'        = se vende y se cuenta por caja/pack (solo cambia el rótulo; pack = unidades que trae, informativo)
   NO_VIGENTES: ['P.LAM-CERVECERO 150G'],
   // v168: nombre que se muestra en la app (el nombre interno no cambia, así no se pierde lo ya guardado)
+  // v169: orden de Despacho = el de las planillas de papel del bodeguero (3 bloques). Nombres como en la nómina del inventario; lo que no esté aquí va al final de su bloque.
+  DESPACHO_PLANILLA: [
+    ['Productos terminados y cárnicos', ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'ARROLLADO C/AJI', 'ARROLLADO SIN CUERO', 'Q. CABEZA', 'S. CERVEZA', 'M. LISA', 'M. JAMONADA', 'JAMON SANDWICH', 'JAMON ACARAMELADO', 'JAMON AHUMADO', 'CHULETA AHUMADA', 'COSTILLAR', 'CAZUELA']],
+    ['Congelados y verduras', ['CHOCLO M.V', 'ARVEJA M.V', 'PRIMAVERA M.V', 'POROTO VERDE M.V', 'SOFRITO M.V', 'CHOCLO TROZITO', 'EMPANADA QUESO 16X600', 'EMPANADA PINO 16X600', 'EMPANADA QUESO CAMARON', 'SOPAIPILLA 20X12', 'SOPAIPILLA 20X48', 'PASTA CHOCLO 15X1', 'EMPANADA QUESO 3X3']],
+    ['Mechadas, molida, quesos y otros', ['MECHADA CAMPESTRE', 'MECHADA CERDO BBQ', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5', 'PAPAS FRITAS', 'GAUDA LAM. RIG. 24X500G HUILCO', 'QUESO CREMA TONADITA CHEDDAR 200GR', 'MANTEQUILLA TONADITA 125GR 24X1', 'UNTABLE TONADITA', 'QUESO CREMA TONADITA 100GR 20X1', 'MANTEQUILLA TONADITA 250GR 12X1']]
+  ],
   RENOMBRAR: { 'CHULETA AHUMADA': 'CHULETA' },
   // v167: cortes de carne que deben salir en «Cárnicos» (en la hoja PRODUCTOS algunos quedaron en Productos propios o Congelados). Nombre del inventario.
   CARNICOS: ['TAPABARRIGA', 'CHULETA AHUMADA', 'CAZUELA', 'COSTILLAR', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5', 'MECHADA CAMPESTRE', 'MECHADA CERDO BBQ'],
@@ -872,6 +878,14 @@ function vigente_(p) {
   return !CFG.NO_VIGENTES.some(n => claveInv_(n) === k);
 }
 function categoriaDe_(p) { return CFG.CARNICOS.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre)) && p.seccion !== 'CAMARA' ? 'CARNICOS' : p.categoria; }
+/** v169: posición del producto en las planillas del bodeguero → {g: título del bloque, o: orden global}. */
+function despPos_(p) {
+  if (!MEMO_.__dp) { MEMO_.__dp = {}; CFG.DESPACHO_PLANILLA.forEach(([t, l], gi) => l.forEach((n, i) => MEMO_.__dp[claveInv_(n)] = { gi, o: gi * 1000 + i })); }
+  const x = MEMO_.__dp[claveInv_(p.nombre_inv || p.nombre)];
+  if (x) return { g: CFG.DESPACHO_PLANILLA[x.gi][0], o: x.o };
+  const gi = { TERMINADOS: 0, CONGELADOS: 1, LAMINADOS: 2 }[p.seccion] || 0;
+  return { g: CFG.DESPACHO_PLANILLA[gi][0], o: gi * 1000 + 500 + ordenNomina_(p) % 500 };
+}
 function nombreVis_(t) { const k = claveInv_(t); for (const n in CFG.RENOMBRAR) if (claveInv_(n) === k) return CFG.RENOMBRAR[n]; return t; }
 function packDe_(p) { const c = cfgUn_(p); return c && c.pack ? c.pack : 0; }
 function modoDe_(p) { const c = cfgUn_(p); return c && c.modo ? c.modo : ''; }
@@ -883,8 +897,8 @@ function catalogo(token) {
     hoy: hoy_(), distribuidores: CFG.DISTRIBUIDORES,
     // v155: Despacho usa los mismos productos y el mismo orden que la nómina del bodeguero (lo oculto del inventario no sale)
     productos: read_('PRODUCTOS').filter(p => String(p.activo).toUpperCase() !== 'FALSE' && vigente_(p))
-      .sort((a, b) => ordenNomina_(a) - ordenNomina_(b))
-      .map(p => ({ codigo: codeKey_(p.codigo), nombre: nombreVis_(p.nombre), categoria: categoriaDe_(p), unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p), pack: packDe_(p), modo: modoDe_(p) })),
+      .sort((a, b) => despPos_(a).o - despPos_(b).o)
+      .map(p => ({ codigo: codeKey_(p.codigo), grupo: despPos_(p).g, nombre: nombreVis_(p.nombre), categoria: categoriaDe_(p), unidad: p.unidad, precio: num_(p.precio), inv: p.seccion ? unidadInv_(p) : '', kgUn: kgUnidad_(p), pack: packDe_(p), modo: modoDe_(p) })),
     // v164: todos los productos (también los que ya no salen en la app) solo para ordenar los informes de Mi DTE por categoría
     todosProductos: read_('PRODUCTOS').filter(p => p.seccion !== 'CAMARA').map(p => ({ codigo: codeKey_(p.codigo), nombre: p.nombre, categoria: categoriaDe_(p) })),
     vendedores: vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre, terminales: v.terminales, rindeAntes: parseDiasRA_(v.emite_antes).map(i => DIAS_RA_[i]).join(','), deposita: esSi_(v.deposita) || conDeposito[v.usuario] === 1 })),

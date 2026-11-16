@@ -757,3 +757,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v168 — «Chuleta ahumada» se muestra como «Chuleta» (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
 - `CFG.RENOMBRAR` + `nombreVis_()`: Despacho e Inventario muestran «CHULETA»; el nombre interno («CHULETA AHUMADA», alias de «CHULETA VETADA» de Mi DTE) no cambia para no perder lo guardado. Pendiente: el dueño dijo que hay dos tipos de cazuela (faltan los nombres). Solo sintaxis verificada.
+
+## v169 — Despacho en el orden de las planillas de papel (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Pedido del dueño con fotos de las planillas de despacho/retorno del bodeguero. `CFG.DESPACHO_PLANILLA` = 3 bloques en el orden del papel: «Productos terminados y cárnicos» (longaniza… jamón ahumado, chuleta, costillar, cazuela), «Congelados y verduras» (choclo, arveja, primavera, poroto verde, sofrito, choclo trozito, empanadas, sopaipillas, pasta choclo, emp. queso 3x3) y «Mechadas, molida, quesos y otros». `despPos_(p)` da bloque y posición; `catalogo().productos[]` sale ordenado y con `grupo`. Lo que no está en la lista va al final de su bloque (tapabarriga, cazuela ahumada, P.LAM-… 150G).
+- Cliente: Despacho agrupa por `grupo` (títulos de bloque); los chips de categoría siguen filtrando por `data-cat`. Con servidor viejo (sin `grupo`) agrupa por categoría como antes.
+- En el papel hay productos que la app no tiene en Despacho: EMP RAVIOLERA, FILETILLO POLLO, DESHUESADA DE POLLO (y «mantequilla 150gr» se asumió = mantequilla 125gr). Solo sintaxis verificada.

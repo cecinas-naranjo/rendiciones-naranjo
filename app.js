@@ -1604,9 +1604,11 @@ async function vDespacho(m) {
     dist: 'Lo que retira este distribuidor (sale con boleta genérica). Si algo vuelve, anótalo como retorno.' };
   const card = v => `<button type="button" class="dvc ${v.usuario === S.vend ? 'on' : ''}" data-u="${esc(v.usuario)}"><b>${esc(v.nombre)}</b><span class="dvst" data-st="${esc(v.usuario)}"></span></button>`;
   if (!S.dmod) S.dmod = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'America/Santiago' }).format(new Date())) < 13 ? 'salida' : 'retorno';
-  const cats = {};
+  const cats = {}, gcats = {}, plan = S.cat.productos.some(p => p.grupo);   // v169: con `grupo` el servidor ya los manda en el orden de las planillas de papel; se agrupa en esos 3 bloques
   S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
-  const orden = Object.keys(cats).sort((a, b) => (Object.keys(CATS).indexOf(a) + 99) % 99 - (Object.keys(CATS).indexOf(b) + 99) % 99);
+  S.cat.productos.forEach(p => (gcats[plan ? (p.grupo || 'Otros') : (p.categoria || 'REVISAR')] = gcats[plan ? (p.grupo || 'Otros') : (p.categoria || 'REVISAR')] || []).push(p));
+  const orden = Object.keys(cats).sort((a, b) => (Object.keys(CATS).indexOf(a) + 99) % 99 - (Object.keys(CATS).indexOf(b) + 99) % 99);   // chips de categoría (filtro)
+  const ordenG = plan ? Object.keys(gcats) : orden;
   // v164/v165: productos con pack o caja: dos campos lado a lado, como los kilos y unidades de los terminados. Uno es el que se guarda (`salida`/`retorno`) y el otro se calcula (`salidaX`/`retornoX`).
   //   PACK_ANOTA / PACK_VENTA: se guarda en UNIDADES y el otro campo muestra los packs. CAJA: se guarda en CAJAS y el otro campo muestra las unidades.
   const conPk = p => p.unidad === 'UN' && p.pack > 0 && (p.modo === 'PACK_ANOTA' || p.modo === 'PACK_VENTA' || p.modo === 'CAJA');
@@ -1630,8 +1632,8 @@ async function vDespacho(m) {
     <div class="dtool" id="dtool"><input class="in" id="dq" type="search" placeholder="Buscar producto (ej. longaniza, queso)…" autocomplete="off" value="${esc(S.dq || '')}">
       <div class="dchips" id="dchips"><button type="button" data-c="">Todos</button>${orden.map(c => `<button type="button" data-c="${esc(c)}">${esc(CATS[c] || c)}</button>`).join('')}</div></div>
     <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span><span></span></div>
-    <div id="dt" class="dt dm-${S.dmod} todos">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
-      return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}" data-obs="${esc(f.obs || '')}" data-pk="${conPk(p) ? p.pack : ''}" data-cj="${p.modo === 'CAJA' ? 1 : ''}" data-w="${palabra(p)}">
+    <div id="dt" class="dt dm-${S.dmod} todos">${ordenG.map(c => gcats[c].map((p, i) => { const f = reg[p.codigo] || {};
+      return `${i === 0 ? `<div class="catl">${plan ? esc(c) : (CATS[c] || esc(c))}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(p.categoria || 'REVISAR')}" data-obs="${esc(f.obs || '')}" data-pk="${conPk(p) ? p.pack : ''}" data-cj="${p.modo === 'CAJA' ? 1 : ''}" data-w="${palabra(p)}">
         <div class="pn">${esc(p.nombre)}${notaUn(p)}${pseudo || r.retornoBloqueado ? '' : `<span class="dvq" data-dq="${esc(p.codigo)}"></span>`}</div><div class="rf"></div>
         <div class="cl kgc" data-col="${conPk(p) ? (p.modo === 'CAJA' ? 'Cajas' : 'Packs') : 'Kilos'}">${conPk(p) ? (p.modo === 'CAJA' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : nin('salidaX', p, deriv(p, f.salida)) + nin('retornoX', p, deriv(p, f.retorno))) : p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
         <div class="cl unc" data-col="Unidades">${conPk(p) ? (p.modo === 'CAJA' ? nin('salidaX', p, deriv(p, f.salida)) + nin('retornoX', p, deriv(p, f.retorno)) : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)) : p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}</div>
