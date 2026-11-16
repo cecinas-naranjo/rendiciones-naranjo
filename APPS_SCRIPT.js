@@ -98,6 +98,7 @@ const SCHEMA = {
   CHEQUES_ESTADO: ['clave','estado','fecha','registrado_por','registrado','obs'],
   NC_EMITIDAS: ['clave','nc_folio','fecha','registrado_por','registrado'],
   CAJA_CHICA:  ['id','fecha','tipo','fecha_gasto','vendedor','monto','obs','registrado_por','registrado'],
+  POZO_MONEDAS: ['id','fecha','tipo','monto','banco','operacion','obs','registrado_por','registrado'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
   ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos'],
@@ -299,7 +300,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -339,7 +340,7 @@ function registrarOp_(op, fn) {
 function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { ping: 1, getCajaChica: 1, listarClientes: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
+const LECTURAS_ = { ping: 1, getCajaChica: 1, getPozoMonedas: 1, listarClientes: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, getSugerido: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -2801,26 +2802,32 @@ function efectivoDiaCC_(fecha) {
   const r = resumen_(fecha), total = r.porVendedor.reduce((a, t) => a + Math.max(0, Math.round(num_(t.efectivoEntregar))), 0), ya = ccDia_(fecha);
   return { total, ya, disponible: Math.max(0, total - ya) };
 }
+/** v171: detalle de los gastos de un día y una persona (concepto, monto, nota), para ver en qué se gastó. */
+function gastosDetalle_(fecha, v) {
+  return read_('GASTOS').filter(g => normFecha_(g.fecha) === fecha && g.responsable === v).map(g => ({ concepto: String(g.concepto || ''), monto: Math.round(num_(g.monto)), obs: String(g.obs || '') }));
+}
 function getCajaChica(token) {
   auth_(token, ['RENDICION', 'SUPERVISOR', 'GERENCIA']);
   asegurarCajaChica_();
   const nom = {}; read_('USUARIOS').forEach(u => nom[u.usuario] = u.nombre || u.usuario); nom.GENERAL = 'General planta';
   const movs = read_('CAJA_CHICA').map(x => ({ id: String(x.id), fecha: normFecha_(x.fecha), tipo: x.tipo, fechaGasto: normFecha_(x.fecha_gasto), vendedor: x.vendedor || '', nombre: nom[x.vendedor] || x.vendedor || '',
     monto: Math.round(num_(x.monto)), obs: x.obs || '', por: nom[x.registrado_por] || x.registrado_por || '', registrado: x.registrado || '' }));
-  const ingresos = movs.filter(x => x.tipo === 'INGRESO').reduce((a, x) => a + x.monto, 0), repuesto = movs.filter(x => x.tipo === 'REPOSICION').reduce((a, x) => a + x.monto, 0);
+  movs.forEach(x => { if (x.tipo === 'REPOSICION') x.detalle = gastosDetalle_(x.fechaGasto, x.vendedor); });
+  const suma = t => movs.filter(x => x.tipo === t).reduce((a, x) => a + x.monto, 0);
+  const ingresos = suma('INGRESO'), repuesto = suma('REPOSICION'), gastosCaja = suma('GASTO');
   const rep = {}; movs.filter(x => x.tipo === 'REPOSICION').forEach(x => { const k = x.fechaGasto + '|' + x.vendedor; rep[k] = (rep[k] || 0) + x.monto; });
   const desde = sumarDias_(hoy_(), -60), gas = {};
   read_('GASTOS').forEach(g => { const f = normFecha_(g.fecha); if (f < desde || !g.responsable) return; const k = f + '|' + g.responsable; gas[k] = (gas[k] || 0) + Math.round(num_(g.monto)); });
-  const pendientes = Object.keys(gas).map(k => { const [f, v] = k.split('|'); return { fecha: f, vendedor: v, nombre: nom[v] || v, gastos: gas[k], repuesto: rep[k] || 0, falta: gas[k] - (rep[k] || 0), estado: estadoDia_(f) }; })
+  const pendientes = Object.keys(gas).map(k => { const [f, v] = k.split('|'); return { fecha: f, vendedor: v, nombre: nom[v] || v, gastos: gas[k], repuesto: rep[k] || 0, falta: gas[k] - (rep[k] || 0), estado: estadoDia_(f), detalle: gastosDetalle_(f, v) }; })
     .filter(x => x.falta > 0).sort((a, b) => b.fecha.localeCompare(a.fecha) || a.nombre.localeCompare(b.nombre));
   movs.sort((a, b) => String(b.registrado).localeCompare(String(a.registrado)));
-  return { saldo: ingresos - repuesto, ingresos, repuesto, pendientes, movimientos: movs.slice(0, 80) };
+  return { saldo: ingresos - repuesto - gastosCaja, ingresos, repuesto, gastosCaja, pendientes, movimientos: movs.slice(0, 80) };
 }
-/** tipo INGRESO: {fecha, monto, obs}. tipo REPOSICION: {fechaGasto, vendedor, monto, obs} (se suma a la rendición de la fecha del gasto). */
+/** tipo GASTO: {fecha, monto, obs} (obs = en qué se gastó). tipo INGRESO: {fecha, monto, obs}. tipo REPOSICION: {fechaGasto, vendedor, monto, obs} (se suma a la rendición de la fecha del gasto). */
 function guardarCajaChica(token, tipo, datos) {
   const u = auth_(token, ['RENDICION', 'SUPERVISOR']);
   tipo = String(tipo || '').toUpperCase(); datos = datos || {};
-  if (tipo !== 'INGRESO' && tipo !== 'REPOSICION') throw new Error('Tipo de movimiento no válido.');
+  if (tipo !== 'INGRESO' && tipo !== 'REPOSICION' && tipo !== 'GASTO') throw new Error('Tipo de movimiento no válido.');
   const monto = Math.round(num_(datos.monto)); if (!(monto > 0)) throw new Error('Escribe un monto mayor a cero.');
   return withLock_(() => {
     asegurarCajaChica_();
@@ -2832,6 +2839,11 @@ function guardarCajaChica(token, tipo, datos) {
       const e = efectivoDiaCC_(o.fecha);
       if (monto > e.disponible) throw new Error('Ese día solo hay $' + e.disponible.toLocaleString('es-CL') + ' de efectivo disponible para caja chica (recaudado $' + e.total.toLocaleString('es-CL') + (e.ya ? ', ya sacado $' + e.ya.toLocaleString('es-CL') : '') + ').');
       if (estadoDia_(o.fecha) === 'CERRADA') aviso = 'El día ' + o.fecha + ' ya está cerrado: la caja chica queda anotada y suma al saldo; el "efectivo a depositar" de ese día se ve distinto solo al volver a generar su planilla.';
+    }
+    else if (tipo === 'GASTO') {
+      // v171: gasto pagado directamente con la caja chica (no es de un vendedor): baja el saldo
+      if (!o.obs) throw new Error('Escribe en qué se gastó.');
+      o.fecha_gasto = normFecha_(datos.fecha) || hoy_();
     }
     else {
       const fg = normFecha_(datos.fechaGasto), v = String(datos.vendedor || ''); if (!fg || !v) throw new Error('Elige el día del gasto y quién lo hizo.');
@@ -2858,6 +2870,52 @@ function borrarCajaChica(token, id) {
     asegurarCajaChica_();
     const x = read_('CAJA_CHICA').find(y => String(y.id) === String(id)); if (!x) throw new Error('No se encontró el movimiento.');
     deleteRows_('CAJA_CHICA', [x._row]); return { ok: true };
+  });
+}
+
+/* ============ POZO DE MONEDAS (v171) ============
+ * Las monedas que se cuentan en «Efectivo del día» no se depositan: van a un pozo. Pozo = monedas contadas (todos los días) − depósitos de monedas.
+ * Hoja POZO_MONEDAS: id, fecha, tipo (DEPOSITO), monto, banco, operacion, obs, registrado_por, registrado. */
+function asegurarPozo_() {
+  if (MEMO_.__pz) return;
+  const ss = SpreadsheetApp.getActive();
+  if (!ss.getSheetByName('POZO_MONEDAS')) {
+    const sh = ss.insertSheet('POZO_MONEDAS'), head = SCHEMA.POZO_MONEDAS;
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
+    MEMO_.POZO_MONEDAS = null;
+  }
+  MEMO_.__pz = true;
+}
+function pozoDatos_() {
+  asegurarPozo_();
+  const por = {};
+  read_('CONTEO_EFECTIVO').forEach(x => { if (x.vendedor === 'GENERAL') return; const m = Math.round(num_(x.monedas)); if (m > 0) { const f = normFecha_(x.fecha); por[f] = (por[f] || 0) + m; } });
+  const entradas = Object.keys(por).sort().reverse().map(f => ({ fecha: f, monto: por[f] }));
+  const nom = {}; read_('USUARIOS').forEach(u => nom[u.usuario] = u.nombre || u.usuario);
+  const deps = read_('POZO_MONEDAS').filter(x => x.tipo === 'DEPOSITO').map(x => ({ id: String(x.id), fecha: normFecha_(x.fecha), monto: Math.round(num_(x.monto)), banco: x.banco || '', operacion: x.operacion || '', obs: x.obs || '',
+    por: nom[x.registrado_por] || x.registrado_por || '', registrado: x.registrado || '' }));
+  const entro = entradas.reduce((a, x) => a + x.monto, 0), depositado = deps.reduce((a, x) => a + x.monto, 0);
+  deps.sort((a, b) => String(b.registrado).localeCompare(String(a.registrado)));
+  return { saldo: entro - depositado, entro, depositado, entradas: entradas.slice(0, 60), depositos: deps.slice(0, 60) };
+}
+function getPozoMonedas(token) { auth_(token, ['RENDICION', 'SUPERVISOR', 'GERENCIA']); return pozoDatos_(); }
+/** datos: {fecha, monto, banco, operacion, obs} — depósito de monedas: baja el pozo. */
+function guardarDepositoMonedas(token, datos) {
+  const u = auth_(token, ['RENDICION', 'SUPERVISOR']); datos = datos || {};
+  const monto = Math.round(num_(datos.monto)); if (!(monto > 0)) throw new Error('Escribe un monto mayor a cero.');
+  return withLock_(() => {
+    const p = pozoDatos_();
+    if (monto > p.saldo) throw new Error('En el pozo solo hay $' + p.saldo.toLocaleString('es-CL') + ' en monedas.');
+    const o = { id: uid_(), fecha: normFecha_(datos.fecha) || hoy_(), tipo: 'DEPOSITO', monto, banco: String(datos.banco || '').toUpperCase(), operacion: String(datos.operacion || '').trim(), obs: String(datos.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
+    append_('POZO_MONEDAS', [o]); return { ok: true, id: o.id };
+  });
+}
+function borrarDepositoMonedas(token, id) {
+  auth_(token, ['RENDICION', 'SUPERVISOR']);
+  return withLock_(() => {
+    asegurarPozo_();
+    const x = read_('POZO_MONEDAS').find(y => String(y.id) === String(id)); if (!x) throw new Error('No se encontró el depósito.');
+    deleteRows_('POZO_MONEDAS', [x._row]); return { ok: true };
   });
 }
 

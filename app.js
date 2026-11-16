@@ -155,7 +155,7 @@ function enlazarCampoArchivos(id) {
    Velocidad: las consultas (no los guardados) se guardan en el teléfono. Al volver a una pantalla se muestra
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
-const LECTURA = new Set(['getCajaChica', 'listarClientes', 'getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
+const LECTURA = new Set(['getCajaChica', 'getPozoMonedas', 'listarClientes', 'getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
   'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos', 'listarAnulaciones', 'anulacionesPendientes']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
@@ -183,8 +183,8 @@ function olvidarCache(todo) {
 const claveApi = (fn, args) => fn + '|' + JSON.stringify(args);
 /* v135: tras guardar o borrar algo, las listas que muestran ese dato se piden de nuevo al servidor (no se usa la copia guardada, que aún no lo trae:
    por eso antes «Cobrado hoy»/«Gastos» no mostraban lo recién registrado y al agregar otro aparecía el anterior). */
-const LISTAS_TRAS_ESCRIBIR = /^(getCajaChica|listarMov|porCobrar|efectivoParaDepositar|listarDevoluciones|getConteoEfectivo|listarAdelantos|listarAnulaciones|anulacionesPendientes)\|/;
-const ESCRITURAS_DE_LISTA = new Set(['guardarCajaChica', 'borrarCajaChica', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
+const LISTAS_TRAS_ESCRIBIR = /^(getCajaChica|getPozoMonedas|listarMov|porCobrar|efectivoParaDepositar|listarDevoluciones|getConteoEfectivo|listarAdelantos|listarAnulaciones|anulacionesPendientes)\|/;
+const ESCRITURAS_DE_LISTA = new Set(['guardarCajaChica', 'borrarCajaChica', 'guardarDepositoMonedas', 'borrarDepositoMonedas', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
 function purgarListas() { Array.from(CACHE.keys()).forEach(k => { if (LISTAS_TRAS_ESCRIBIR.test(k)) CACHE.delete(k); }); guardarCache(); }
 const FRESCURA = 20e3;      // si lo guardado tiene menos de 20 s no se vuelve a pedir al servidor
 
@@ -595,7 +595,7 @@ const TABS = {
   RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
     ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
     ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'],
-    ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['cajachica', 'Caja chica', 'cash'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
+    ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['cajachica', 'Caja chica', 'cash'], ['pozo', 'Pozo de monedas', 'cash'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
@@ -604,7 +604,7 @@ TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Res
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques', 'notascred'], 'cash'],
-  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'cajachica', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'usuarios'], 'dots']];
+  ['g-caja', 'Caja', ['depositos', 'GASTOS', 'cajachica', 'pozo', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
 /* ===== VER COMO (solo ADMIN): saltar entre usuarios para ver cómo ven la app los demás ===== */
@@ -913,7 +913,7 @@ function ir(t, silencioso) {
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
   const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
-  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, cajachica: vCajaChica, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, cajachica: vCajaChica, pozo: vPozo, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
     if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -2938,7 +2938,7 @@ async function vEfectivo(m) {
     <div class="card" id="efs" style="border:1.5px solid var(--ink)">
       <dl class="efd"><dt>Efectivo que debían entregar</dt><dd id="s_esp"></dd>
         <dt>Billetes contados</dt><dd id="s_bil"></dd><dt class="muted" id="s_det" style="grid-column:1/-1;text-align:left"></dt>
-        <dt>Monedas (no se depositan)</dt><dd id="s_mon"></dd>
+        <dt>Monedas (van al pozo de monedas)</dt><dd id="s_mon"></dd>
         <dt>Diferencia (contado − esperado)</dt><dd id="s_dif"></dd></dl>
       <div class="row" style="margin:10px 0;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="min-width:180px"><label class="f" for="cc">Caja chica sacada de este día</label><input class="in n" id="cc" inputmode="numeric" value="${r.cajaChica || ''}" placeholder="0" disabled></div>
         ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost" id="ccSacar" type="button">Sacar caja chica de este día</button>'}</div>
@@ -3740,32 +3740,77 @@ function sacarCajaChica(fecha0, alOk) {
     try { const o = await api('guardarCajaChica', S.sess.token, 'INGRESO', { fecha: $('#scD', ov).value, monto: mt, obs: $('#scN', ov).value }); olvidarCache(true); purgarListas(); toast(o.aviso || 'Caja chica anotada', !!o.aviso); cerrar(); await alOk(); } catch (e) { fin(); throw e; }
   };
 }
+/** v171: hoja con campos para anotar un gasto de la caja chica o un depósito de monedas. campos: [{id, label, tipo, ph, valor, opciones}] */
+function hojaForm(titulo, detalle, campos, textoOk, alOk) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  const campo = c => `<label class="f" for="hf_${c.id}" style="margin-top:10px">${c.label}</label>` + (c.opciones
+    ? `<select class="in" id="hf_${c.id}">${c.opciones.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('')}</select>`
+    : `<input class="in${c.tipo === 'monto' ? ' n gmon' : ''}" id="hf_${c.id}" ${c.tipo === 'monto' ? 'inputmode="numeric"' : c.tipo === 'fecha' ? `type="date" max="${hoyCL()}"` : ''} autocomplete="off" placeholder="${esc(c.ph || '')}" value="${esc(c.valor || '')}">`);
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(titulo)}"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px;margin-bottom:4px">${esc(titulo)}</div><div class="muted" style="margin-bottom:6px">${detalle}</div>
+    ${campos.map(campo).join('')}
+    <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" id="hfX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="hfOk" type="button">${esc(textoOk)}</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov); $('#hfX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  setTimeout(() => { const p = $('.in', ov); if (p) p.focus(); }, 60);
+  $('#hfOk', ov).onclick = async () => {
+    const v = {}; campos.forEach(c => { const el = $('#hf_' + c.id, ov); v[c.id] = c.tipo === 'monto' ? Number(soloDigitos(el.value)) : el.value.trim(); });
+    const b = $('#hfOk', ov), fin = botonOcupado(b, 'Guardando…');
+    try { await alOk(v); cerrar(); } catch (e) { fin(); throw e; }
+  };
+}
+const detalleGastos = l => (l || []).length ? `<div class="muted" style="margin-top:4px">${l.map(g => `<div>• ${esc(g.concepto || 'Gasto')} <b>${clp(g.monto)}</b>${g.obs ? ' · ' + esc(g.obs) : ''}</div>`).join('')}</div>` : '';
 async function vCajaChica(m) {
   const r = await api('getCajaChica', S.sess.token), puede = S.sess.rol !== 'GERENCIA';
   const llamar = async (fn, ...a) => { const x = await api(fn, S.sess.token, ...a); olvidarCache(true); purgarListas(); return x; };
+  const quien = x => x.tipo === 'INGRESO' ? 'Sacada del efectivo del día' : x.tipo === 'GASTO' ? 'Gasto de la caja chica' : 'Reposición de gastos';
   render(m, `<h2>Caja chica</h2>
-    <p class="lead" style="margin:0 0 12px">El gasto del día se resta de lo que entrega el vendedor. La caja chica se saca del efectivo recaudado de un día cualquiera (se descuenta de lo que se deposita ese día). Los gastos se reponen desde aquí y la reposición se suma a la rendición del día del gasto.</p>
+    <p class="lead" style="margin:0 0 12px">El gasto del día se resta de lo que entrega el vendedor. La caja chica se saca del efectivo recaudado de un día cualquiera (se descuenta de lo que se deposita ese día). Los gastos de los vendedores se reponen desde aquí y la reposición se suma a la rendición del día del gasto. Los gastos que se pagan directo con la caja chica también se anotan aquí.</p>
     <div class="kpis"><div class="cash"><span>Saldo de caja chica</span><b>${clp(r.saldo)}</b>${r.saldo < 0 ? '<small>Falta anotar plata que entró a la caja</small>' : ''}</div>
-      <div><span>Ha entrado</span><b>${clp(r.ingresos)}</b></div><div><span>Se ha repuesto</span><b>${clp(r.repuesto)}</b></div></div>
-    ${puede ? '<div class="row" style="margin:12px 0"><button class="btn cu" id="ccIn" type="button">+ Sacar caja chica del efectivo de un día</button></div>' : ''}
+      <div><span>Ha entrado</span><b>${clp(r.ingresos)}</b></div><div><span>Repuesto a vendedores</span><b>${clp(r.repuesto)}</b></div><div><span>Gastos de la caja</span><b>${clp(r.gastosCaja || 0)}</b></div></div>
+    ${puede ? '<div class="row" style="margin:12px 0;gap:8px;flex-wrap:wrap"><button class="btn cu" id="ccIn" type="button">+ Sacar caja chica del efectivo de un día</button><button class="btn ghost" id="ccGa" type="button">+ Anotar un gasto de la caja chica</button></div>' : ''}
     <h3>Gastos por reponer ${r.pendientes.length ? `<small class="muted">(${r.pendientes.length})</small>` : ''}</h3>
     ${r.pendientes.length ? r.pendientes.map((x, i) => `<div class="cfac" style="display:block;margin-bottom:8px"><div class="row" style="gap:10px;flex-wrap:wrap">
       <span class="grow"><b>${esc(x.nombre)}</b> <span class="muted">· ${fechaCortaTxt(x.fecha)}${x.estado === 'CERRADA' ? ' · día cerrado' : ''}</span>
-        <div class="muted">Gastó ${clp(x.gastos)}${x.repuesto ? ' · ya repuesto ' + clp(x.repuesto) : ''}</div></span>
+        <div class="muted">Gastó ${clp(x.gastos)}${x.repuesto ? ' · ya repuesto ' + clp(x.repuesto) : ''}</div>${detalleGastos(x.detalle)}</span>
       <b>${clp(x.falta)}</b>${puede ? `<button class="btn cu" type="button" data-i="${i}">Reponer</button>` : ''}</div></div>`).join('')
       : '<div class="empty">No hay gastos por reponer.</div>'}
     <h3 style="margin-top:18px">Movimientos</h3>
     ${r.movimientos.length ? `<table class="t"><thead><tr><th>Día</th><th>Qué</th><th>Detalle</th><th class="m">Monto</th><th></th></tr></thead><tbody>${r.movimientos.map(x => `<tr>
-      <td>${fcorta(x.fecha)}</td><td>${x.tipo === 'INGRESO' ? 'Sacada del efectivo del día' : 'Reposición de gastos'}</td>
-      <td>${x.tipo === 'REPOSICION' ? esc(x.nombre) + ' · gasto del ' + fcorta(x.fechaGasto) : ''}${x.obs ? ' ' + esc(x.obs) : ''}<div class="muted">${esc(x.por)}</div></td>
+      <td>${fcorta(x.tipo === 'GASTO' ? x.fechaGasto : x.fecha)}</td><td>${quien(x)}</td>
+      <td>${x.tipo === 'REPOSICION' ? esc(x.nombre) + ' · gasto del ' + fcorta(x.fechaGasto) : ''}${x.obs ? ' ' + esc(x.obs) : ''}${x.tipo === 'REPOSICION' ? detalleGastos(x.detalle) : ''}<div class="muted">${esc(x.por)}</div></td>
       <td class="m"><b>${x.tipo === 'INGRESO' ? '+' : '−'} ${clp(x.monto)}</b></td>${puede ? `<td><button class="x" type="button" data-d="${esc(x.id)}" aria-label="Borrar">×</button></td>` : '<td></td>'}</tr>`).join('')}</tbody></table>`
       : '<div class="empty">Aún no hay movimientos.</div>'}`);
   const bi = $('#ccIn', m);
   if (bi) bi.onclick = () => sacarCajaChica(S.fecha, async () => ir('cajachica', true));
+  const bg = $('#ccGa', m);
+  if (bg) bg.onclick = () => hojaForm('Gasto de la caja chica', 'Algo que se pagó directo con la plata de la caja chica. Baja el saldo.',
+    [{ id: 'o', label: 'En qué se gastó', ph: 'Ej.: bolsas, artículos de aseo' }, { id: 'm', label: 'Monto', tipo: 'monto', ph: '$ 0' }, { id: 'f', label: 'Día del gasto', tipo: 'fecha', valor: hoyCL() }], 'Guardar gasto',
+    async v => { if (!v.o) throw new Error('Escribe en qué se gastó.'); if (!(v.m > 0)) throw new Error('Escribe el monto.'); await llamar('guardarCajaChica', 'GASTO', { fecha: v.f, monto: v.m, obs: v.o }); toast('Gasto anotado'); ir('cajachica', true); });
   $$('[data-i]', m).forEach(b => b.onclick = () => { const x = r.pendientes[b.dataset.i];
     pedirMonto('Reponer gastos de ' + x.nombre, 'Gastos del ' + fechaCortaTxt(x.fecha) + '. Se suma a la rendición de ese día y baja el saldo de la caja chica.', x.falta, false,
       async mt => { const o = await llamar('guardarCajaChica', 'REPOSICION', { fechaGasto: x.fecha, vendedor: x.vendedor, monto: mt }); toast(o.aviso || 'Reposición anotada', !!o.aviso); ir('cajachica', true); }); });
   $$('[data-d]', m).forEach(b => b.onclick = async () => { if (!confirm('¿Borrar este movimiento?')) return; await llamar('borrarCajaChica', b.dataset.d); toast('Movimiento borrado'); ir('cajachica', true); });
+}
+/** v171: pozo de monedas — lo que se cuenta en monedas cada día entra al pozo; un depósito de monedas lo baja. */
+async function vPozo(m) {
+  const r = await api('getPozoMonedas', S.sess.token), puede = S.sess.rol !== 'GERENCIA';
+  const llamar = async (fn, ...a) => { const x = await api(fn, S.sess.token, ...a); olvidarCache(true); purgarListas(); return x; };
+  render(m, `<h2>Pozo de monedas</h2>
+    <p class="lead" style="margin:0 0 12px">Las monedas que se cuentan en «Efectivo del día» no se depositan: se van acumulando aquí. Cuando se deposite un monto en monedas, se anota y baja el pozo.</p>
+    <div class="kpis"><div class="cash"><span>Monedas en el pozo</span><b>${clp(r.saldo)}</b></div><div><span>Han entrado</span><b>${clp(r.entro)}</b></div><div><span>Depositado</span><b>${clp(r.depositado)}</b></div></div>
+    ${puede ? '<div class="row" style="margin:12px 0"><button class="btn cu" id="pzDep" type="button">+ Anotar un depósito de monedas</button></div>' : ''}
+    <h3>Depósitos de monedas</h3>
+    ${r.depositos.length ? `<table class="t"><thead><tr><th>Día</th><th>Detalle</th><th class="m">Monto</th><th></th></tr></thead><tbody>${r.depositos.map(x => `<tr><td>${fcorta(x.fecha)}</td>
+      <td>${esc(x.banco)}${x.operacion ? ' · N° ' + esc(x.operacion) : ''}${x.obs ? ' ' + esc(x.obs) : ''}<div class="muted">${esc(x.por)}</div></td><td class="m"><b>− ${clp(x.monto)}</b></td>
+      ${puede ? `<td><button class="x" type="button" data-d="${esc(x.id)}" aria-label="Borrar">×</button></td>` : '<td></td>'}</tr>`).join('')}</tbody></table>` : '<div class="empty">Aún no hay depósitos de monedas.</div>'}
+    <h3 style="margin-top:18px">Monedas que han entrado (por día)</h3>
+    ${r.entradas.length ? `<table class="t"><thead><tr><th>Día</th><th class="m">Monedas contadas</th></tr></thead><tbody>${r.entradas.map(x => `<tr><td>${fcorta(x.fecha)}</td><td class="m"><b>+ ${clp(x.monto)}</b></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Todavía no se han contado monedas.</div>'}`);
+  const b = $('#pzDep', m);
+  if (b) b.onclick = () => hojaForm('Depósito de monedas', 'En el pozo hay ' + clp(r.saldo) + '. El monto que depositas baja el pozo.',
+    [{ id: 'm', label: 'Monto depositado', tipo: 'monto', ph: '$ 0' }, { id: 'f', label: 'Día', tipo: 'fecha', valor: hoyCL() }, { id: 'b', label: 'Banco', opciones: [['', 'Sin indicar']].concat((S.cat.bancos || ['BICE', 'ESTADO', 'SANTANDER']).map(x => [x, x])) }, { id: 'n', label: 'N° de operación (opcional)' }], 'Guardar depósito',
+    async v => { if (!(v.m > 0)) throw new Error('Escribe el monto.'); if (v.m > r.saldo) throw new Error('En el pozo solo hay ' + clp(r.saldo) + '.'); await llamar('guardarDepositoMonedas', { fecha: v.f, monto: v.m, banco: v.b, operacion: v.n }); toast('Depósito anotado'); ir('pozo', true); });
+  $$('[data-d]', m).forEach(x => x.onclick = async () => { if (!confirm('¿Borrar este depósito? Las monedas vuelven al pozo.')) return; await llamar('borrarDepositoMonedas', x.dataset.d); toast('Depósito borrado'); ir('pozo', true); });
 }
 
 /* ===== EDITAR LA PLANILLA DE INVENTARIO (v149): el bodeguero agrega, renombra, oculta y reordena productos y columnas de salida ===== */
