@@ -754,3 +754,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v167 — Cárnicos en su categoría (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
 - Tapabarriga, chuleta ahumada, cazuela, costillar, carne molida 10/5 y mechadas (campestre, cerdo BBQ) salían en Productos propios o Congelados porque PRODUCTOS.categoria no los tenía como CARNICOS. `CFG.CARNICOS` + `categoriaDe_(p)` fuerzan «Cárnicos» en `catalogo()` (Despacho y categorías del orden de informes). No cambia la hoja PRODUCTOS. Para mover otro producto, agregar su nombre del inventario a la lista. Solo sintaxis verificada.
+
+## v168 — «Chuleta ahumada» se muestra como «Chuleta» (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
+- `CFG.RENOMBRAR` + `nombreVis_()`: Despacho e Inventario muestran «CHULETA»; el nombre interno («CHULETA AHUMADA», alias de «CHULETA VETADA» de Mi DTE) no cambia para no perder lo guardado. Pendiente: el dueño dijo que hay dos tipos de cazuela (faltan los nombres). Solo sintaxis verificada.
