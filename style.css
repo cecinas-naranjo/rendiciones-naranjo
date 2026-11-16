@@ -1206,3 +1206,11 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .dt .catl{padding:5px 12px;font-size:12.5px}
 .dt .dth{padding:5px 12px}
 @media (max-width:480px){.dt .pr{padding:4px 10px}.dt .nin input.in{min-height:34px;height:34px}}
+
+/* Salida adicional (v163) */
+.dxw{margin:6px 0 10px}
+.dxl{margin-top:8px;padding:8px 12px;background:#fff7ec;border:1px solid #f0d9b8;border-radius:10px;font-size:14px}
+.dxl .dxi{display:flex;gap:8px;align-items:baseline;padding:2px 0}
+.sxl{max-height:190px;overflow:auto;margin-top:8px;border:1px solid #e5e3df;border-radius:10px}
+.sxi{display:block;width:100%;text-align:left;padding:9px 12px;border:0;border-bottom:1px solid #eee;background:#fff;font:inherit}
+.sxi.on{background:#fbe9dd;font-weight:700}

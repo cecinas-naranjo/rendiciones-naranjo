@@ -1616,6 +1616,7 @@ async function vDespacho(m) {
     <div class="seg dseg" id="seg" role="tablist"><button type="button" data-m="salida"><b>Salida</b></button><button type="button" data-m="retorno"><b>Retorno</b></button></div>
     <p class="dvh" id="dvh"></p>${pseudo ? `<p class="muted dvn">${esc(NOTA[pseudo])}</p>` : ''}
     <div id="dvg"></div>
+    ${pseudo || r.retornoBloqueado ? '' : `<div class="dxw" id="dxw"><button type="button" class="btn ghost sm" id="dxb">+ Salida adicional (retiro de fábrica)</button><div id="dxl" class="dxl" hidden></div></div>`}
     <div id="sgc"></div>
     <div id="vac" class="vac" hidden></div>
     <div id="bdev" class="bdev" hidden></div>
@@ -1623,7 +1624,7 @@ async function vDespacho(m) {
       <div class="dchips" id="dchips"><button type="button" data-c="">Todos</button>${orden.map(c => `<button type="button" data-c="${esc(c)}">${esc(CATS[c] || c)}</button>`).join('')}</div></div>
     <div class="dth" id="dth"><span>Producto</span><span id="rfh"></span><span>Kilos</span><span>Unidades</span><span></span></div>
     <div id="dt" class="dt dm-${S.dmod} todos">${orden.map(c => cats[c].map((p, i) => { const f = reg[p.codigo] || {};
-      return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}">
+      return `${i === 0 ? `<div class="catl">${CATS[c] || esc(c)}</div>` : ''}<div class="pr oc" data-c="${esc(p.codigo)}" data-u="${esc(p.unidad)}" data-cat="${esc(c)}" data-obs="${esc(f.obs || '')}">
         <div class="pn">${esc(p.nombre)}${pseudo || r.retornoBloqueado ? '' : `<span class="dvq" data-dq="${esc(p.codigo)}"></span>`}</div><div class="rf"></div>
         <div class="cl kgc" data-col="Kilos">${p.unidad === 'UN' ? '<span class="na">—</span>' : nin('salida', p, f.salida) + nin('retorno', p, f.retorno)}</div>
         <div class="cl unc" data-col="Unidades">${p.unidad === 'UN' ? nin('salida', p, f.salida) + nin('retorno', p, f.retorno) : conUn(p) ? nin('salidaUn', p, f.salidaUn) + nin('retornoUn', p, f.retornoUn) : '<span class="na">—</span>'}</div>
@@ -1734,8 +1735,28 @@ async function vDespacho(m) {
         const fl = d.filas.filter(f => f.salida !== '' && dec(f.salida) > 0); pintarVend(v.usuario, fl.length, fl.filter(f => f.retorno !== '').length); }
     } catch (e) {}
   })();
+  // v163: salida adicional — el vendedor va a la fábrica durante el día y avisan por WhatsApp. Se SUMA a su salida y queda anotada con la hora en `obs` («EXTRA hh:mm +N kg · +N un»)
+  const pintarExtras = () => {
+    const box = $('#dxl', m); if (!box) return;
+    const L = [];
+    filas.forEach(el => { const re = /EXTRA (\d{2}:\d{2}) ([^|]+)/g; let x; const nom = ((S.cat.productos.find(p => String(p.codigo) === el.dataset.c)) || {}).nombre || el.dataset.c;
+      while ((x = re.exec(el.dataset.obs || ''))) L.push({ h: x[1], t: x[2].trim(), n: nom }); });
+    L.sort((a, b) => a.h < b.h ? -1 : 1);
+    box.hidden = !L.length;
+    box.innerHTML = L.length ? `<b>Salidas adicionales de hoy</b>` + L.map(x => `<div class="dxi"><span class="muted">${esc(x.h)}</span> <span>${esc(x.n)}</span> <b>${esc(x.t)}</b></div>`).join('') : '';
+  };
+  pintarExtras();
+  { const b = $('#dxb', m); if (b) b.onclick = () => abrirSalidaExtra(nomDe(S.vend), filas, conUn, async (el, kgv, unv, hora) => {
+      const sumar = (i, v) => { if (!i || !(v > 0)) return; i.value = String(Math.round(((parseFloat(String(i.value).replace(',', '.')) || 0) + v) * 1000) / 1000); };
+      const esUN = el.dataset.u === 'UN', partes = [];
+      if (esUN) { sumar(inp(el, 'salida'), unv); if (unv > 0) partes.push('+' + unv + ' un'); }
+      else { sumar(inp(el, 'salida'), kgv); if (kgv > 0) partes.push('+' + kgv + ' kg'); const iu = inp(el, 'salidaUn'); if (iu && unv > 0) { sumar(iu, unv); partes.push('+' + unv + ' un'); } }
+      el.dataset.obs = (el.dataset.obs ? el.dataset.obs + ' | ' : '') + 'EXTRA ' + hora + ' ' + partes.join(' · ');
+      sucio = true; calc(); pintarExtras();
+      await guardar(false);
+    }); }
   const guardar = async sigue => {
-    const datos = filas.map(el => { const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn'), o = { codigo: el.dataset.c, salida: S0(el).replace(',', '.'), retorno: R0(el).replace(',', '.') };
+    const datos = filas.map(el => { const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn'), o = { codigo: el.dataset.c, salida: S0(el).replace(',', '.'), retorno: R0(el).replace(',', '.'), obs: el.dataset.obs || '' };
       if (su) { o.salidaUn = su.value.replace(',', '.'); o.retornoUn = ru.value.replace(',', '.'); } return o; });
     await api('saveDespacho', S.sess.token, S.fecha, S.vend, datos); sucio = false;
     toast('Despacho de ' + nomDe(S.vend) + ' guardado');
@@ -1773,6 +1794,46 @@ async function bloqueDev(m, vend, nombre) {
 }
 
 /** Ventana del bodeguero para registrar una merma o un reproceso de un producto que trajo el vendedor. Solo cantidad y tipo; el valor lo calcula el servidor. */
+/** Hoja para anotar una salida adicional del vendedor (retiro en fábrica durante el día). Llama alAgregar(fila, kilos, unidades, 'hh:mm'). */
+function abrirSalidaExtra(nombre, filas, conUn, alAgregar) {
+  const hh = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Santiago' }).format(new Date());
+  const prods = S.cat.productos.filter(p => filas.some(el => el.dataset.c === String(p.codigo)));
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Salida adicional"><div class="grip"></div><div class="body">
+    <div class="muted">Retiro en fábrica de</div><div style="font-weight:700;font-size:19px;margin:2px 0 8px">${esc(nombre)}</div>
+    <input class="in" id="sxQ" type="search" placeholder="Buscar producto…" autocomplete="off">
+    <div id="sxL" class="sxl"></div>
+    <div id="sxF" hidden>
+      <div style="font-weight:700;margin:10px 0 4px" id="sxN"></div>
+      <div class="row" style="gap:10px"><div class="grow" id="sxKw"><label class="f" for="sxK">Kilos</label><input class="in n" id="sxK" inputmode="decimal" autocomplete="off" placeholder="0"></div>
+      <div class="grow" id="sxUw"><label class="f" for="sxU">Unidades</label><input class="in n" id="sxU" inputmode="decimal" autocomplete="off" placeholder="0"></div>
+      <div><label class="f" for="sxH">Hora</label><input class="in" id="sxH" type="time" value="${hh}"></div></div>
+    </div>
+    <p class="muted" style="margin:10px 0 0">Se suma a la salida de hoy y se guarda al tiro.</p>
+    <div class="row" style="margin-top:12px;gap:8px"><button class="btn ghost" id="sxX" type="button">Cerrar</button><span class="grow"></span><button class="btn cu" id="sxOk" type="button" disabled>Agregar</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov); $('#sxX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  let sel = null;
+  const sinT = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const lista = () => { const q = sinT($('#sxQ', ov).value);
+    const ps = prods.filter(p => !q || sinT(p.nombre).includes(q)).slice(0, 40);
+    $('#sxL', ov).innerHTML = ps.map(p => `<button type="button" class="sxi ${sel && sel.codigo === p.codigo ? 'on' : ''}" data-c="${esc(p.codigo)}">${esc(p.nombre)}</button>`).join('') || '<div class="muted">Sin resultados</div>'; };
+  lista(); $('#sxQ', ov).oninput = lista;
+  $('#sxL', ov).onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; sel = prods.find(p => String(p.codigo) === b.dataset.c);
+    const esUN = sel.unidad === 'UN', tieneUn = esUN || conUn(sel);
+    $('#sxF', ov).hidden = false; $('#sxN', ov).textContent = sel.nombre; $('#sxKw', ov).hidden = esUN; $('#sxUw', ov).hidden = !tieneUn;
+    $('#sxOk', ov).disabled = false; lista(); setTimeout(() => (esUN ? $('#sxU', ov) : $('#sxK', ov)).focus(), 30); };
+  $('#sxOk', ov).onclick = async () => {
+    if (!sel) return;
+    const n = id => parseFloat(String($('#' + id, ov).value).replace(',', '.')) || 0, k = n('sxK'), u = n('sxU');
+    if (!(k > 0) && !(u > 0)) return toast('Anota la cantidad que se llevó.', true);
+    const el = filas.find(x => x.dataset.c === String(sel.codigo)); if (!el) return;
+    const b = $('#sxOk', ov); b.disabled = true;
+    try { await alAgregar(el, k, u, $('#sxH', ov).value || hh); toast('Salida adicional agregada: ' + sel.nombre);
+      sel = null; $('#sxF', ov).hidden = true; $('#sxK', ov).value = ''; $('#sxU', ov).value = ''; $('#sxQ', ov).value = ''; lista(); $('#sxQ', ov).focus(); }
+    catch (e) { toast(e.message || 'No se pudo guardar', true); b.disabled = false; }
+  };
+}
 function abrirDevolucionBodega(prod, vend, nombre, alGuardar) {
   let tipo = '';
   const esUn = prod.unidad === 'UN';
