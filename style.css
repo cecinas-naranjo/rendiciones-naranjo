@@ -1227,3 +1227,18 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 .listo{position:fixed;left:50%;bottom:calc(var(--bar-h) + 18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:56;background:#1F6B3A;color:#fff;
   padding:10px 16px;border-radius:99px;font-size:14px;font-weight:700;max-width:calc(100vw - 28px);text-align:center;animation:solofade .16s ease both}
 .listo.out{opacity:0;transition:opacity 180ms}
+
+/* v173: Caja chica más pareja; «Ver como…» como burbuja */
+.ccp{display:block;margin-bottom:8px;padding:12px 14px}
+.ccr{display:grid;grid-template-columns:minmax(0,1fr) 110px 96px;gap:12px;align-items:center}
+.ccr .ccm{text-align:right;font-variant-numeric:tabular-nums}
+.ccr .btn{width:100%;justify-content:center;padding:8px 10px}
+.ccr .muted{font-size:13.5px;line-height:1.35}
+@media(max-width:560px){.ccr{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}.ccr .btn{grid-column:1/-1}}
+#probar{right:12px;bottom:14px;flex-direction:row;align-items:center;gap:6px;width:40px;height:40px;padding:0;border-radius:99px;justify-content:center;opacity:.75;box-shadow:0 3px 10px rgba(0,0,0,.28);overflow:hidden}
+#probar:hover,#probar:focus-visible{opacity:1}
+#probar .ic{font-size:18px;line-height:1}
+#probar b{display:none}
+#probar.viendo{width:auto;max-width:150px;padding:0 12px 0 10px;opacity:.9}
+#probar.viendo b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.has-bottom #probar{bottom:84px}

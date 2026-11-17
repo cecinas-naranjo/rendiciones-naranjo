@@ -774,3 +774,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v172 — Caja chica con días cerrados y aviso «Guardado ✓» (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, style.css, sw.js)
 - Regla: un día cerrado no se mueve. **Caja chica (INGRESO) no se puede sacar del efectivo de un día cerrado** (ya se contó y depositó): error con el mensaje de elegir un día abierto o pedir al ADMIN que reabra. **Reposición de un gasto de día cerrado**: se permite, queda con la fecha en que se hizo y baja el saldo; `reposDe_` ignora las reposiciones hechas después del cierre (`RENDICIONES.cerrado`), así la rendición cerrada y su planilla no cambian.
 - Cliente: `listo(txt)` muestra una píldora verde «Guardado ✓ · ya puedes cambiar de pestaña» al terminar cualquier escritura (`escribir1`), «Guardado en el teléfono ✓» si quedó en cola y «Enviado ✓ · todo al día» al sincronizar. Solo sintaxis verificada.
+
+## v173 — Caja chica más pareja y «Ver como…» en burbuja (solo frontend: app.js, style.css, sw.js)
+- «Gastos por reponer» en grilla (detalle | monto | botón Reponer, mismo ancho en todas las filas; en celular el botón baja). El botón morado `#probar` es una burbuja de 40 px con ojo (con nombre corto cuando se está viendo como otra persona), semitransparente, para no tapar datos.

@@ -623,7 +623,9 @@ function montarProbar() {
   const v = $('#probar'); if (v) v.remove();
   if (!S.sess || !(S_ADMIN || S.sess.rol === 'ADMIN')) return;
   const b = document.createElement('button'); b.id = 'probar'; b.type = 'button';
-  b.innerHTML = S_ADMIN ? `<small>Viendo como</small><b>${esc(S.sess.nombre.split(' ')[0])} · ${esc(S.sess.rol)}</b>` : '<small>Administración</small><b>Ver como…</b>';
+  b.title = S_ADMIN ? 'Viendo como ' + S.sess.nombre + ' · toca para cambiar' : 'Ver como… (solo administración)';
+  b.className = S_ADMIN ? 'viendo' : '';
+  b.innerHTML = S_ADMIN ? `<span class="ic">👁</span><b>${esc(S.sess.nombre.split(' ')[0])}</b>` : '<span class="ic">👁</span>';
   b.onclick = abrirProbar; document.body.appendChild(b);
 }
 async function abrirProbar() {
@@ -3778,10 +3780,10 @@ async function vCajaChica(m) {
       <div><span>Ha entrado</span><b>${clp(r.ingresos)}</b></div><div><span>Repuesto a vendedores</span><b>${clp(r.repuesto)}</b></div><div><span>Gastos de la caja</span><b>${clp(r.gastosCaja || 0)}</b></div></div>
     ${puede ? '<div class="row" style="margin:12px 0;gap:8px;flex-wrap:wrap"><button class="btn cu" id="ccIn" type="button">+ Sacar caja chica del efectivo de un día</button><button class="btn ghost" id="ccGa" type="button">+ Anotar un gasto de la caja chica</button></div>' : ''}
     <h3>Gastos por reponer ${r.pendientes.length ? `<small class="muted">(${r.pendientes.length})</small>` : ''}</h3>
-    ${r.pendientes.length ? r.pendientes.map((x, i) => `<div class="cfac" style="display:block;margin-bottom:8px"><div class="row" style="gap:10px;flex-wrap:wrap">
+    ${r.pendientes.length ? r.pendientes.map((x, i) => `<div class="cfac ccp"><div class="ccr">
       <span class="grow"><b>${esc(x.nombre)}</b> <span class="muted">· ${fechaCortaTxt(x.fecha)}${x.estado === 'CERRADA' ? ' · día cerrado' : ''}</span>
         <div class="muted">Gastó ${clp(x.gastos)}${x.repuesto ? ' · ya repuesto ' + clp(x.repuesto) : ''}</div>${detalleGastos(x.detalle)}</span>
-      <b>${clp(x.falta)}</b>${puede ? `<button class="btn cu" type="button" data-i="${i}">Reponer</button>` : ''}</div></div>`).join('')
+      <b class="ccm">${clp(x.falta)}</b>${puede ? `<button class="btn cu sm" type="button" data-i="${i}">Reponer</button>` : '<span></span>'}</div></div>`).join('')
       : '<div class="empty">No hay gastos por reponer.</div>'}
     <h3 style="margin-top:18px">Movimientos</h3>
     ${r.movimientos.length ? `<table class="t"><thead><tr><th>Día</th><th>Qué</th><th>Detalle</th><th class="m">Monto</th><th></th></tr></thead><tbody>${r.movimientos.map(x => `<tr>
