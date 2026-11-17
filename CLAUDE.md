@@ -777,3 +777,5 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v173 — Caja chica más pareja y «Ver como…» en burbuja (solo frontend: app.js, style.css, sw.js)
 - «Gastos por reponer» en grilla (detalle | monto | botón Reponer, mismo ancho en todas las filas; en celular el botón baja). El botón morado `#probar` es una burbuja de 40 px con ojo (con nombre corto cuando se está viendo como otra persona), semitransparente, para no tapar datos.
+
+## v174 — La burbuja «Ver como…» lleva una letra (A, o la inicial de la persona vista) en vez del emoji (solo frontend: app.js, style.css, sw.js)

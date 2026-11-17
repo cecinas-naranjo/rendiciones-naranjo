@@ -1237,7 +1237,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 @media(max-width:560px){.ccr{grid-template-columns:minmax(0,1fr) auto;row-gap:8px}.ccr .btn{grid-column:1/-1}}
 #probar{right:12px;bottom:14px;flex-direction:row;align-items:center;gap:6px;width:40px;height:40px;padding:0;border-radius:99px;justify-content:center;opacity:.75;box-shadow:0 3px 10px rgba(0,0,0,.28);overflow:hidden}
 #probar:hover,#probar:focus-visible{opacity:1}
-#probar .ic{font-size:18px;line-height:1}
+#probar .ic{font-size:16px;font-weight:700;line-height:1}
 #probar b{display:none}
 #probar.viendo{width:auto;max-width:150px;padding:0 12px 0 10px;opacity:.9}
 #probar.viendo b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

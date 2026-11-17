@@ -625,7 +625,7 @@ function montarProbar() {
   const b = document.createElement('button'); b.id = 'probar'; b.type = 'button';
   b.title = S_ADMIN ? 'Viendo como ' + S.sess.nombre + ' · toca para cambiar' : 'Ver como… (solo administración)';
   b.className = S_ADMIN ? 'viendo' : '';
-  b.innerHTML = S_ADMIN ? `<span class="ic">👁</span><b>${esc(S.sess.nombre.split(' ')[0])}</b>` : '<span class="ic">👁</span>';
+  b.innerHTML = S_ADMIN ? `<span class="ic">${esc(S.sess.nombre.charAt(0))}</span><b>${esc(S.sess.nombre.split(' ')[0])}</b>` : '<span class="ic">A</span>';
   b.onclick = abrirProbar; document.body.appendChild(b);
 }
 async function abrirProbar() {
