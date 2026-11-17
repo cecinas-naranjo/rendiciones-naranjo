@@ -1279,10 +1279,10 @@ details.vcard.rs[open]>summary{border-bottom:1px solid var(--line-2)}
 .gsec .gdot{width:12px;height:12px;border-radius:50%;background:var(--gc2);flex:none}
 .gsec h4{margin:0;font-size:18px;color:var(--ink);letter-spacing:0}
 .gsec small{display:block;font-size:13px;color:var(--ink-2);margin-top:1px}
-.gsec .gtot{text-align:right}
-.gsec .gtot span{display:block;font-size:12px;color:var(--ink-2);white-space:nowrap}
-.gsec .gtot b{font-size:18px;color:var(--ink);white-space:nowrap}
+.gsec .gsum{text-align:right}
+.gsec .gsum span{display:block;font-size:12px;color:var(--ink-2);white-space:nowrap}
+.gsec .gsum b{font-size:18px;color:var(--ink);white-space:nowrap}
 .gsec .vcards{padding:0}
 .gsec .vcard.rs{background:#fff;border:1px solid #E6E3DF;border-left:4px solid var(--gc2)}
 .gsec.g1{--gc2:#C2571A}.gsec.g2{--gc2:#3B6FB6}.gsec.g3{--gc2:#2E8B72}.gsec.g4{--gc2:#7A5FA8}
-@media(max-width:560px){.gsec>header.gh{flex-wrap:wrap}.gsec .gtot{text-align:left;width:100%}}
+@media(max-width:560px){.gsec>header.gh{flex-wrap:wrap}.gsec .gsum{text-align:left;width:100%}}

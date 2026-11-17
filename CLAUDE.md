@@ -828,3 +828,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v188 — Resumen: encabezados de categoría livianos (solo frontend: app.js, style.css, sw.js)
 - Reemplaza el estilo de v187: el `<header>` de cada `section.gsec` heredaba el fondo café del `header` global (bloque oscuro). Ahora es `header.gh` con `position:static`, sin fondo, punto de color (`.gdot`), título, cantidad y «Venta del grupo» a la derecha, y una línea del color del grupo debajo. Sin emojis ni fondos de color; las tarjetas siguen blancas con franja de color. Lección: no usar la etiqueta `header` sin resetear fondo/sticky (ver también `.dksec>header`).
+
+## v189 — Resumen: el total del grupo se veía en un cuadro café (solo frontend: app.js, style.css, sw.js)
+- La clase `.gtot` ya existía (tarjeta café de totales); el total de cada categoría pasó a `.gsum`. Antes de nombrar una clase nueva, buscarla con grep en style.css (pasó también con `.dvc`, `.seg`, `.pasos`).
