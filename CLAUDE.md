@@ -825,3 +825,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v187 — Resumen: cada categoría es un bloque con color propio (solo frontend: app.js, style.css, sw.js)
 - Pedido del dueño: se veía saturado y las categorías se enredaban. `GRUPOS_RES` = [título, filtro, clase `g1..g4`, ícono]; cada grupo es `section.gsec` con cabecera (ícono, nombre, N rendiciones, folios por detallar, «Venta del grupo») y fondo propio (cobre vendedores, azul supermercados, verde distribuidores, violeta bodega); las tarjetas son blancas con franja de color a la izquierda. Solo CSS/HTML, sin animaciones (v83).
+
+## v188 — Resumen: encabezados de categoría livianos (solo frontend: app.js, style.css, sw.js)
+- Reemplaza el estilo de v187: el `<header>` de cada `section.gsec` heredaba el fondo café del `header` global (bloque oscuro). Ahora es `header.gh` con `position:static`, sin fondo, punto de color (`.gdot`), título, cantidad y «Venta del grupo» a la derecha, y una línea del color del grupo debajo. Sin emojis ni fondos de color; las tarjetas siguen blancas con franja de color. Lección: no usar la etiqueta `header` sin resetear fondo/sticky (ver también `.dksec>header`).

@@ -11,11 +11,11 @@ const kg = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CL
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const nomR = v => String(v.vendedor || '').indexOf('DIST:') === 0 ? (v.nombre || v.vendedor) : v.vendedor;   // v183: distribuidores se rinden como un vendedor (usuario virtual DIST:<NOMBRE>)
 // v184: Resumen por categoría (Vendedores / Supermercados / Distribuidores / Bodega) con tarjeta simple; al tocarla abre el detalle completo (abrirVendedor)
-const GRUPOS_RES = [   // [título, filtro, clase de color, ícono]
-  ['Vendedores', v => !/^(DIST:|SUPERMERCADOS$|DISTRIBUIDOR$|SALA$|CONSUMO$)/.test(v.vendedor), 'g1', '🚚'],
-  ['Supermercados', v => /^(SUPERMERCADOS|DISTRIBUIDOR)$/.test(v.vendedor), 'g2', '🛒'],
-  ['Distribuidores', v => /^DIST:/.test(v.vendedor), 'g3', '📦'],
-  ['Venta en bodega y consumo', v => /^(SALA|CONSUMO)$/.test(v.vendedor), 'g4', '🏭']];
+const GRUPOS_RES = [   // [título, filtro, clase de color]
+  ['Vendedores', v => !/^(DIST:|SUPERMERCADOS$|DISTRIBUIDOR$|SALA$|CONSUMO$)/.test(v.vendedor), 'g1'],
+  ['Supermercados', v => /^(SUPERMERCADOS|DISTRIBUIDOR)$/.test(v.vendedor), 'g2'],
+  ['Distribuidores', v => /^DIST:/.test(v.vendedor), 'g3'],
+  ['Venta en bodega y consumo', v => /^(SALA|CONSUMO)$/.test(v.vendedor), 'g4']];
 const difClsR = (v, r) => !v.kilos.salida || !r.hayDetalle ? '' : v.kilos.alerta ? (v.kilos.diferencia > 0 ? 'pos' : 'neg') : '';
 function cardRes(v, r) {
   const difCls = x => difClsR(x, r);
@@ -3067,8 +3067,8 @@ async function vResumen(m) {
     ${r.porVendedor.length ? '' : '<h3>Por vendedor</h3>'}
     ${r.porVendedor.length ? `<div class="row" style="margin:18px 0 8px"><h3 class="grow" style="margin:0">Por vendedor</h3>
       <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
-    ${GRUPOS_RES.map(([tit, test, cl, ic]) => { const L = r.porVendedor.filter(test); if (!L.length) return ''; const pend = L.reduce((s, v) => s + (v.pendientes || 0), 0);
-      return `<section class="gsec ${cl}"><header class="gh"><span class="gic" aria-hidden="true">${ic}</span><div class="grow"><h4>${tit}</h4><small>${L.length} ${L.length === 1 ? 'rendición' : 'rendiciones'}${pend ? ' · ' + pend + ' folios por detallar' : ' · todo detallado'}</small></div><div class="gtot"><span>Venta del grupo</span><b>${clp(L.reduce((s, v) => s + (v.venta || 0), 0))}</b></div></header><div class="vcards">${L.map(v => cardRes(v, r)).join('')}</div></section>`; }).join('')}` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
+    ${GRUPOS_RES.map(([tit, test, cl]) => { const L = r.porVendedor.filter(test); if (!L.length) return ''; const pend = L.reduce((s, v) => s + (v.pendientes || 0), 0);
+      return `<section class="gsec ${cl}"><header class="gh"><i class="gdot" aria-hidden="true"></i><div class="grow"><h4>${tit}</h4><small>${L.length} ${L.length === 1 ? 'rendición' : 'rendiciones'}${pend ? ' · ' + pend + ' folios por detallar' : ' · todo detallado'}</small></div><div class="gtot"><span>Venta del grupo</span><b>${clp(L.reduce((s, v) => s + (v.venta || 0), 0))}</b></div></header><div class="vcards">${L.map(v => cardRes(v, r)).join('')}</div></section>`; }).join('')}` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
     ${r.sinAsignar.length ? `<h3>Documentos sin vendedor</h3><div class="tw"><table><thead><tr><th>Documento</th><th>Cliente</th><th>Terminal</th><th class="r">Total</th><th>Asignar a</th></tr></thead><tbody>
       ${r.sinAsignar.map(d => `<tr><td>${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)}</td><td>${esc(d.cliente)}</td><td>${esc(d.terminal)}</td><td class="r">${clp(d.total)}</td>
         <td><select class="in" style="min-height:38px" data-fk="${esc(d.folio_key)}"><option value="">Elegir…</option>${opcVend('')}</select></td></tr>`).join('')}</tbody></table></div>
