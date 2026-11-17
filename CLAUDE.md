@@ -816,3 +816,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v184 — Resumen por categoría y tarjetas simples (solo frontend: app.js, style.css, sw.js)
 - Pedido del dueño: el Resumen se veía muy cargado. Ahora `vResumen` separa en secciones (`GRUPOS_RES`): Vendedores, Supermercados, Distribuidores y Venta en bodega y consumo. Cada tarjeta (`cardRes`, `details.vcard.rs`) muestra solo nombre, Venta, Efectivo a entregar, Crédito y chips de estado (por detallar / falta-sobra / kilos). Al abrirla sale el detalle de siempre y el botón «Ver detalle completo ›» (`abrirVendedor`). `difCls` pasó a `difClsR(v, r)`.
+
+## v185 — Tarjetas del Resumen más parejas (solo frontend: app.js, style.css, sw.js)
+- La etiqueta «Efectivo a entregar» saltaba de línea y desalineaba las tres cifras; ahora dice «A entregar» y las etiquetas/cifras van en una sola línea (`.rs3`).

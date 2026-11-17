@@ -1266,3 +1266,7 @@ details.vcard.rs .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex
 details.vcard.rs[open]>summary{border-bottom:1px solid var(--line-2)}
 .rsd{padding:4px 14px 14px}
 .rsd .btn{margin-top:12px}
+/* v185: cifras de la tarjeta del Resumen alineadas */
+.rs3{align-items:start}
+.rs3 span{white-space:nowrap;margin-bottom:2px}
+.rs3 b{display:block;white-space:nowrap;font-size:15.5px}

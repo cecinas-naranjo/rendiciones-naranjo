@@ -25,7 +25,7 @@ function cardRes(v, r) {
     falta ? `<span class="chip bad">${v.efectivoDif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(v.efectivoDif))}</span>` : '',
     kDif ? '<span class="chip bad">Kilos</span>' : ''].join('');
   return `<details class="vcard rs"><summary><div class="row"><b class="grow">${esc(nomR(v))}</b><span class="chips">${chips}</span></div>
-    <div class="rs3"><div><span>Venta</span><b>${clp(v.venta)}</b></div><div><span>Efectivo a entregar</span><b>${clp(v.efectivoEntregar)}</b></div><div><span>Crédito</span><b>${clp(v.credito)}</b></div></div></summary>
+    <div class="rs3"><div><span>Venta</span><b>${clp(v.venta)}</b></div><div><span>A entregar</span><b>${clp(v.efectivoEntregar)}</b></div><div><span>Crédito</span><b>${clp(v.credito)}</b></div></div></summary>
     <div class="rsd"><dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.ventaDocs != null ? v.ventaDocs : v.venta)}</dd>${v.nc ? `<dt>− Notas de crédito</dt><dd>${clp(v.nc)}</dd><dt>Venta neta</dt><dd>${clp(v.venta)}</dd>` : ''}<dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
         ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
