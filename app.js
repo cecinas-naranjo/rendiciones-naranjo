@@ -10,6 +10,36 @@ const clp = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
 const kg = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const nomR = v => String(v.vendedor || '').indexOf('DIST:') === 0 ? (v.nombre || v.vendedor) : v.vendedor;   // v183: distribuidores se rinden como un vendedor (usuario virtual DIST:<NOMBRE>)
+// v184: Resumen por categoría (Vendedores / Supermercados / Distribuidores / Bodega) con tarjeta simple que se abre para ver el detalle
+const GRUPOS_RES = [
+  ['Vendedores', v => !/^(DIST:|SUPERMERCADOS$|DISTRIBUIDOR$|SALA$|CONSUMO$)/.test(v.vendedor)],
+  ['Supermercados', v => /^(SUPERMERCADOS|DISTRIBUIDOR)$/.test(v.vendedor)],
+  ['Distribuidores', v => /^DIST:/.test(v.vendedor)],
+  ['Venta en bodega y consumo', v => /^(SALA|CONSUMO)$/.test(v.vendedor)]];
+const difClsR = (v, r) => !v.kilos.salida || !r.hayDetalle ? '' : v.kilos.alerta ? (v.kilos.diferencia > 0 ? 'pos' : 'neg') : '';
+function cardRes(v, r) {
+  const difCls = x => difClsR(x, r);
+  const falta = v.efectivoContado !== null && v.efectivoContado !== undefined && v.efectivoDif;
+  const kDif = r.hayDetalle && v.kilos.salida && difCls(v) === 'neg';
+  const chips = [v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar ›</button>` : '<span class="chip ok">Detallado</span>',
+    falta ? `<span class="chip bad">${v.efectivoDif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(v.efectivoDif))}</span>` : '',
+    kDif ? '<span class="chip bad">Kilos</span>' : ''].join('');
+  return `<details class="vcard rs"><summary><div class="row"><b class="grow">${esc(nomR(v))}</b><span class="chips">${chips}</span></div>
+    <div class="rs3"><div><span>Venta</span><b>${clp(v.venta)}</b></div><div><span>Efectivo a entregar</span><b>${clp(v.efectivoEntregar)}</b></div><div><span>Crédito</span><b>${clp(v.credito)}</b></div></div></summary>
+    <div class="rsd"><dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.ventaDocs != null ? v.ventaDocs : v.venta)}</dd>${v.nc ? `<dt>− Notas de crédito</dt><dd>${clp(v.nc)}</dd><dt>Venta neta</dt><dd>${clp(v.venta)}</dd>` : ''}<dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
+        ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
+        <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
+        ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
+        ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}${v.reposicion ? `<dt>Repuesto desde caja chica</dt><dd>${clp(v.reposicion)}</dd>` : ''}
+        ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}${v.depositoExceso ? ` <span class="chip bad">${clp(v.depositoExceso)} más que el efectivo</span>` : ''}</dd>` : ''}
+        <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
+        ${v.efectivoContado === null || v.efectivoContado === undefined ? '' : `<dt>Efectivo contado</dt><dd>${clp(v.efectivoContado)} <span class="chip ${v.efectivoDif ? 'bad' : 'ok'}">${v.efectivoDif ? (v.efectivoDif < 0 ? 'Falta ' : 'Sobra ') + clp(Math.abs(v.efectivoDif)) : 'Cuadra'}</span></dd>`}
+        ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
+          <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
+          ${r.hayDetalle ? `<dt>Diferencia kilos</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)}</dd>
+          ${v.kilos.diferenciaPesos ? `<dt>${v.kilos.diferenciaPesos > 0 ? 'Kilos faltantes' : 'Kilos sobrantes'}</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${clp(Math.abs(v.kilos.diferenciaPesos))}</dd>` : ''}` : ''}` : ''}
+      </dl><button type="button" class="btn ghost sm" data-ver="${esc(v.vendedor)}">Ver detalle completo ›</button></div></details>`;
+}
 const soloDigitos = v => Number(String(v).replace(/\D/g, '')) || 0;
 const nk = n => String(Math.round((Number(String(n).replace(',', '.')) || 0) * 100) / 100).replace('.', ',');
 const dec = v => Number(String(v).replace(',', '.')) || 0;
@@ -3029,7 +3059,6 @@ async function vEfectivo(m) {
 async function vResumen(m) {
   const r = await api('getResumen', S.sess.token, S.fecha);
   const t = r.totales, cerrada = r.estado === 'CERRADA';
-  const difCls = v => !v.kilos.salida || !r.hayDetalle ? '' : v.kilos.alerta ? (v.kilos.diferencia > 0 ? 'pos' : 'neg') : '';
   // pasos del día: qué está listo y qué falta, en orden
   const docs = r.porVendedor.reduce((a, v) => a + v.documentos, 0), pend = r.porVendedor.reduce((a, v) => a + v.pendientes, 0);
   const pasos = [
@@ -3051,21 +3080,7 @@ async function vResumen(m) {
     ${r.porVendedor.length ? '' : '<h3>Por vendedor</h3>'}
     ${r.porVendedor.length ? `<div class="row" style="margin:18px 0 8px"><h3 class="grow" style="margin:0">Por vendedor</h3>
       <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
-    <div class="vcards">${r.porVendedor.map(v => `<div class="vcard clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(nomR(v))}">
-      <div class="row"><b class="grow" style="font-size:17px">${esc(nomR(v))}</b>${v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar · Detallar ›</button>` : '<span class="chip ok">Detallado</span>'}</div>
-      <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.ventaDocs != null ? v.ventaDocs : v.venta)}</dd>${v.nc ? `<dt>− Notas de crédito</dt><dd>${clp(v.nc)}</dd><dt>Venta neta</dt><dd>${clp(v.venta)}</dd>` : ''}<dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
-        ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
-        <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
-        ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
-        ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}${v.reposicion ? `<dt>Repuesto desde caja chica</dt><dd>${clp(v.reposicion)}</dd>` : ''}
-        ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}${v.depositoExceso ? ` <span class="chip bad">${clp(v.depositoExceso)} más que el efectivo</span>` : ''}</dd>` : ''}
-        <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
-        ${v.efectivoContado === null || v.efectivoContado === undefined ? '' : `<dt>Efectivo contado</dt><dd>${clp(v.efectivoContado)} <span class="chip ${v.efectivoDif ? 'bad' : 'ok'}">${v.efectivoDif ? (v.efectivoDif < 0 ? 'Falta ' : 'Sobra ') + clp(Math.abs(v.efectivoDif)) : 'Cuadra'}</span></dd>`}
-        ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
-          <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
-          ${r.hayDetalle ? `<dt>Diferencia kilos</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)}</dd>
-          ${v.kilos.diferenciaPesos ? `<dt>${v.kilos.diferenciaPesos > 0 ? 'Kilos faltantes' : 'Kilos sobrantes'}</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${clp(Math.abs(v.kilos.diferenciaPesos))}</dd>` : ''}` : ''}` : ''}
-      </dl><div class="vermas">Ver detalle ›</div></div>`).join('')}</div>` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
+    ${GRUPOS_RES.map(([tit, test]) => { const L = r.porVendedor.filter(test); return L.length ? `<h4 class="gres">${tit} <span class="muted">${L.length}</span></h4><div class="vcards">${L.map(v => cardRes(v, r)).join('')}</div>` : ''; }).join('')}` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}
     ${r.sinAsignar.length ? `<h3>Documentos sin vendedor</h3><div class="tw"><table><thead><tr><th>Documento</th><th>Cliente</th><th>Terminal</th><th class="r">Total</th><th>Asignar a</th></tr></thead><tbody>
       ${r.sinAsignar.map(d => `<tr><td>${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)}</td><td>${esc(d.cliente)}</td><td>${esc(d.terminal)}</td><td class="r">${clp(d.total)}</td>
         <td><select class="in" style="min-height:38px" data-fk="${esc(d.folio_key)}"><option value="">Elegir…</option>${opcVend('')}</select></td></tr>`).join('')}</tbody></table></div>
@@ -3092,11 +3107,8 @@ async function vResumen(m) {
           <div class="muted">${ad ? `Adelantos: ${[a.esperando ? a.esperando + ' esperando Mi DTE' : '', a.aplicado ? a.aplicado + ' aplicados' : '', a.revisar ? a.revisar + ' por revisar' : ''].filter(Boolean).join(' · ')}` : 'Sin folios adelantados'}${v.cobranza || v.gastos || v.depositos ? ` · ${[v.cobranza ? v.cobranza + ' cobranza' : '', v.gastos ? v.gastos + ' gastos' : '', v.depositos ? v.depositos + ' depósito' + (v.depositos > 1 ? 's' : '') : ''].filter(Boolean).join(', ')}` : ''}</div></div>`; }).join('')}</div></details>`;
     $('.avd', box).ontoggle = e => { try { localStorage.setItem('rn_avc', e.target.open ? '1' : '0'); } catch (x) {} };
   }).catch(() => {});
-  $$('[data-detallar]', m).forEach(b => b.onclick = e => { e.stopPropagation(); S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
-  $$('[data-ver]', m).forEach(c => {
-    c.onclick = () => abrirVendedor(c.dataset.ver);
-    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirVendedor(c.dataset.ver); } };
-  });
+  $$('[data-detallar]', m).forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
+  $$('[data-ver]', m).forEach(c => { c.onclick = () => abrirVendedor(c.dataset.ver); });
   if ($('#impTodos')) $('#impTodos').onclick = () => imprimirInspeccion('');
   $$('[data-paso]', m).forEach(b => b.onclick = () => {
     const p = b.dataset.paso;

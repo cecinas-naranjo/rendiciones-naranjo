@@ -1252,3 +1252,17 @@ body.otro-dia .topbar{background:var(--ink);color:#fff}
 /* v178: el pie fijo de Despacho (kg + Guardar) queda por encima del buscador/categorías al pasar por debajo */
 .sticky-foot{z-index:9}
 .sticky-foot .card{background:#fff}
+
+/* v184: Resumen por categoría, tarjeta simple que se abre */
+h4.gres{margin:20px 0 8px;font-size:15px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.04em}
+h4.gres .muted{font-weight:400;margin-left:4px}
+details.vcard.rs{padding:0}
+details.vcard.rs>summary{list-style:none;cursor:pointer;padding:14px}
+details.vcard.rs>summary::-webkit-details-marker{display:none}
+details.vcard.rs>summary b.grow{font-size:17px}
+details.vcard.rs .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.rs3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.rs3 span{display:block;font-size:12px;color:var(--ink-2)} .rs3 b{font-size:16px}
+details.vcard.rs[open]>summary{border-bottom:1px solid var(--line-2)}
+.rsd{padding:4px 14px 14px}
+.rsd .btn{margin-top:12px}
