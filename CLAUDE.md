@@ -819,3 +819,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v185 — Tarjetas del Resumen más parejas (solo frontend: app.js, style.css, sw.js)
 - La etiqueta «Efectivo a entregar» saltaba de línea y desalineaba las tres cifras; ahora dice «A entregar» y las etiquetas/cifras van en una sola línea (`.rs3`).
+
+## v186 — Tarjeta del Resumen: simple y abre el detalle de siempre (solo frontend: app.js, style.css, sw.js)
+- Reemplaza la parte «se abre en la misma tarjeta» de v184: la tarjeta (`cardRes`) ya no se despliega; muestra nombre, Venta, A entregar, Crédito y chips, y al tocarla abre `abrirVendedor` (el detalle completo, con kilos, efectivo contado, etc.) como antes. El detalle grande queda en esa ventana, en la inspección impresa y en el archivo de rendición.

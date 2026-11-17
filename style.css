@@ -1270,3 +1270,6 @@ details.vcard.rs[open]>summary{border-bottom:1px solid var(--line-2)}
 .rs3{align-items:start}
 .rs3 span{white-space:nowrap;margin-bottom:2px}
 .rs3 b{display:block;white-space:nowrap;font-size:15.5px}
+/* v186: tarjeta simple del Resumen (abre el detalle completo al tocarla) */
+.vcard.rs{align-self:start}
+.vcard.rs .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}

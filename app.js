@@ -10,7 +10,7 @@ const clp = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
 const kg = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const nomR = v => String(v.vendedor || '').indexOf('DIST:') === 0 ? (v.nombre || v.vendedor) : v.vendedor;   // v183: distribuidores se rinden como un vendedor (usuario virtual DIST:<NOMBRE>)
-// v184: Resumen por categoría (Vendedores / Supermercados / Distribuidores / Bodega) con tarjeta simple que se abre para ver el detalle
+// v184: Resumen por categoría (Vendedores / Supermercados / Distribuidores / Bodega) con tarjeta simple; al tocarla abre el detalle completo (abrirVendedor)
 const GRUPOS_RES = [
   ['Vendedores', v => !/^(DIST:|SUPERMERCADOS$|DISTRIBUIDOR$|SALA$|CONSUMO$)/.test(v.vendedor)],
   ['Supermercados', v => /^(SUPERMERCADOS|DISTRIBUIDOR)$/.test(v.vendedor)],
@@ -24,21 +24,8 @@ function cardRes(v, r) {
   const chips = [v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar ›</button>` : '<span class="chip ok">Detallado</span>',
     falta ? `<span class="chip bad">${v.efectivoDif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(v.efectivoDif))}</span>` : '',
     kDif ? '<span class="chip bad">Kilos</span>' : ''].join('');
-  return `<details class="vcard rs"><summary><div class="row"><b class="grow">${esc(nomR(v))}</b><span class="chips">${chips}</span></div>
-    <div class="rs3"><div><span>Venta</span><b>${clp(v.venta)}</b></div><div><span>A entregar</span><b>${clp(v.efectivoEntregar)}</b></div><div><span>Crédito</span><b>${clp(v.credito)}</b></div></div></summary>
-    <div class="rsd"><dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.ventaDocs != null ? v.ventaDocs : v.venta)}</dd>${v.nc ? `<dt>− Notas de crédito</dt><dd>${clp(v.nc)}</dd><dt>Venta neta</dt><dd>${clp(v.venta)}</dd>` : ''}<dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
-        ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
-        <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>
-        ${v.descuentos ? `<dt>Descuentos</dt><dd>${clp(v.descuentos)}</dd>` : ''}<dt>Efectivo ventas</dt><dd>${clp(v.EFECTIVO)}</dd>
-        ${v.cobranza ? `<dt>Cobranza</dt><dd>${clp(v.cobranza)}</dd>` : ''}${v.gastos ? `<dt>Gastos</dt><dd>− ${clp(v.gastos)}</dd>` : ''}${v.reposicion ? `<dt>Repuesto desde caja chica</dt><dd>${clp(v.reposicion)}</dd>` : ''}
-        ${v.depositos ? `<dt>Depositado a la empresa</dt><dd>− ${clp(v.depositos)}${v.depositoDif ? ` <span class="chip bad">dif. ${clp(v.depositoDif)}</span>` : ''}${v.depositoExceso ? ` <span class="chip bad">${clp(v.depositoExceso)} más que el efectivo</span>` : ''}</dd>` : ''}
-        <dt class="tot">Efectivo a entregar</dt><dd>${clp(v.efectivoEntregar)}</dd>
-        ${v.efectivoContado === null || v.efectivoContado === undefined ? '' : `<dt>Efectivo contado</dt><dd>${clp(v.efectivoContado)} <span class="chip ${v.efectivoDif ? 'bad' : 'ok'}">${v.efectivoDif ? (v.efectivoDif < 0 ? 'Falta ' : 'Sobra ') + clp(Math.abs(v.efectivoDif)) : 'Cuadra'}</span></dd>`}
-        ${v.kilos.salida ? `<dt>Kilos salida / retorno</dt><dd>${kg(v.kilos.salida)} / ${kg(v.kilos.retorno)}</dd>
-          <dt>Kilos vendidos${r.hayDetalle ? ' / facturados' : ''}</dt><dd>${kg(v.kilos.vendido)}${r.hayDetalle ? ' / ' + kg(v.kilos.facturado) : ''}</dd>
-          ${r.hayDetalle ? `<dt>Diferencia kilos</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)}</dd>
-          ${v.kilos.diferenciaPesos ? `<dt>${v.kilos.diferenciaPesos > 0 ? 'Kilos faltantes' : 'Kilos sobrantes'}</dt><dd class="${difCls(v) === 'neg' ? 'chip bad' : difCls(v) === 'pos' ? 'chip warn' : ''}" style="justify-self:end">${clp(Math.abs(v.kilos.diferenciaPesos))}</dd>` : ''}` : ''}` : ''}
-      </dl><button type="button" class="btn ghost sm" data-ver="${esc(v.vendedor)}">Ver detalle completo ›</button></div></details>`;
+  return `<div class="vcard rs clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(nomR(v))}"><div class="row"><b class="grow">${esc(nomR(v))}</b><span class="chips">${chips}</span></div>
+    <div class="rs3"><div><span>Venta</span><b>${clp(v.venta)}</b></div><div><span>A entregar</span><b>${clp(v.efectivoEntregar)}</b></div><div><span>Crédito</span><b>${clp(v.credito)}</b></div></div></div>`;
 }
 const soloDigitos = v => Number(String(v).replace(/\D/g, '')) || 0;
 const nk = n => String(Math.round((Number(String(n).replace(',', '.')) || 0) * 100) / 100).replace('.', ',');
@@ -3108,7 +3095,10 @@ async function vResumen(m) {
     $('.avd', box).ontoggle = e => { try { localStorage.setItem('rn_avc', e.target.open ? '1' : '0'); } catch (x) {} };
   }).catch(() => {});
   $$('[data-detallar]', m).forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); S.vend = b.dataset.detallar; S.filtro = 'pend'; ir('folios'); });
-  $$('[data-ver]', m).forEach(c => { c.onclick = () => abrirVendedor(c.dataset.ver); });
+  $$('[data-ver]', m).forEach(c => {
+    c.onclick = () => abrirVendedor(c.dataset.ver);
+    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrirVendedor(c.dataset.ver); } };
+  });
   if ($('#impTodos')) $('#impTodos').onclick = () => imprimirInspeccion('');
   $$('[data-paso]', m).forEach(b => b.onclick = () => {
     const p = b.dataset.paso;
