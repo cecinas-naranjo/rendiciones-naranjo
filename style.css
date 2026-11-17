@@ -1242,3 +1242,9 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 #probar.viendo{width:auto;max-width:150px;padding:0 12px 0 10px;opacity:.9}
 #probar.viendo b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.has-bottom #probar{bottom:84px}
+
+/* v175: aviso «Estás viendo…» más fino y sin mayúsculas de más («De») */
+.otrodia{font-size:15px;padding:7px 14px;gap:12px}
+.otrodia b{font-size:15.5px;text-transform:lowercase;display:inline-block}
+.otrodia b::first-letter{text-transform:uppercase}
+.otrodia button{padding:3px 12px}
