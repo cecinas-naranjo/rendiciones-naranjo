@@ -1299,3 +1299,11 @@ details.dpl[open]>summary{border-bottom:1px solid var(--line-2);margin-bottom:4p
 details.dpl[open]>summary span::after{content:"▴"}
 details.dpl .dfila{padding:5px 0;font-size:14px}
 details.dpl .dfolio{padding:6px 0}
+/* v191: categorías del Resumen con títulos más notorios */
+.gsec{margin-top:40px}
+.gsec h4{font-size:23px;font-weight:800}
+.gsec small{font-size:14px}
+.gsec .gdot{width:16px;height:16px}
+.gsec>header.gh{padding-bottom:12px;margin-bottom:14px;border-bottom-width:3px}
+.gsec .gsum b{font-size:21px}
+.gsec .gsum span{font-size:13px}

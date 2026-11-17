@@ -3069,8 +3069,8 @@ async function vResumen(m) {
     ${r.alertas.length ? `<div class="alert" id="avisos"><b>Antes de cerrar</b><ul>${r.alertas.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>`
       : r.porVendedor.length ? '<div class="alert ok">Todo cuadra. Puedes cerrar la rendición.</div>' : ''}
     <div id="avc"></div>
-    ${r.porVendedor.length ? '' : '<h3>Por vendedor</h3>'}
-    ${r.porVendedor.length ? `<div class="row" style="margin:18px 0 8px"><h3 class="grow" style="margin:0">Por vendedor</h3>
+    ${r.porVendedor.length ? '' : '<h3>Por categoría</h3>'}
+    ${r.porVendedor.length ? `<div class="row" style="margin:18px 0 8px"><h3 class="grow" style="margin:0">Por categoría</h3>
       <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
     ${GRUPOS_RES.map(([tit, test, cl]) => { const L = r.porVendedor.filter(test); if (!L.length) return ''; const pend = L.reduce((s, v) => s + (v.pendientes || 0), 0);
       return `<section class="gsec ${cl}"><header class="gh"><i class="gdot" aria-hidden="true"></i><div class="grow"><h4>${tit}</h4><small>${L.length} ${L.length === 1 ? 'rendición' : 'rendiciones'}${pend ? ' · ' + pend + ' folios por detallar' : ' · todo detallado'}</small></div><div class="gsum"><span>Venta del grupo</span><b>${clp(L.reduce((s, v) => s + (v.venta || 0), 0))}</b></div></header><div class="vcards">${L.map(v => cardRes(v, r)).join('')}</div></section>`; }).join('')}` : '<div class="empty"><b>Sin movimientos este día</b>Parte importando los informes de Mi DTE.</div>'}

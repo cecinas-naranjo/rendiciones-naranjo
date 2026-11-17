@@ -834,3 +834,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v190 — Ficha del vendedor (`abrirVendedor`) simple y compacta (solo frontend: app.js, style.css, sw.js)
 - Pedido del dueño: «no tanto detalle, más simple y más compacto». Arriba solo: Efectivo a entregar (una línea de cuenta), Venta, Crédito, Transferencias (total), cheques de cobranza y Efectivo contado (cuadra/falta/sobra). Todo lo demás son `details.dpl` plegados con resumen en una línea (`plg(k, titulo, resumen, inner)`): Por día, Cuenta del efectivo, Folios (abierto solo si hay por detallar), Diferencia de kilos, Transferencias por banco, Cheques, Cobranza, Gastos y Depósitos. El estado abierto/cerrado se conserva al cambiar el filtro de folios (`ab`). La inspección impresa y el Excel no cambian.
+
+## v191 — Resumen: «Por categoría» y títulos de categoría más notorios (solo frontend: app.js, style.css, sw.js)
+- El título de la pantalla pasa de «Por vendedor» a «Por categoría». Títulos de grupo 23 px en negrita, punto de 16 px, línea de 3 px y más aire entre categorías (40 px).
