@@ -1243,10 +1243,10 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 #probar.viendo b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.has-bottom #probar{bottom:84px}
 
-/* v176: al mirar otro día, TODA la parte de arriba (cabecera + aviso) va en naranjo, sin franja blanca */
-body.otro-dia .topbar{background:var(--cu)}
+/* v179: al mirar otro día en oficina, la cabecera va CAFÉ (como vendedor/bodega) y el aviso naranjo queda debajo */
+body.otro-dia .topbar{background:var(--ink);color:#fff}
 @media (min-width:900px){
-  body.otro-dia .topbar{background:var(--cu);color:#fff;padding-bottom:12px}
+  body.otro-dia .topbar{background:var(--ink);color:#fff;padding:10px 24px}
 }
 
 /* v178: el pie fijo de Despacho (kg + Guardar) queda por encima del buscador/categorías al pasar por debajo */

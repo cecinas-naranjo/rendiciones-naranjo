@@ -790,3 +790,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v178 — Despacho: el pie (kg + Guardar) ya no queda tapado por el buscador (solo CSS + sw.js)
 - La barra fija del buscador/categorías (`.dtool`, z-index 6) tapaba parte del pie `.sticky-foot` al coincidir en pantalla. El pie ahora tiene `z-index:9` y fondo blanco opaco.
+
+## v179 — Oficina, otro día: cabecera café con el aviso naranjo debajo (solo CSS + sw.js)
+- Pedido del dueño: que se vea como vendedor/bodega. Reemplaza v176/v177: con `body.otro-dia` la `.topbar` de oficina es café (`--ink`) en vez de transparente/naranja; el aviso «Estás viendo…» sigue naranjo justo debajo.
