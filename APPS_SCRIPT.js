@@ -69,7 +69,7 @@ const CFG = {
   // Distribuidores: en la planilla de inventario cada uno tiene su columna de salida (aparece si retiró ese día)
   // Carga sugerida: cuántos días se miran (mismo día de la semana) y colchón sobre el promedio
   SUG_DIAS: 8, SUG_COLCHON: 0.20,
-  DISTRIBUIDORES: ['PATRICIO','CESAR','JUAN CARLOS','AMIR','OSCAR','CHILOE'],
+  DISTRIBUIDORES: ['PATRICIO','CESAR','JUAN CARLOS','AMIR','OSCAR','CHILOE','ANBA','AAMF','PICHIHUILLINCO'],
   // v149: columnas de salida de la planilla de inventario por sección (nómina del bodeguero); él las edita desde la app (propiedad INV_DEST). SUPERMERCADO siempre va al final.
   DEST_SECCION: { TERMINADOS: ['REPROCESO','CONSUMO','CONSUMO EXTERNO','LAMINADO','PATRICIO','OSCAR','AMIR'],
     CONGELADOS: ['OTRAS SALIDAS CON GUIA','CONSUMO','REPROCESO','LAMINADO','PATRICIO','CESAR','JUAN CARLOS'],
@@ -1577,6 +1577,7 @@ function docsDelDia_(fecha, vendedor) {
   // notas de crédito de Mi DTE ya enlazadas a una anulación aprobada: se ocultan (su efecto ya está en el folio anulado)
   const ncOcultas = {}; anuls.filter(a => a.estado === 'APROBADA' && a.nc_folio).forEach(a => ncOcultas[String(a.nc_folio)] = 1);
   return byFecha_('DOCUMENTOS', fecha).map(d => { const vr = vendedorRend_(d); return vr === d.vendedor ? d : Object.assign({}, d, { vendedor: vr }); })
+    .filter(d => !NO_REND_[d.vendedor])                      // v192: los supermercados no se rinden
     .filter(d => !vendedor || d.vendedor === vendedor)
     .filter(d => !(ncOcultas[String(d.folio).replace(/\D/g, '').replace(/^0+/, '')] && /cr[eé]dito/i.test(String(d.tipo)))).map(d => {
     const p = pagos.filter(x => x.folio_key === d.folio_key);
@@ -2341,6 +2342,13 @@ function saldosClientes_() {
   const estCh = {}; read_('CHEQUES_ESTADO').forEach(e => estCh[e.clave] = String(e.estado));
   const conCheque = {};
   read_('PAGOS').filter(p => p.forma === 'CHEQUE' && estCh['V|' + p.id] !== 'COBRADO').forEach(p => { cred[p.folio_key] = (cred[p.folio_key] || 0) + num_(p.monto); conCheque[p.folio_key] = 1; });
+  // v192: lo facturado a un supermercado es crédito desde que se importa (no se rinde ni se detalla). La nota de crédito baja la deuda.
+  const superNC = [];
+  read_('DOCUMENTOS').forEach(d => {
+    if (esGuia_(d.tipo) || canalDeDoc_(d) !== 'SUPERMERCADOS') return;
+    if (/cr[eé]dito/i.test(String(d.tipo))) { superNC.push(d); return; }
+    if (!(cred[d.folio_key] > 0)) cred[d.folio_key] = num_(d.total);
+  });
   const porFolio = {};
   Object.keys(cred).forEach(fk => {
     const d = docs[fk]; if (!d || cred[fk] <= 0) return;
@@ -2372,6 +2380,7 @@ function saldosClientes_() {
     return lista.find(c => normTxt_(c.cliente) === n) || lista.find(c => { const m = normTxt_(c.cliente); return m.indexOf(n) >= 0 || n.indexOf(m) >= 0; }) || null;
   };
   const aplicar = (f, monto, pago) => { const q = Math.min(monto, f.credito - f.pagado); if (q <= 0) return 0; f.pagado += q; f.pagos.push({ fecha: pago.fecha, monto: q, forma: pago.forma }); return q; };
+  superNC.forEach(d => { const c = cli(d.rut, d.cliente), m = Math.abs(num_(d.total)); if (m > 0) c.abonos.push({ fecha: d.fecha, monto: Math.round(m), forma: 'NOTA_CREDITO', folio: String(d.folio) }); });
   // 2) pagos: primero los que traen folio, después el resto (en orden de fecha)
   const cobros = read_('COBRANZA').map(x => ({ fecha: x.fecha, cliente: x.cliente, folio: String(x.folio || '').replace(/[^0-9]/g, ''), folio_key: x.folio_key || '', monto: num_(x.monto), forma: x.forma }))
     .sort((a, b) => (a.folio ? 0 : 1) - (b.folio ? 0 : 1) || String(a.fecha).localeCompare(String(b.fecha)));
@@ -2399,7 +2408,11 @@ function saldosClientes_() {
       deuda: pend.reduce((a, f) => a + f.saldo, 0) - abonos, abonos: c.abonos, pendientes: pend.length, diasMax: pend.length ? pend[0].dias : 0,
       ultimoPago: c.ultimoPago || '', facturas: c.facturas.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))) };
   }).sort((a, b) => b.deuda - a.deuda);
-  return { hoy, clientes: lista, total: lista.reduce((a, c) => a + Math.max(0, c.deuda), 0), sinRut: lista.filter(c => !c.rut && c.deuda > 0).length };
+  // v192: los supermercados van aparte (crédito de supermercados): no entran en `clientes` ni en el total
+  const esSup = c => { const e = tipoCliente_({ rut: c.rut, cliente: c.cliente }); return !!e && e[0] === 'S'; };
+  const sup = lista.filter(esSup).map(c => Object.assign(c, { supermercado: true })), resto = lista.filter(c => !esSup(c));
+  return { hoy, clientes: resto, total: resto.reduce((a, c) => a + Math.max(0, c.deuda), 0), sinRut: resto.filter(c => !c.rut && c.deuda > 0).length,
+    supermercados: sup, totalSuper: sup.reduce((a, c) => a + Math.max(0, c.deuda), 0) };
 }
 
 /* ============================ CLIENTES (RUT) Y LISTA DE CRÉDITOS ============================ */
@@ -2514,10 +2527,10 @@ function porCobrar(token) {
   const u = auth_(token, ['VENDEDOR','RENDICION','SUPERVISOR']);
   const r = conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_());
   const out = [];
-  r.clientes.forEach(c => {
+  r.clientes.concat(u.rol === 'VENDEDOR' ? [] : (r.supermercados || [])).forEach(c => {
     const fs = c.facturas.filter(f => f.saldo > 0 && (u.rol !== 'VENDEDOR' || f.vendedor === u.usuario));
     if (!fs.length) return;
-    out.push({ clave: c.clave, cliente: c.cliente, rut: c.rut, condicion: c.condicion, deuda: fs.reduce((a, f) => a + f.saldo, 0),
+    out.push({ clave: c.clave, cliente: c.cliente, rut: c.rut, condicion: c.condicion, supermercado: !!c.supermercado, deuda: fs.reduce((a, f) => a + f.saldo, 0),
       facturas: fs.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))).map(f => ({ folio_key: f.folio_key, tipo: f.tipo, folio: f.folio, fecha: f.fecha, saldo: f.saldo, total: f.credito,
         dias: f.dias, vendedor: f.vendedorNombre, cheque: !!f.cheque, venc: f.fecha && c.condicion ? sumarDias_(f.fecha, c.condicion) : '' })) });
   });
@@ -3865,40 +3878,46 @@ function historial(token) {
 // Indicadores de un período: ventas, crédito y cobranza, kilos y mermas, control. Solo lee; se calcula sobre lo ya guardado.
 const diasEntre_ = (a, b) => Math.round((new Date(String(b) + 'T12:00:00') - new Date(String(a) + 'T12:00:00')) / 864e5);
 
-/* ============================ CANALES: SUPERMERCADOS Y DISTRIBUIDORES (v182) ============================ */
-// Distribuidores (terminal BODEGA): se reconocen por RUT (sin dígito verificador) o por nombre. Para sumar uno nuevo, agregar su RUT o parte de su nombre.
-const CANAL_DIST_RUTS_ = ['10594880', '10967967', '15651662', '76965456', '77228386', '78007363', '78390639'];
-const CANAL_DIST_NOMBRES_ = /PATRICIO MONTES|JUAN CARLOS SILVA|OSCAR (ELADIO )?LAGOS|CESAR (RICARDO )?CAMPOS|\bANBA\b|\bAAMF\b|PICHIHUILLINCO|\bAMIR\b/;
+/* ============================ CANALES: SUPERMERCADOS Y DISTRIBUIDORES (v182, v192: por cliente) ============================ */
+// v192: la clasificación se rige por la lista de la empresa "CLIENTES Y QUÉ SON" (solo los que NO son de ruta; los de ruta salen con el terminal
+// NARANJOT# de su vendedor). RUT sin dígito verificador → [S|D|B, nombre, tarjeta]. S = supermercado (no se rinde: va a créditos de supermercados),
+// D = distribuidor (tarjeta propia en la rendición, la clave es el 3.er dato), B = venta en bodega. Para sumar o mover un cliente, editar esta lista.
+const CLI_TIPO_ = {'77349320':['S',"COMERCIAL AMAR HERMANOS Y COMPAÑIA LTDA"],'76279855':['S',"COMERCIAL SUPERUNICO ANGOL LTDA"],'76278969':['S',"COMERCIAL SUPERUNICO LAJA LTDA"],'76128330':['S',"COMERCIAL SUPERUNICO STA BARBARA LTDA"],'76062357':['S',"DISTRIBUIDORA Y MAYORISTA CRISTIAN MORENO SPA"],'77180289':['S',"DISTRIBUIDORA Y SUPERMERCADOS SUPEROFERTA SPA"],'81096600':['S',"KUNCAR Y CIA LTDA."],'78006381':['S',"OPERADORA DE COMERCIO"],'78007363':['D',"ANBA SPA",'ANBA'],'10967967':['D',"CESAR RICARDO CAMPOS MORA",'CESAR'],'78390639':['D',"COMERCIALIZADORA AAMF SUR SPA",'AAMF'],'77228386':['D',"COMERCIALIZADORA PATRICIO MONTES INOSTROZA E.I.R.L",'PATRICIO'],'10594880':['D',"JUAN CARLOS SILVA AYALA",'JUAN CARLOS'],'15651662':['D',"OSCAR ELADIO LAGOS LAGOS",'OSCAR'],'76965456':['D',"SOCIEDAD CECINAS PICHIHUILLINCO LIMITADA",'PICHIHUILLINCO'],'20645043':['B',"ADRIELA ESCARLETH CÁRDENAS RODRÍGUEZ"],'27531771':['B',"BRIAN JOSE DIAZ FLORES"],'19923028':['B',"CARLA LEIVA"],'21255436':['B',"CARLOS GONZALES ISLA"],'16389061':['B',"ELICEO ANDRES RIOS BRIONES"],'77822839':['B',"INVERSIONES Y COMERCIALIZADORA LUCAR SPA"],'6467072':['B',"JAIME ULISES PARADA CANCINO"],'19198892':['B',"JAVIER ROBLES CANARIO"],'14219974':['B',"JOEL LEIVA VARAS"],'10240346':['B',"JUAN GATICA VEGA"],'27038200':['B',"JUAN MEJIA"],'18727612':['B',"LEONARDO ANDRES SAN MARTIN PEREZ"],'8571343':['B',"LUIS ANDRES SAEZ THIELEMANN"],'14299882':['B',"MANUEL ALBERTO CAMPOMANES GUTIERREZ"],'16707893':['B',"MARIA TERESA TRONCOSO RIVERA"],'12990206':['B',"MIGUEL FERNANDEZ SAEZ"],'20947573':['B',"RODOLFO ISLA"],'11603891':['B',"RODRIGO ROLANDO FIGUEROA MANRIQUEZ"],'20872678':['B',"SAMUEL BENJAMIN RUBILAR MUÑOZ"],'77759355':['B',"SCHNEEBERGER EVENTOS Y PRODUCCIONES SPA"],'21143098':['B',"SERGIO CERNA ARANCIBIA"],'14076345':['B',"SIMON ZAPATA SANHUEZA"],'27004862':['B',"YORMAN RAFAEL MORENO DIAZ"]};
+const CLI_TIPO_NOMBRE_ = (() => { const m = {}; Object.keys(CLI_TIPO_).forEach(k => m[normTxt_(CLI_TIPO_[k][1])] = k); return m; })();
+const EQUIPO_OFICINA_ = /^(DESKTOP|PC-|OFICINA)/;
+/** Entrada de la lista para un documento (por RUT; si no, por razón social exacta). null = no está (cliente de ruta o desconocido). */
+function tipoCliente_(d) {
+  const rut = String(d.rut || '').replace(/[^0-9kK]/g, '').toUpperCase().replace(/[0-9K]$/, '').replace(/^0+/, '');
+  return CLI_TIPO_[rut] || CLI_TIPO_[CLI_TIPO_NOMBRE_[normTxt_(d.cliente)]] || null;
+}
+/** 'SUPERMERCADOS' | 'DISTRIBUIDORES' | '' (vendedor o venta en bodega). Solo cuenta lo emitido desde oficina/bodega: lo de un NARANJOT# es del vendedor. */
 function canalDeDoc_(d) {
   const t = String(d.terminal || '').trim().toUpperCase();
-  if (t === 'SUPERMERCADO') return 'SUPERMERCADOS';
-  if (t === 'BODEGA') {
-    const rut = String(d.rut || '').replace(/[^0-9kK]/g, '').toUpperCase().replace(/[0-9K]$/, '');
-    if (rut && CANAL_DIST_RUTS_.indexOf(rut.replace(/^0+/, '')) >= 0) return 'DISTRIBUIDORES';
-    if (CANAL_DIST_NOMBRES_.test(normTxt_(d.cliente))) return 'DISTRIBUIDORES';
-  }
-  return '';
+  if (!(t === '' || t === 'SUPERMERCADO' || t === 'BODEGA' || EQUIPO_OFICINA_.test(t))) return '';
+  const e = tipoCliente_(d);
+  if (e) return e[0] === 'S' ? 'SUPERMERCADOS' : e[0] === 'D' ? 'DISTRIBUIDORES' : '';
+  return t === 'SUPERMERCADO' ? 'SUPERMERCADOS' : '';
 }
-/* v183: los distribuidores se rinden como un "vendedor" cada uno (usuario virtual DIST:<NOMBRE>), igual que en Despacho.
-   Sus documentos salen del terminal BODEGA (usuario SALA); aquí se separan por cliente. */
+/* v183: los distribuidores se rinden como un "vendedor" cada uno (usuario virtual DIST:<NOMBRE>), igual que en Despacho. */
 function distNombre_(d) {
-  const t = normTxt_(d.cliente);
-  const hit = (CFG.DISTRIBUIDORES || []).filter(n => t.indexOf(normTxt_(n)) >= 0)[0];
-  return 'DIST:' + (hit || 'OTROS');
+  const e = tipoCliente_(d);
+  return 'DIST:' + ((e && e[2]) || 'OTROS');
 }
+const NO_REND_ = { SUPERMERCADOS: 1, DISTRIBUIDOR: 1 };      // v192: los supermercados no se rinden
 function vendedorRend_(d) {
-  const v = d.vendedor;
-  if ((v === 'SALA' || !v) && String(d.terminal || '').trim().toUpperCase() === 'BODEGA' && canalDeDoc_(d) === 'DISTRIBUIDORES') return distNombre_(d);
-  return v;
+  const c = canalDeDoc_(d);
+  if (c === 'DISTRIBUIDORES') return distNombre_(d);
+  if (c === 'SUPERMERCADOS') return 'SUPERMERCADOS';
+  return d.vendedor;
 }
 function nombreRend_(u) {
-  if (String(u).indexOf('DIST:') === 0) { const n = String(u).slice(5); return n === 'OTROS' ? 'Otros distribuidores' : 'Distribuidor ' + n.charAt(0) + n.slice(1).toLowerCase(); }
+  if (String(u).indexOf('DIST:') === 0) { const n = String(u).slice(5); return n === 'OTROS' ? 'Otros distribuidores' : n === 'AAMF' ? 'Distribuidor AAMF' : 'Distribuidor ' + n.toLowerCase().replace(/(^| )(\S)/g, (m, a, c) => a + c.toUpperCase()); }
   const x = vendedores_().filter(v => v.usuario === u)[0]; return x ? x.nombre : u;
 }
 /** Vendedores + distribuidores (usuarios virtuales) para Resumen, Inspección y archivo de rendición. */
 function rendidores_(docs) {
-  const base = vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre }));
-  const vistos = {}; base.forEach(v => vistos[v.usuario] = 1);
+  const base = vendedores_().filter(v => !NO_REND_[v.usuario]).map(v => ({ usuario: v.usuario, nombre: v.nombre }));
+  const vistos = {}; base.forEach(v => vistos[v.usuario] = 1); Object.keys(NO_REND_).forEach(k => vistos[k] = 1);
   (CFG.DISTRIBUIDORES || []).map(n => 'DIST:' + n).concat(['DIST:OTROS']).forEach(u => { if (!vistos[u]) { vistos[u] = 1; base.push({ usuario: u, nombre: nombreRend_(u), virtual: true }); } });
   (docs || []).forEach(d => { if (d.vendedor && !vistos[d.vendedor]) { vistos[d.vendedor] = 1; base.push({ usuario: d.vendedor, nombre: nombreRend_(d.vendedor), virtual: true }); } });
   return base;
@@ -3943,7 +3962,7 @@ function canal_(canal, desde, hasta) {
   const plazoPol = neto => neto > 300000 ? 28 : neto > 120000 ? 21 : neto > 60000 ? 14 : 7;
   const porRut = {}; Object.keys(cli).forEach(k => { if (k[0] !== 'N') porRut[k] = cli[k]; });
   let deuda = 0, vencida = 0;
-  sal.clientes.forEach(sc => {
+  sal.clientes.concat(sal.supermercados || []).forEach(sc => {
     const k = String(sc.rut || '').replace(/[^0-9kK]/g, '').toUpperCase(), c = porRut[k]; if (!c) return;
     sc.facturas.forEach(f => { if (f.saldo <= 0) return;
       const plazo = sc.condicion > 0 ? sc.condicion : plazoPol(f.credito / 1.19); c.deuda += f.saldo; deuda += f.saldo;

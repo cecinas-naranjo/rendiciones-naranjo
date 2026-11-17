@@ -13,7 +13,6 @@ const nomR = v => String(v.vendedor || '').indexOf('DIST:') === 0 ? (v.nombre ||
 // v184: Resumen por categoría (Vendedores / Supermercados / Distribuidores / Bodega) con tarjeta simple; al tocarla abre el detalle completo (abrirVendedor)
 const GRUPOS_RES = [   // [título, filtro, clase de color]
   ['Vendedores', v => !/^(DIST:|SUPERMERCADOS$|DISTRIBUIDOR$|SALA$|CONSUMO$)/.test(v.vendedor), 'g1'],
-  ['Supermercados', v => /^(SUPERMERCADOS|DISTRIBUIDOR)$/.test(v.vendedor), 'g2'],
   ['Distribuidores', v => /^DIST:/.test(v.vendedor), 'g3'],
   ['Venta en bodega y consumo', v => /^(SALA|CONSUMO)$/.test(v.vendedor), 'g4']];
 const difClsR = (v, r) => !v.kilos.salida || !r.hayDetalle ? '' : v.kilos.alerta ? (v.kilos.diferencia > 0 ? 'pos' : 'neg') : '';
@@ -2281,14 +2280,16 @@ async function vSaldos(m) {
   const r = await api('getSaldosClientes', S.sess.token);
   const fc = iso => { const [a, mm, d] = String(iso).split('-'); return d + '-' + mm + '-' + a.slice(2); };
   const edad = d => d > 60 ? 'bad' : d > 30 ? 'warn' : 'ok';
-  const vends = [...new Set(r.clientes.flatMap(c => c.vendedores))].sort();
-  const conDeuda = r.clientes.filter(c => c.deuda > 0);
+  const sup = !!S.salSup, base = sup ? (r.supermercados || []) : r.clientes, totalMostrado = sup ? (r.totalSuper || 0) : r.total;
+  const vends = [...new Set(base.flatMap(c => c.vendedores))].sort();
+  const conDeuda = base.filter(c => c.deuda > 0);
   render(m, `<h2>Saldos de clientes</h2>
-    <p class="lead" style="margin:0 0 12px">Facturas a crédito (las de la lista de créditos y las nuevas) menos los pagos anotados en Cobranza. Todo se une por RUT y el nombre es el del DTE.</p>
+    <div class="row" style="margin:0 0 12px;flex-wrap:wrap"><button class="btn ${sup ? 'ghost' : 'cu'} sm" data-st="0">Clientes · ${clp(r.total)}</button><button class="btn ${sup ? 'cu' : 'ghost'} sm" data-st="1">Créditos de supermercados · ${clp(r.totalSuper || 0)}</button></div>
+    <p class="lead" style="margin:0 0 12px">${sup ? 'Todo lo facturado a un supermercado es crédito desde que se importa (no se rinde). Se descuenta con los pagos de Cobranza y las notas de crédito.' : 'Facturas a crédito (las de la lista de créditos y las nuevas) menos los pagos anotados en Cobranza. Todo se une por RUT y el nombre es el del DTE.'}</p>
     <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><button class="btn cu sm" id="pl">Abrir planilla única de créditos</button>
       ${r.sinRut ? `<button class="btn ghost sm" id="sr">${r.sinRut} cliente${r.sinRut > 1 ? 's' : ''} sin RUT: completar</button>` : ''}<span class="grow"></span><span class="muted" id="plr"></span></div>
     ${tarjetaPolitica()}
-    <div class="kpis"><div><span>Total adeudado</span><b>${clp(r.total)}</b></div>
+    <div class="kpis"><div><span>Total adeudado</span><b>${clp(totalMostrado)}</b></div>
       <div><span>Clientes con deuda</span><b>${conDeuda.length}</b></div>
       <div><span>Con facturas de más de 30 días</span><b>${conDeuda.filter(c => c.diasMax > 30).length}</b></div></div>
     <div class="row" style="margin:14px 0 10px;flex-wrap:wrap">
@@ -2298,13 +2299,14 @@ async function vSaldos(m) {
     <div id="sl"></div>
     <p class="muted" style="margin-top:14px">Todo pago en Cobranza lleva el folio de la factura que paga: se descuenta de esa factura.</p>`);
   const abiertos = {};
+  m.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { S.salSup = b.dataset.st === '1'; ir('saldos', true); });
   $('#pl').onclick = async () => { const b = $('#pl'); b.disabled = true; try { const p = await api('sincronizarPlanillaCreditos', S.sess.token);
       $('#plr').innerHTML = `<a class="chip cu" href="${esc(p.url)}" target="_blank" rel="noopener">Planilla actualizada · ${p.documentos} documentos · ${clp(p.total)}</a>${p.actualizados || p.nuevos ? ` <span class="chip ok">Traje de la planilla: ${p.actualizados} cambiados, ${p.nuevos} nuevos</span>` : ''}`;
       olvidarCache(true); window.open(p.url, '_blank'); } finally { b.disabled = false; } };
   if ($('#sr')) $('#sr').onclick = async () => { const x = await api('reintentarRut', S.sess.token); abrirSinRut(x.sinRutClientes); };
   const pintar = () => {
     const q = normTxt($('#bq').value), v = $('#bv').value, todos = $('#bp').checked;
-    const lista = r.clientes.filter(c => (todos || c.deuda > 0) && (!v || c.vendedores.indexOf(v) >= 0) &&
+    const lista = base.filter(c => (todos || c.deuda > 0) && (!v || c.vendedores.indexOf(v) >= 0) &&
       (!q || normTxt(c.cliente).indexOf(q) >= 0 || String(c.rut).replace(/\W/g, '').indexOf(q.replace(/\W/g, '')) >= 0));
     $('#sl').innerHTML = lista.length ? lista.map(c => `<div class="card sc" data-k="${esc(c.clave)}" style="margin-bottom:8px;cursor:pointer">
       <div class="row"><div class="grow"><b>${esc(c.cliente)}</b><div class="muted">${esc(c.rut || 'Sin RUT')}${c.condicion ? ' · ' + c.condicion + ' días' : ''} · ${esc(c.vendedores.join(', '))}</div></div>
@@ -2318,7 +2320,7 @@ async function vSaldos(m) {
             <div class="muted">de ${clp(f.credito)}</div></div></div>`).join('')}
         ${c.abonos.length ? `<div class="alert" style="margin-top:8px">Abonos sin factura asociada: ${c.abonos.map(a => fc(a.fecha) + ' ' + clp(a.monto)).join(', ')}. Ya están descontados del total.</div>` : ''}
         ${c.ultimoPago ? `<div class="muted" style="margin-top:6px">Último pago: ${fc(c.ultimoPago)}</div>` : ''}</div>` : ''}
-    </div>`).join('') : `<div class="empty">${r.clientes.length ? 'Ningún cliente coincide con el filtro.' : 'Todavía no hay facturas a crédito. Aparecerán cuando se marque CREDITO al detallar un folio.'}</div>`;
+    </div>`).join('') : `<div class="empty">${base.length ? 'Ningún cliente coincide con el filtro.' : 'Todavía no hay facturas a crédito. Aparecerán cuando se marque CREDITO al detallar un folio.'}</div>`;
   };
   const normTxt = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
   $('#bq').oninput = pintar; $('#bv').onchange = pintar; $('#bp').onchange = pintar;
@@ -2567,8 +2569,6 @@ function leerCreditos(rows, hi, head) {
 const sinTilde = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 // Mi DTE entrega las ventas del mostrador con el nombre del computador de oficina. Se separan según el cliente.
 const EQUIPO_OFICINA = /^(DESKTOP|PC-|OFICINA)/;
-const SUPERMERCADOS = [/AMAR HERMANOS/, /KUNCAR/, /\bSUPER ?UNICO\b|\bUNICO\b/, /SUPER ?OFERTA/, /OPERADORA DE COMERCIO/, /DISTRIBUIDORA.*MORENO/];
-const DISTRIBUIDORES = [/PATRICIO MONTES/, /JUAN CARLOS SILVA/, /OSCAR LAGOS/, /CESAR (RICARDO )?CAMPOS/, /\bANBA\b/, /\bAAMF\b/, /PICHIHUILLINCO/, /\bAMIR\b/];
 // Lista de clientes entregada por la empresa (RUT sin dígito → [tipo, nombre]). S = supermercado, D = distribuidor, B = venta en bodega.
 // Los clientes de ruta (cada uno con su vendedor) no se listan: salen con el terminal del vendedor.
 const CLIENTES_TIPO = {6467072:['B',"JAIME ULISES PARADA CANCINO"],8571343:['B',"LUIS ANDRES SAEZ THIELEMANN"],10240346:['B',"JUAN GATICA VEGA"],10594880:['D',"JUAN CARLOS SILVA AYALA"],10967967:['D',"CESAR RICARDO CAMPOS MORA"],11603891:['B',"RODRIGO ROLANDO FIGUEROA MANRIQUEZ"],12990206:['B',"MIGUEL FERNANDEZ SAEZ"],14076345:['B',"SIMON ZAPATA SANHUEZA"],14219974:['B',"JOEL LEIVA VARAS"],14299882:['B',"MANUEL ALBERTO CAMPOMANES GUTIERREZ"],15651662:['D',"OSCAR ELADIO LAGOS LAGOS"],16389061:['B',"ELICEO ANDRES RIOS BRIONES"],16707893:['B',"MARIA TERESA TRONCOSO RIVERA"],18727612:['B',"LEONARDO ANDRES SAN MARTIN PEREZ"],19198892:['B',"JAVIER ROBLES CANARIO"],19923028:['B',"CARLA LEIVA"],20645043:['B',"ADRIELA ESCARLETH CARDENAS RODRIGUEZ"],20872678:['B',"SAMUEL BENJAMIN RUBILAR MUNOZ"],20947573:['B',"RODOLFO ISLA"],21143098:['B',"SERGIO CERNA ARANCIBIA"],21255436:['B',"CARLOS GONZALES ISLA"],27004862:['B',"YORMAN RAFAEL MORENO DIAZ"],27038200:['B',"JUAN MEJIA"],27531771:['B',"BRIAN JOSE DIAZ FLORES"],76062357:['S',"DISTRIBUIDORA Y MAYORISTA CRISTIAN MORENO SPA"],76128330:['S',"COMERCIAL SUPERUNICO STA BARBARA LTDA"],76278969:['S',"COMERCIAL SUPERUNICO LAJA LTDA"],76279855:['S',"COMERCIAL SUPERUNICO ANGOL LTDA"],76965456:['D',"SOCIEDAD CECINAS PICHIHUILLINCO LIMITADA"],77180289:['S',"DISTRIBUIDORA Y SUPERMERCADOS SUPEROFERTA SPA"],77228386:['D',"COMERCIALIZADORA PATRICIO MONTES INOSTROZA E.I.R.L"],77349320:['S',"COMERCIAL AMAR HERMANOS Y COMPANIA LTDA"],77759355:['B',"SCHNEEBERGER EVENTOS Y PRODUCCIONES SPA"],77822839:['B',"INVERSIONES Y COMERCIALIZADORA LUCAR SPA"],78006381:['S',"OPERADORA DE COMERCIO"],78007363:['D',"ANBA SPA"],78390639:['D',"COMERCIALIZADORA AAMF SUR SPA"],81096600:['S',"KUNCAR Y CIA LTDA."]};
@@ -2583,10 +2583,7 @@ function clasificarVenta(tipo, cliente, equipo, rut) {
   if (!EQUIPO_OFICINA.test(eq) || /gu[ií]a|nota de cr/i.test(t)) return null;
   const n = sinTilde(cliente), k = rutCuerpo(rut), enLista = (CLIENTES_TIPO[k] && CLIENTES_TIPO[k][0]) || CLIENTES_POR_NOMBRE[n];
   if (enLista) return GRUPOS_CLI[enLista];
-  if (SUPERMERCADOS.some(r => r.test(n))) return { equipo: 'SUPERMERCADO', grupo: 'SUPERMERCADO' };
-  if (DISTRIBUIDORES.some(r => r.test(n))) return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA' };
-  if (/boleta/i.test(t)) return { equipo: 'BODEGA', grupo: 'DISTRIBUIDORA', supuesto: true };   // el único distribuidor que pide boleta
-  return { equipo: 'BODEGA', grupo: 'BODEGA' };
+  return { equipo: 'BODEGA', grupo: 'BODEGA' };      // v192: lo que no está en la lista de clientes es venta en bodega
 }
 const CAT_ALIAS = { PROPIOS: 'PROPIOS', CARNICOS: 'CARNICOS', CONGELADOS: 'CONGELADO', CONGELADO: 'CONGELADO', LACTEOS: 'LACTEO', LACTEO: 'LACTEO' };
 function categoriaProducto(codigo, desc) {
