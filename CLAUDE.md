@@ -831,3 +831,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v189 — Resumen: el total del grupo se veía en un cuadro café (solo frontend: app.js, style.css, sw.js)
 - La clase `.gtot` ya existía (tarjeta café de totales); el total de cada categoría pasó a `.gsum`. Antes de nombrar una clase nueva, buscarla con grep en style.css (pasó también con `.dvc`, `.seg`, `.pasos`).
+
+## v190 — Ficha del vendedor (`abrirVendedor`) simple y compacta (solo frontend: app.js, style.css, sw.js)
+- Pedido del dueño: «no tanto detalle, más simple y más compacto». Arriba solo: Efectivo a entregar (una línea de cuenta), Venta, Crédito, Transferencias (total), cheques de cobranza y Efectivo contado (cuadra/falta/sobra). Todo lo demás son `details.dpl` plegados con resumen en una línea (`plg(k, titulo, resumen, inner)`): Por día, Cuenta del efectivo, Folios (abierto solo si hay por detallar), Diferencia de kilos, Transferencias por banco, Cheques, Cobranza, Gastos y Depósitos. El estado abierto/cerrado se conserva al cambiar el filtro de folios (`ab`). La inspección impresa y el Excel no cambian.

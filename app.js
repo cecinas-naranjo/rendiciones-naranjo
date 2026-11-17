@@ -2346,9 +2346,14 @@ async function abrirVendedor(usuario) {
   if (!v) { $('.body', ov).innerHTML = '<div class="empty">Sin movimientos este día.</div>'; return; }
   const t = v.totales, pend = v.folios.filter(f => f.estado !== 'DETALLADO');
   let filtro = pend.length ? 'pend' : 'todos';
-  const sec = (titulo, n, total, filas) => n ? `<div class="dsec"><div class="dtit"><b>${titulo}</b><span>${n} · ${clp(total)}</span></div>${filas}</div>` : '';
+  const ab = new Set(pend.length ? ['folios'] : []);   // secciones abiertas (parten cerradas, salvo Folios si hay pendientes)
+  const plg = (k, titulo, resumen, inner) => `<details class="dsec dpl" data-k="${k}"${ab.has(k) ? ' open' : ''}><summary class="dtit"><b>${titulo}</b><span>${resumen}</span></summary>${inner}</details>`;
+  const sec = (titulo, n, total, filas) => n ? plg(titulo, titulo, n + ' · ' + clp(total), filas) : '';
   const conRut = x => esc(x.cliente) + (x.rut ? `<span class="rutl">RUT ${esc(x.rut)}</span>` : '');
   const fila = (a, b, monto) => `<div class="dfila"><span class="grow">${a}</span><span class="muted">${b || ''}</span><b>${clp(monto)}</b></div>`;
+  const trTot = Object.keys(v.transf).reduce((a, k) => a + v.transf[k].reduce((s, x) => s + x.monto, 0), 0);
+  const difEf = t.efContado === null || t.efContado === undefined ? null : t.efContado - t.entregar;
+  const cuentaCorta = 'Ventas ' + clp(t.efVentas) + ' + cobranza ' + clp(t.efCob) + (t.devoluciones ? ' − devoluciones ' + clp(t.devoluciones) : '') + (t.gastos ? ' − gastos ' + clp(t.gastos) : '') + (t.depositos ? ' − depositado ' + clp(t.depositos) : '');
   const pintar = () => {
     const folios = v.folios.filter(f => filtro === 'todos' || (filtro === 'pend' ? f.estado !== 'DETALLADO' : f.estado === 'DETALLADO'))
       .sort((a, b) => (a.estado === 'DETALLADO') - (b.estado === 'DETALLADO') || String(a.folio).localeCompare(String(b.folio), 'es', { numeric: true }));
@@ -2358,35 +2363,34 @@ async function abrirVendedor(usuario) {
         ${pend.length ? `<span class="chip cu">${pend.length} por detallar</span>` : '<span class="chip ok">Todo detallado</span>'}</div>
       <div class="dtop">
         <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
-          <small>Ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}${t.devoluciones ? ' − devoluciones ' + clp(t.devoluciones) : ''}${t.gastos ? ' − gastos ' + clp(t.gastos) : ''} − depositado ${clp(t.depositos)}${t.reposicion ? ' · repuesto desde caja chica ' + clp(t.reposicion) : ''}</small></div>
+          <small>${cuentaCorta}</small></div>
         <div class="dres">
-          ${t.nc ? fila('Venta (' + v.documentos + ' docs)', '', t.ventaDocs) + fila('− Notas de crédito', '', t.nc) + fila('Venta neta', '', t.venta) : fila('Venta (' + v.documentos + ' docs)', '', t.venta)}${fila('Venta contado', '', t.contado)}${t.creditoTotal ? fila('Crédito total', 'crédito ' + clp(t.credito) + ' · cheques ' + clp(t.chequesVenta), t.creditoTotal) : ''}
-          ${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
-          ${Object.keys(v.transf).filter(b => v.transf[b].length).map(b => fila('Transf. ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0))).join('')}
-          ${t.descuentos ? fila('Descuentos', '', t.descuentos) : ''}${t.devoluciones ? fila('Devoluciones (' + t.devolucionesN + ')', t.devSinCliente ? t.devSinCliente + ' sin cliente' : 'merma / reproceso', t.devoluciones) : ''}</div></div>
-      ${v.porDia && v.porDia.length ? `<div class="dsec"><div class="dtit"><b>Por día</b><span>todo se rinde ${fechaCortaTxt(r.fecha)}</span></div>
+          ${fila('Venta' + (t.nc ? ' neta' : '') + ' (' + v.documentos + ' docs)', '', t.venta)}${fila('Crédito', '', t.creditoTotal || 0)}
+          ${trTot ? fila('Transferencias', '', trTot) : ''}${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
+          ${t.efContado === null || t.efContado === undefined ? '' : fila('Efectivo contado', difEf === 0 ? 'cuadra' : difEf < 0 ? 'FALTA ' + clp(-difEf) : 'SOBRA ' + clp(difEf), t.efContado)}</div></div>
+      ${v.porDia && v.porDia.length ? plg('dia', 'Por día', 'se rinde ' + fechaCortaTxt(r.fecha), `
         ${v.porDia.map(x => fila(fechaCortaTxt(x.fecha) + ' · ' + x.documentos + ' docs', 'efectivo ' + clp(x.efVentas + x.efCob) + (x.credito ? ' · crédito ' + clp(x.credito) : ''), x.venta)).join('')}
-        ${fila('Total (los días juntos)', '', v.porDia.reduce((a, x) => a + x.venta, 0))}</div>` : ''}
+        ${fila('Total (los días juntos)', '', v.porDia.reduce((a, x) => a + x.venta, 0))}`) : ''}
       ${(() => { const trV = Object.keys(v.transf).reduce((a, b) => a + v.transf[b].filter(x => x.tipo === 'Venta').reduce((c, x) => c + x.monto, 0), 0),
           ef0 = t.contado + (t.devoluciones || 0) - trV, dV = t.efVentas - ef0, cont = t.efContado, dif = cont === null || cont === undefined ? null : cont - t.entregar;
-        return `<div class="dsec"><div class="dtit"><b>Cuenta del efectivo</b><span>solo aviso</span></div>
+        return plg('cuenta', 'Cuenta del efectivo', difEf === null ? 'sin contar' : difEf === 0 ? 'cuadra' : difEf < 0 ? 'falta ' + clp(-difEf) : 'sobra ' + clp(difEf), `
           ${fila('Venta contado', 'venta − crédito − cheques − descuentos', t.contado)}${fila('− Transferencias de ventas', '', trV)}
           ${fila('= Efectivo de ventas', dV ? 'ojo: lo anotado es ' + clp(t.efVentas) + ' (diferencia ' + clp(Math.abs(dV)) + ')' : 'calza con lo anotado', ef0)}
           ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.devoluciones ? fila('− Devoluciones', 'merma / reproceso', t.devoluciones) : ''}${t.gastos ? fila('− Gastos del día', '', t.gastos) : ''}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
           ${fila('= Debe entregar', '', t.entregar)}
           ${dif === null ? '<div class="muted" style="padding:6px 0">Todavía no se cuenta el efectivo (pestaña Efectivo).</div>'
-            : fila('Efectivo contado', dif === 0 ? 'cuadra' : dif < 0 ? 'FALTA ' + clp(-dif) : 'SOBRA ' + clp(dif), cont)}</div>`; })()}
-      <div class="dsec"><div class="dtit"><b>Folios</b><span>${v.detallados} de ${v.documentos} detallados</span></div>
+            : fila('Efectivo contado', dif === 0 ? 'cuadra' : dif < 0 ? 'FALTA ' + clp(-dif) : 'SOBRA ' + clp(dif), cont)}`); })()}
+      ${plg('folios', 'Folios', v.detallados + ' de ' + v.documentos + ' detallados', `
         <div class="seg" id="dfl" style="margin:2px 0 8px">${[['pend', 'Por detallar (' + pend.length + ')'], ['det', 'Detallados'], ['todos', 'Todos']].map(x =>
           `<button type="button" data-f="${x[0]}" class="${filtro === x[0] ? 'on' : ''}">${x[1]}</button>`).join('')}</div>
         ${folios.length ? folios.map(f => `<div class="dfolio ${f.estado === 'DETALLADO' ? '' : 'pend'}">
           <div class="row"><span class="grow"><b>${esc(f.cliente)}</b> <span class="muted">${esc(f.tipo)} ${esc(f.folio)}</span>${f.rut ? `<span class="rutl">RUT ${esc(f.rut)}</span>` : ''}</span><b>${clp(f.total)}</b></div>
           <div class="muted">${f.estado === 'DETALLADO' ? f.pagos.map(p => esc(textoPago(p)) + (f.pagos.length > 1 ? ' ' + clp(p.monto) : '')).join(' + ')
             + (f.descAprob ? ' · descuento ' + clp(f.descAprob) : '') + (f.detalladoPor ? ' · por ' + esc(f.detalladoPor.split(' ')[0]) : '')
-            : f.descPend ? 'Descuento esperando autorización' : 'Por detallar'}</div></div>`).join('') : '<div class="muted" style="padding:6px 0">No hay folios en este filtro.</div>'}</div>
-      ${v.kilos && v.kilos.detalle.length ? `<div class="dsec"><div class="dtit"><b>Diferencia de kilos</b><span>${v.kilos.diferencia > 0 ? '+' : ''}${kg(v.kilos.diferencia)} kg · ${v.kilos.diferenciaPesos > 0 ? 'faltante ' : 'sobrante '}${clp(Math.abs(v.kilos.diferenciaPesos))}</span></div>
+            : f.descPend ? 'Descuento esperando autorización' : 'Por detallar'}</div></div>`).join('') : '<div class="muted" style="padding:6px 0">No hay folios en este filtro.</div>'}`)}
+      ${v.kilos && v.kilos.detalle.length ? plg('kilos', 'Diferencia de kilos', (v.kilos.diferencia > 0 ? '+' : '') + kg(v.kilos.diferencia) + ' kg · ' + (v.kilos.diferenciaPesos > 0 ? 'faltante ' : 'sobrante ') + clp(Math.abs(v.kilos.diferenciaPesos)), `
         ${v.sinRetorno ? `<p class="muted" style="margin:6px 0">Falta registrar el retorno de ${v.sinRetorno} producto(s): la diferencia es provisoria.</p>` : ''}
-        ${v.kilos.detalle.map(d => fila(esc(d.producto), `sale ${kg(d.salida)} − vuelve ${kg(d.retorno)} − factura ${kg(d.facturado)} = ${d.diferencia > 0 ? '+' : ''}${kg(d.diferencia)} kg × ${clp(d.precio)}`, d.monto)).join('')}</div>` : ''}
+        ${v.kilos.detalle.map(d => fila(esc(d.producto), `sale ${kg(d.salida)} − vuelve ${kg(d.retorno)} − factura ${kg(d.facturado)} = ${d.diferencia > 0 ? '+' : ''}${kg(d.diferencia)} kg × ${clp(d.precio)}`, d.monto)).join('')}`) : ''}
       ${Object.keys(v.transf).map(b => sec('Transferencias ' + b, v.transf[b].length, v.transf[b].reduce((a, x) => a + x.monto, 0),
         v.transf[b].map(x => fila(conRut(x), esc(x.origen), x.monto)).join(''))).join('')}
       ${sec('Cheques', v.cheques.length, t.cheques, v.cheques.map(x => fila(conRut(x), esc([x.numero ? 'N° ' + x.numero : '', nombreBanco(x.banco), x.momento +
@@ -2395,7 +2399,8 @@ async function abrirVendedor(usuario) {
         esc((x.folio ? 'Folio ' + x.folio + ' · ' : '') + textoPago(x)), x.monto)).join(''))}
       ${sec('Gastos', v.gastos.length, t.gastos, v.gastos.map(x => fila(esc(x.concepto), esc(x.respaldo ? 'Boleta ' + x.respaldo : ''), x.monto)).join(''))}
       ${sec('Depósitos de efectivo', v.depositos.length, t.depositos, v.depositos.map(x => fila(esc(x.banco), esc(x.referencia ? 'Op. ' + x.referencia : ''), x.monto)).join(''))}`;
-    $('#dfl', ov).onclick = e => { const b = e.target.closest('[data-f]'); if (b) { filtro = b.dataset.f; pintar(); } };
+    $$('details[data-k]', ov).forEach(d => d.addEventListener('toggle', () => { d.open ? ab.add(d.dataset.k) : ab.delete(d.dataset.k); }));
+    $('#dfl', ov) && ($('#dfl', ov).onclick = e => { const b = e.target.closest('[data-f]'); if (b) { filtro = b.dataset.f; pintar(); } });
   };
   pintar();
   $('.foot', ov).innerHTML = `${pend.length ? '<button class="btn ghost" id="dDet">Detallar pendientes</button>' : ''}<span class="grow"></span>
