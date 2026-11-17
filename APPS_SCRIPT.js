@@ -300,7 +300,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -3377,6 +3377,16 @@ function vistaPreviaRendicion(token, fecha) {
   const reg = read_('RENDICIONES').find(x => x.fecha === fecha);
   if (reg && reg.estado === 'CERRADA' && reg.archivo_url) return { url: reg.archivo_url };      // día cerrado: ya está el definitivo
   return { url: generarArchivo_(fecha, resumen_(fecha), true) };
+}
+
+/** v180: ¿ya existe la planilla de este día? Devuelve su enlace sin generar nada ({url:'', ...} si no hay). */
+function archivoRendicion(token, fecha) {
+  auth_(token, ['RENDICION','SUPERVISOR','GERENCIA','ADMIN']);
+  const reg = read_('RENDICIONES').find(x => x.fecha === fecha);
+  if (reg && reg.estado === 'CERRADA' && reg.archivo_url) return { url: reg.archivo_url, cerrada: true };
+  const id = PropertiesService.getScriptProperties().getProperty('ARCH_' + fecha);
+  if (!id) return { url: '', cerrada: false };
+  try { return { url: SpreadsheetApp.openById(id).getUrl(), cerrada: false }; } catch (e) { return { url: '', cerrada: false }; }
 }
 
 function reabrirRendicion(token, fecha) {

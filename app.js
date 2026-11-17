@@ -3072,9 +3072,12 @@ async function vResumen(m) {
     const el = p === 'avisos' ? $('#avisos') : ($('#cl') || $('#lnk'));
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
   });
-  const enlace = (url, txt) => { $('#lnk').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+  const enlace = (url, txt, quieto) => { $('#lnk').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <span class="grow">${txt}</span><a class="btn cu sm" href="${esc(url)}" target="_blank" rel="noopener">Abrir archivo</a></div>`;
-    $('#lnk').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+    if (!quieto) $('#lnk').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
+  // v180: si la planilla del día ya existe, botón para abrirla sin regenerar
+  api('archivoRendicion', S.sess.token, S.fecha).then(a => { if (a && a.url && document.body.contains(m) && !$('#lnk a', m))
+    enlace(a.url, a.cerrada ? 'La rendición de este día ya está cerrada.' : 'Ya hay un borrador de este día. Ábrelo sin cambiar nada, o toca «Actualizar borrador» para ponerlo al día.', true); }).catch(() => {});
   const pv = $('#pv'); if (pv) pv.onclick = async () => {
     pv.disabled = true;
     try { const r2 = await api('vistaPreviaRendicion', S.sess.token, S.fecha);

@@ -793,3 +793,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v179 — Oficina, otro día: cabecera café con el aviso naranjo debajo (solo CSS + sw.js)
 - Pedido del dueño: que se vea como vendedor/bodega. Reemplaza v176/v177: con `body.otro-dia` la `.topbar` de oficina es café (`--ink`) en vez de transparente/naranja; el aviso «Estás viendo…» sigue naranjo justo debajo.
+
+## v180 — Botón para abrir la planilla de rendición que ya existe (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Interpretación de «si ya existe un board hecho, que se pueda ver un botón»: la planilla (borrador o definitiva) del día. API `archivoRendicion(token, fecha)` (sin caché, no genera nada): devuelve `{url, cerrada}` desde RENDICIONES.archivo_url o la propiedad `ARCH_<fecha>`. En Rendición, al abrir la pantalla, si hay archivo aparece la franja con «Abrir archivo» (`enlace(..., quieto)` sin scroll). «Actualizar borrador» sigue siendo lo que regenera.
