@@ -299,7 +299,7 @@ function setup() {
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
-  misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
+  misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, getCanal, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
   aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
@@ -340,7 +340,7 @@ function registrarOp_(op, fn) {
 function ping() { return true; }
 
 // Consultas que no modifican datos: se pueden pedir juntas (batch) y usan la caché por día.
-const LECTURAS_ = { ping: 1, getCajaChica: 1, getPozoMonedas: 1, listarClientes: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
+const LECTURAS_ = { ping: 1, getCanal: 1, getCajaChica: 1, getPozoMonedas: 1, listarClientes: 1, getAvance: 1, listarAdelantos: 1, listarAnulaciones: 1, anulacionesPendientes: 1, catalogo: 1, getDespacho: 1, misDocumentos: 1, listarTerminales: 1, descuentosPendientes: 1, listarMov: 1, listarDevoluciones: 1, listarCheques: 1, getConteoEfectivo: 1, porCobrar: 1, getInventario: 1,
   getSaldosClientes: 1, efectivoParaDepositar: 1, getResumen: 1, getInspeccion: 1, historial: 1, getKpis: 1, getSugerido: 1, batch: 1 };
 
 /** Varias consultas en una sola petición: [[fn, args], …] → [{ok, data} | {ok:false, error}, …]. Comparten las lecturas de la planilla. */
@@ -3863,6 +3863,87 @@ function historial(token) {
 /* ============================ DATOS PARA DECIDIR (solo ADMIN) ============================ */
 // Indicadores de un período: ventas, crédito y cobranza, kilos y mermas, control. Solo lee; se calcula sobre lo ya guardado.
 const diasEntre_ = (a, b) => Math.round((new Date(String(b) + 'T12:00:00') - new Date(String(a) + 'T12:00:00')) / 864e5);
+
+/* ============================ CANALES: SUPERMERCADOS Y DISTRIBUIDORES (v182) ============================ */
+// Distribuidores (terminal BODEGA): se reconocen por RUT (sin dígito verificador) o por nombre. Para sumar uno nuevo, agregar su RUT o parte de su nombre.
+const CANAL_DIST_RUTS_ = ['10594880', '10967967', '15651662', '76965456', '77228386', '78007363', '78390639'];
+const CANAL_DIST_NOMBRES_ = /PATRICIO MONTES|JUAN CARLOS SILVA|OSCAR (ELADIO )?LAGOS|CESAR (RICARDO )?CAMPOS|\bANBA\b|\bAAMF\b|PICHIHUILLINCO|\bAMIR\b/;
+function canalDeDoc_(d) {
+  const t = String(d.terminal || '').trim().toUpperCase();
+  if (t === 'SUPERMERCADO') return 'SUPERMERCADOS';
+  if (t === 'BODEGA') {
+    const rut = String(d.rut || '').replace(/[^0-9kK]/g, '').toUpperCase().replace(/[0-9K]$/, '');
+    if (rut && CANAL_DIST_RUTS_.indexOf(rut.replace(/^0+/, '')) >= 0) return 'DISTRIBUIDORES';
+    if (CANAL_DIST_NOMBRES_.test(normTxt_(d.cliente))) return 'DISTRIBUIDORES';
+  }
+  return '';
+}
+function getCanal(token, canal, desde, hasta) {
+  auth_(token, ['RENDICION','SUPERVISOR','GERENCIA','ADMIN']);
+  canal = canal === 'DISTRIBUIDORES' ? 'DISTRIBUIDORES' : 'SUPERMERCADOS';
+  const iso = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+  hasta = iso(hasta) ? String(hasta) : hoy_();
+  desde = iso(desde) ? String(desde) : sumarDias_(hasta, -29);
+  if (desde > hasta) { const t = desde; desde = hasta; hasta = t; }
+  if (diasEntre_(desde, hasta) > 400) throw new Error('Elige un período de hasta 13 meses.');
+  return conCache_('canal|' + canal + '|' + desde + '|' + hasta, TABLAS_KPI_, () => canal_(canal, desde, hasta));
+}
+function canal_(canal, desde, hasta) {
+  const r0 = n => Math.round(Number(n) || 0), en = f => f >= desde && f <= hasta;
+  const esNC = d => /cr[eé]dito/i.test(String(d.tipo)), signo = d => esNC(d) ? -Math.abs(num_(d.total)) : num_(d.total);
+  const docs = read_('DOCUMENTOS').filter(d => en(d.fecha) && !esGuia_(d.tipo) && canalDeDoc_(d) === canal);
+  const keys = {}; docs.forEach(d => keys[d.folio_key] = d);
+  // clientes (por RUT; si no hay, por nombre)
+  const cli = {}, kc = d => String(d.rut || '').replace(/[^0-9kK]/g, '').toUpperCase() || ('N' + normTxt_(d.cliente));
+  const serieM = {};
+  docs.forEach(d => {
+    const k = kc(d), c = cli[k] = cli[k] || { cliente: d.cliente, rut: d.rut || '', docs: 0, venta: 0, nc: 0, credito: 0, deuda: 0, vencida: 0, ultima: '', documentos: [] };
+    if (esNC(d)) c.nc += Math.abs(num_(d.total)); else c.docs++;
+    c.venta += signo(d); if (d.fecha > c.ultima) c.ultima = d.fecha;
+    c.documentos.push({ fecha: d.fecha, tipo: String(d.tipo || '').replace(' Electrónica', ''), folio: d.folio, total: r0(signo(d)), estado: d.estado, condicion: d.condicion_dte || '' });
+    serieM[d.fecha] = (serieM[d.fecha] || 0) + signo(d);
+  });
+  // forma de pago de lo ya detallado
+  const formas = { EFECTIVO: 0, TRANSFERENCIA: 0, CHEQUE: 0, CREDITO: 0, NOTA_CREDITO: 0 };
+  read_('PAGOS').forEach(p => { const d = keys[p.folio_key]; if (!d) return; const f = p.forma === 'DEP_EFECTIVO' ? 'EFECTIVO' : p.forma;
+    if (formas[f] !== undefined) formas[f] += num_(p.monto); if (p.forma === 'CREDITO' || p.forma === 'CHEQUE') cli[kc(d)].credito += num_(p.monto); });
+  const sinDetallar = docs.filter(d => !esNC(d) && d.estado !== 'DETALLADO').length;
+  // deuda actual de estos clientes (a hoy, no del período)
+  const sal = conCache_('saldos', ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'USUARIOS', 'CREDITOS_CARGA', 'CLIENTES', 'CHEQUES_ESTADO'], () => saldosClientes_());
+  const plazoPol = neto => neto > 300000 ? 28 : neto > 120000 ? 21 : neto > 60000 ? 14 : 7;
+  const porRut = {}; Object.keys(cli).forEach(k => { if (k[0] !== 'N') porRut[k] = cli[k]; });
+  let deuda = 0, vencida = 0;
+  sal.clientes.forEach(sc => {
+    const k = String(sc.rut || '').replace(/[^0-9kK]/g, '').toUpperCase(), c = porRut[k]; if (!c) return;
+    sc.facturas.forEach(f => { if (f.saldo <= 0) return;
+      const plazo = sc.condicion > 0 ? sc.condicion : plazoPol(f.credito / 1.19); c.deuda += f.saldo; deuda += f.saldo;
+      if (f.dias - plazo > 0) { c.vencida += f.saldo; vencida += f.saldo; } });
+  });
+  // productos facturados (sin guías; las notas de crédito restan)
+  const unidad = {}, nombreP = {}; read_('PRODUCTOS').forEach(p => { unidad[codeKey_(p.codigo)] = p.unidad; nombreP[codeKey_(p.codigo)] = p.nombre; });
+  const pr = {}; let kilosFact = 0;
+  read_('VENTAS_DETALLE').forEach(l => { if (esGuiaFlag_(l.es_guia)) return; const d = keys[l.folio_key]; if (!d) return;
+    const k = codeKey_(l.codigo), sg = esNC(d) ? -1 : 1, o = pr[k] = pr[k] || { producto: nombreP[k] || l.producto, unidad: unidad[k] || '', cantidad: 0, total: 0 };
+    o.cantidad += sg * num_(l.cantidad); o.total += sg * num_(l.total); if (o.unidad === 'KG') kilosFact += sg * num_(l.cantidad); });
+  // lo que sale de bodega para este canal (Despacho)
+  const esDesp = v => canal === 'SUPERMERCADOS' ? (v === 'SUPERMERCADOS' || v === 'DISTRIBUIDOR') : /^DIST:/.test(String(v));
+  const dp = {}; let kSal = 0, kRet = 0;
+  read_('DESPACHO').forEach(x => { if (!en(x.fecha) || !esDesp(x.vendedor)) return;
+    const k = codeKey_(x.codigo); if ((unidad[k] || x.unidad) !== 'KG') return;
+    const quien = canal === 'DISTRIBUIDORES' ? String(x.vendedor).replace(/^DIST:/, '') : 'Supermercados', o = dp[quien] = dp[quien] || { nombre: quien, salida: 0, retorno: 0 };
+    o.salida += num_(x.salida); o.retorno += num_(x.retorno); kSal += num_(x.salida); kRet += num_(x.retorno); });
+  const nDias = diasEntre_(desde, hasta) + 1, serie = []; for (let i = 0; i < nDias; i++) { const f = sumarDias_(desde, i); serie.push([f, r0(serieM[f])]); }
+  const venta = docs.reduce((a, d) => a + signo(d), 0), nDocs = docs.filter(d => !esNC(d)).length;
+  const clientes = Object.keys(cli).map(k => { const c = cli[k]; c.documentos.sort((a, b) => a.fecha < b.fecha ? 1 : -1);
+    return Object.assign(c, { venta: r0(c.venta), nc: r0(c.nc), credito: r0(c.credito), deuda: r0(c.deuda), vencida: r0(c.vencida) }); }).sort((a, b) => b.venta - a.venta);
+  return { canal, desde, hasta, venta: r0(venta), docs: nDocs, nClientes: clientes.length, ticket: nDocs ? r0(venta / nDocs) : 0, sinDetallar,
+    formas: { efectivo: r0(formas.EFECTIVO), transferencia: r0(formas.TRANSFERENCIA), cheque: r0(formas.CHEQUE), credito: r0(formas.CREDITO) },
+    deuda: r0(deuda), vencida: r0(vencida), serie, clientes,
+    productos: Object.keys(pr).map(k => pr[k]).map(o => ({ producto: o.producto, unidad: o.unidad, cantidad: Math.round(o.cantidad * 100) / 100, total: r0(o.total) })).sort((a, b) => b.total - a.total).slice(0, 25),
+    kilos: { facturados: Math.round(kilosFact * 100) / 100, salida: Math.round(kSal * 100) / 100, retorno: Math.round(kRet * 100) / 100, despachados: Math.round((kSal - kRet) * 100) / 100,
+      porDestino: Object.keys(dp).map(k => dp[k]).map(o => ({ nombre: o.nombre, salida: Math.round(o.salida * 100) / 100, retorno: Math.round(o.retorno * 100) / 100 })).sort((a, b) => b.salida - a.salida) } };
+}
+
 const TABLAS_KPI_ = ['DOCUMENTOS', 'PAGOS', 'COBRANZA', 'DESCUENTOS', 'VENTAS_DETALLE', 'DESPACHO', 'DEVOLUCIONES', 'PRODUCTOS', 'USUARIOS', 'CREDITOS_CARGA',
   'CLIENTES', 'CHEQUES_ESTADO', 'RENDICIONES', 'GASTOS', 'CONTEO_EFECTIVO', 'DEPOSITOS'];
 function getKpis(token, desde, hasta) {

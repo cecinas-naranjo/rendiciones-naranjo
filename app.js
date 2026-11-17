@@ -155,7 +155,7 @@ function enlazarCampoArchivos(id) {
    Velocidad: las consultas (no los guardados) se guardan en el teléfono. Al volver a una pantalla se muestra
    al instante lo último que se vio y, por detrás, se pide lo nuevo; si cambió, la pantalla se actualiza sola
    (salvo que la persona ya esté escribiendo). Cualquier guardado borra lo guardado para no mostrar datos viejos. */
-const LECTURA = new Set(['getCajaChica', 'getPozoMonedas', 'listarClientes', 'getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
+const LECTURA = new Set(['getCanal', 'getCajaChica', 'getPozoMonedas', 'listarClientes', 'getAvance', 'listaUsuarios', 'catalogo', 'misDocumentos', 'getDespacho', 'getInventario', 'getSaldosClientes', 'listarTerminales',
   'getResumen', 'getInspeccion', 'descuentosPendientes', 'efectivoParaDepositar', 'historial', 'listarMov', 'listarDevoluciones', 'getConteoEfectivo', 'porCobrar', 'listarCheques', 'listarUsuariosAdmin', 'getKpis', 'getSugerido', 'listarAdelantos', 'listarAnulaciones', 'anulacionesPendientes']);
 const MSG = { login: 'Ingresando…', catalogo: 'Preparando la app…', importarDTE: 'Importando ventas de Mi DTE…', importarDetalle: 'Importando detalle de productos…',
   cerrarRendicion: 'Generando el archivo de rendición…', vistaPreviaRendicion: 'Armando el borrador…', generarPlanillaInventario: 'Armando la planilla de inventario…',
@@ -618,15 +618,15 @@ const TABS = {
   BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
   RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
     ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
-    ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'],
+    ['super', 'Supermercados', 'store'], ['distrib', 'Distribuidores', 'users'], ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'],
     ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['cajachica', 'Caja chica', 'cash'], ['pozo', 'Pozo de monedas', 'cash'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
 
-TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'], ['inventario', 'Inventario', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
+TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['super', 'Supermercados', 'store'], ['distrib', 'Distribuidores', 'users'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'], ['inventario', 'Inventario', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
-const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios'], 'upload'],
+const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios', 'super', 'distrib'], 'upload'],
   ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques', 'notascred'], 'cash'],
   ['g-caja', 'Caja', ['depositos', 'GASTOS', 'cajachica', 'pozo', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
@@ -940,7 +940,7 @@ function ir(t, silencioso) {
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
   const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
-  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, cajachica: vCajaChica, pozo: vPozo, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, super: m => vCanal(m, 'SUPERMERCADOS'), distrib: m => vCanal(m, 'DISTRIBUIDORES'), cajachica: vCajaChica, pozo: vPozo, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
     if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -3922,4 +3922,50 @@ async function abrirEditorPlanilla(alGuardar) {
     try { await api('guardarConfigInventario', S.sess.token, datos()); olvidarCache(true); purgarListas(); toast('Planilla actualizada'); cambio = false; cerrar(); if (alGuardar) alGuardar(); } catch (e) { fin(); throw e; }
   };
   pintar();
+}
+
+
+/* ===== SUPERMERCADOS Y DISTRIBUIDORES (v182): una pantalla por canal, solo lectura ===== */
+async function vCanal(m, canal) {
+  const esSuper = canal === 'SUPERMERCADOS', hoy = hoyCL(), mes1 = hoy.slice(0, 8) + '01';
+  const sumar = (f, n) => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
+  const PER = { 7: ['7 días', () => [sumar(hoy, -6), hoy]], 30: ['30 días', () => [sumar(hoy, -29), hoy]], 90: ['90 días', () => [sumar(hoy, -89), hoy]],
+    mes: ['Este mes', () => [mes1, hoy]], ant: ['Mes pasado', () => { const a = new Date(mes1 + 'T12:00:00'); a.setMonth(a.getMonth() - 1); return [a.toLocaleDateString('en-CA'), sumar(mes1, -1)]; }] };
+  S.canal = S.canal || {}; const st = S.canal[canal] = S.canal[canal] || { p: 'mes', q: '' };
+  const [d0, d1] = PER[st.p in PER ? st.p : 'mes'][1]();
+  const r = await api('getCanal', S.sess.token, canal, d0, d1);
+  const nombre = esSuper ? 'Supermercados' : 'Distribuidores', kgf = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CL') + ' kg';
+  const pctC = r.venta > 0 ? Math.round(r.formas.credito / Math.max(1, r.formas.efectivo + r.formas.transferencia + r.formas.cheque + r.formas.credito) * 100) : 0;
+  const dif = r.kilos.facturados - r.kilos.despachados;
+  render(m, `<h2>${nombre}</h2>
+    <p class="lead" style="margin:0 0 12px">${esSuper ? 'Ventas a supermercados (terminal SUPERMERCADO).' : 'Ventas a distribuidores que retiran en bodega (terminal BODEGA, clientes de la lista de distribuidores).'} Solo para mirar: aquí no se registra nada.</p>
+    <div class="seg" id="cp" style="margin-bottom:12px">${Object.keys(PER).map(k => `<button type="button" data-p="${k}" class="${k === st.p ? 'on' : ''}">${PER[k][0]}</button>`).join('')}</div>
+    <div class="kpis"><div><span>Venta neta</span><b>${clp(r.venta)}</b><small>${r.docs} documento${r.docs === 1 ? '' : 's'} · ${r.nClientes} cliente${r.nClientes === 1 ? '' : 's'}</small></div>
+      <div><span>Debe hoy</span><b>${clp(r.deuda)}</b><small>${r.vencida ? clp(r.vencida) + ' vencido' : 'nada vencido'}</small></div>
+      <div><span>Ticket promedio</span><b>${clp(r.ticket)}</b><small>por documento</small></div>
+      <div><span>Kilos facturados</span><b>${kgf(r.kilos.facturados)}</b><small>salieron ${kgf(r.kilos.despachados)}${r.kilos.salida ? (Math.abs(dif) > 0.5 ? ' · dif. ' + (dif > 0 ? '+' : '') + kgf(dif) : ' · calza') : ''}</small></div></div>
+    ${r.sinDetallar ? `<div class="alert warn">${r.sinDetallar} documento${r.sinDetallar === 1 ? '' : 's'} aún sin detallar la forma de pago: por eso el desglose de abajo puede quedar corto.</div>` : ''}
+    <h3>Cómo pagaron (lo ya detallado)</h3>
+    <div class="kpis"><div><span>Efectivo</span><b>${clp(r.formas.efectivo)}</b></div><div><span>Transferencia</span><b>${clp(r.formas.transferencia)}</b></div>
+      <div><span>Cheque</span><b>${clp(r.formas.cheque)}</b></div><div><span>Crédito</span><b>${clp(r.formas.credito)}</b><small>${pctC}% del total</small></div></div>
+    <h3>Por cliente</h3>
+    <input class="in" id="cq" placeholder="Buscar cliente o RUT" value="${esc(st.q)}" style="max-width:360px;margin-bottom:8px">
+    <div id="cl"></div>
+    <h3>Qué compraron</h3>
+    ${r.productos.length ? `<div class="tw"><table><thead><tr><th>Producto</th><th class="r">Cantidad</th><th class="r">Monto</th></tr></thead><tbody>${r.productos.map(x => `<tr><td>${esc(x.producto)}</td><td class="r">${x.unidad === 'KG' ? kgf(x.cantidad) : x.cantidad.toLocaleString('es-CL') + (x.unidad ? ' un' : '')}</td><td class="r">${clp(x.total)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Sin productos facturados en el período.</div>'}
+    <h3>Lo que salió de bodega</h3>
+    ${r.kilos.porDestino.length ? `<div class="tw"><table><thead><tr><th>${esSuper ? 'Destino' : 'Distribuidor'}</th><th class="r">Salió</th><th class="r">Volvió</th><th class="r">Neto</th></tr></thead><tbody>${r.kilos.porDestino.map(x => `<tr><td>${esc(x.nombre)}</td><td class="r">${kgf(x.salida)}</td><td class="r">${kgf(x.retorno)}</td><td class="r">${kgf(x.salida - x.retorno)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted">Solo productos por kilo, según lo que anota el bodeguero en Despacho.</p>` : '<div class="empty">No hay salidas anotadas en Despacho para este período.</div>'}`);
+  const norm = t => normBus(t || '');
+  const lista = () => {
+    const xs = r.clientes.filter(c => !st.q || norm(c.cliente + ' ' + c.rut).indexOf(norm(st.q)) >= 0);
+    $('#cl').innerHTML = xs.length ? xs.map(c => `<details class="cfac" style="display:block;margin-bottom:8px"><summary class="row" style="gap:10px;cursor:pointer">
+        <span class="grow"><b>${esc(c.cliente)}</b> <span class="muted">${esc(c.rut)}</span><div class="muted">${c.docs} doc. · última compra ${fcorta(c.ultima)}${c.nc ? ' · NC ' + clp(c.nc) : ''}</div></span>
+        ${c.vencida ? '<span class="chip bad">Vencido ' + clp(c.vencida) + '</span>' : c.deuda ? '<span class="chip warn">Debe ' + clp(c.deuda) + '</span>' : '<span class="chip ok">Al día</span>'}<b>${clp(c.venta)}</b></summary>
+        <div class="tw" style="margin-top:8px"><table><thead><tr><th>Fecha</th><th>Documento</th><th>Condición</th><th class="r">Total</th><th>Estado</th></tr></thead><tbody>${c.documentos.map(d => `<tr><td>${fcorta(d.fecha)}</td><td>${esc(d.tipo)} ${esc(d.folio)}</td><td>${esc(d.condicion)}</td><td class="r">${clp(d.total)}</td><td>${d.estado === 'DETALLADO' ? 'Detallado' : 'Sin detallar'}</td></tr>`).join('')}</tbody></table></div></details>`).join('')
+      : '<div class="empty">No hay ventas en este período.</div>';
+  };
+  lista();
+  $('#cq').oninput = e => { st.q = e.target.value; lista(); };
+  $('#cp').onclick = e => { const b = e.target.closest('[data-p]'); if (!b) return; st.p = b.dataset.p; ir(S.tab, true); };
 }
