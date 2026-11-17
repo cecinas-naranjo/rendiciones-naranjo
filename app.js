@@ -199,6 +199,13 @@ function pintarAviso() {
   if (!p) { p = document.createElement('div'); p.className = 'working'; p.setAttribute('role', 'status'); p.innerHTML = '<span class="spin"></span><span></span>'; document.body.appendChild(p); }
   p.classList.remove('out'); p.lastChild.textContent = txt;
 }
+/** v172: aviso verde corto cuando algo quedó guardado: así se sabe que ya se puede cambiar de pestaña (se ve junto al aviso «Guardando…»). */
+let tListo = 0;
+function listo(txt) {
+  let p = $('.listo'); if (!p) { p = document.createElement('div'); p.className = 'listo'; p.setAttribute('role', 'status'); document.body.appendChild(p); }
+  p.textContent = txt; p.classList.remove('out'); clearTimeout(tListo);
+  tListo = setTimeout(() => { p.classList.add('out'); setTimeout(() => p.isConnected && p.classList.contains('out') && p.remove(), 200); }, 2600);
+}
 function trabajando(fn, escritura) {
   busy(true);
   const id = ++nAviso, timers = [];
@@ -317,12 +324,13 @@ async function escribir1(fn, args) {
   const resto = args.slice(1), op = idOp(); let enviado = false;
   if (EN_LINEA && !pendActivos().length) {
     const key = claveApi(fn, args), fin = trabajando(fn, true);
-    try { const r = copia(await pedir(fn, args, key, { op })); olvidarCache(false); if (ESCRITURAS_DE_LISTA.has(fn)) purgarListas(); return r; }
+    try { const r = copia(await pedir(fn, args, key, { op })); olvidarCache(false); if (ESCRITURAS_DE_LISTA.has(fn)) purgarListas(); listo('Guardado ✓ · ya puedes cambiar de pestaña'); return r; }
     catch (e) { if (!e.red) { errorApi(e); throw e; } enviado = true; }        // se cortó: puede haber llegado o no; el reenvío lo comprueba
     finally { fin(); }
   }
   PEND.push({ op, fn, args: resto, usuario: S.sess.usuario, t: Date.now(), enviado, error: '' });
   guardarPend(); olvidarCache(false);
+  listo(EN_LINEA ? 'Guardado ✓ · se envía solo, puedes seguir' : 'Guardado en el teléfono ✓ · se envía cuando haya internet');
   if (EN_LINEA) setTimeout(sincronizar, 50);
   return { _pendiente: true, id: 'pend_' + op };
 }
@@ -362,7 +370,7 @@ async function sincronizar() {
   } finally { sincronizando = false; pintarRed(); }
   if (enviados) {
     olvidarCache(false);
-    toast(enviados === 1 ? 'Se envió lo que estaba pendiente.' : 'Se enviaron ' + enviados + ' cambios que estaban pendientes.');
+    listo(enviados === 1 ? 'Enviado ✓ · todo al día' : 'Enviados ' + enviados + ' cambios ✓ · todo al día');
     if (!$('.ov') && !S.tocado && S.sess) ir(S.tab, true);
   }
   if (rechazados) abrirPendientes(true);

@@ -2790,7 +2790,9 @@ function asegurarCajaChica_() {
 function reposDe_(fecha, v) {
   asegurarCajaChica_();
   const fs = [fecha]; if (ventanaRA_(fecha).trae[v]) fs.push(sumarDias_(fecha, -1));
-  return read_('CAJA_CHICA').filter(x => x.tipo === 'REPOSICION' && x.vendedor === v && fs.indexOf(normFecha_(x.fecha_gasto)) >= 0).reduce((a, x) => a + Math.round(num_(x.monto)), 0);
+  // v172: un día cerrado no cambia: las reposiciones hechas DESPUÉS del cierre no entran a su rendición (se ven en Caja chica con la fecha en que se hicieron)
+  const corte = {}; fs.forEach(f => { const r = read_('RENDICIONES').find(y => y.fecha === f); corte[f] = r && r.estado === 'CERRADA' ? normFecha_(r.cerrado) : ''; });
+  return read_('CAJA_CHICA').filter(x => { const f = normFecha_(x.fecha_gasto); return x.tipo === 'REPOSICION' && x.vendedor === v && fs.indexOf(f) >= 0 && (!corte[f] || normFecha_(x.fecha) <= corte[f]); }).reduce((a, x) => a + Math.round(num_(x.monto)), 0);
 }
 /** v150: caja chica sacada del efectivo de un día (INGRESO con esa fecha). */
 function ccDia_(fecha) {
@@ -2838,7 +2840,7 @@ function guardarCajaChica(token, tipo, datos) {
       o.fecha = normFecha_(datos.fecha) || hoy_();
       const e = efectivoDiaCC_(o.fecha);
       if (monto > e.disponible) throw new Error('Ese día solo hay $' + e.disponible.toLocaleString('es-CL') + ' de efectivo disponible para caja chica (recaudado $' + e.total.toLocaleString('es-CL') + (e.ya ? ', ya sacado $' + e.ya.toLocaleString('es-CL') : '') + ').');
-      if (estadoDia_(o.fecha) === 'CERRADA') aviso = 'El día ' + o.fecha + ' ya está cerrado: la caja chica queda anotada y suma al saldo; el "efectivo a depositar" de ese día se ve distinto solo al volver a generar su planilla.';
+      if (estadoDia_(o.fecha) === 'CERRADA') throw new Error('El día ' + o.fecha + ' ya está cerrado (su efectivo ya se contó y depositó). Saca la caja chica de un día abierto, o pide al administrador que lo reabra.');
     }
     else if (tipo === 'GASTO') {
       // v171: gasto pagado directamente con la caja chica (no es de un vendedor): baja el saldo
@@ -2852,7 +2854,7 @@ function guardarCajaChica(token, tipo, datos) {
       if (!gastado) throw new Error('Ese día no hay gastos registrados para esa persona.');
       if (monto > gastado - ya) throw new Error('Se pueden reponer como máximo $' + (gastado - ya).toLocaleString('es-CL') + ' (lo que falta de ese día).');
       o.fecha_gasto = fg; o.vendedor = v;
-      if (estadoDia_(fg) === 'CERRADA') aviso = 'El día ' + fg + ' ya está cerrado: la reposición queda anotada y el saldo baja, pero verás el cambio en su rendición solo si el administrador reabre ese día.';
+      if (estadoDia_(fg) === 'CERRADA') aviso = 'El día ' + fg + ' ya está cerrado: la reposición queda anotada con la fecha de hoy y el saldo baja. La rendición cerrada no cambia.';
     }
     append_('CAJA_CHICA', [o]);
     return { ok: true, id: o.id, aviso };

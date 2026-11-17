@@ -1222,3 +1222,8 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 /* v166: filas de Despacho todas del mismo alto; el tamaño del pack va en la misma línea del nombre */
 .dt .pr{min-height:44px;align-items:center}
 .dt .pr .pn .pkn{display:inline;margin-left:8px;font-size:12px;white-space:nowrap}
+
+/* v172: «Guardado ✓ · ya puedes cambiar de pestaña» (solo opacidad, v83) */
+.listo{position:fixed;left:50%;bottom:calc(var(--bar-h) + 18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:56;background:#1F6B3A;color:#fff;
+  padding:10px 16px;border-radius:99px;font-size:14px;font-weight:700;max-width:calc(100vw - 28px);text-align:center;animation:solofade .16s ease both}
+.listo.out{opacity:0;transition:opacity 180ms}
