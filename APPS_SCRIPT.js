@@ -299,7 +299,7 @@ function setup() {
 // Funciones que la app puede llamar. Cualquier otra se rechaza.
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
-  misDocumentos, guardarDetalle, guardarVarios, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
+  misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
   aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
@@ -498,6 +498,24 @@ function asegurarSupermercados_() {
 function asignarSupermercadosAntiguos_() {
   const dueno = mapaTerminales_()['SUPERMERCADO']; if (!dueno) return;
   ['DOCUMENTOS', 'VENTAS_DETALLE'].forEach(t => read_(t).filter(r => String(r.terminal).toUpperCase() === 'SUPERMERCADO' && !r.vendedor).forEach(r => { r.vendedor = dueno; updateRow_(t, r._row, r); }));
+}
+/** v181: documentos y líneas de días NO cerrados que quedaron «sin vendedor» y cuyo terminal ya tiene dueño en USUARIOS (p. ej. se editó la columna
+    `terminales` a mano en la planilla) pasan a ese vendedor. Una escritura por tabla. Devuelve cuántos documentos se asignaron. */
+function reasignarSinVendedor_() {
+  const term = mapaTerminales_(); if (!Object.keys(term).length) return 0;
+  const cerradas = {}; read_('RENDICIONES').filter(r => r.estado === 'CERRADA').forEach(r => cerradas[r.fecha] = true);
+  let n = 0;
+  ['DOCUMENTOS', 'VENTAS_DETALLE'].forEach(t => {
+    const cambia = read_(t).filter(r => !r.vendedor && term[String(r.terminal || '').trim().toUpperCase()] && !cerradas[r.fecha]);
+    cambia.forEach(r => r.vendedor = term[String(r.terminal).trim().toUpperCase()]);
+    escribirCols_(t, cambia, ['vendedor']); if (t === 'DOCUMENTOS') n = cambia.length;
+  });
+  return n;
+}
+/** Botón/aviso en Rendición: «Documentos sin vendedor» que ya tienen terminal asignado. */
+function reasignarSinVendedor(token) {
+  auth_(token, ['RENDICION','SUPERVISOR']);
+  return withLock_(() => ({ asignados: reasignarSinVendedor_() }));
 }
 function mapaTerminales_() {
   const term = {};
@@ -993,7 +1011,7 @@ function saveDespacho(token, fecha, vendedor, filas) {
 function importarDTE(token, filas) {
   auth_(token, ['RENDICION','SUPERVISOR']);
   return withLock_(() => {
-    asegurarSupermercados_(); asignarSupermercadosAntiguos_();
+    asegurarSupermercados_(); asignarSupermercadosAntiguos_(); reasignarSinVendedor_();
     const term = mapaTerminales_();
     const existentes = {}; read_('DOCUMENTOS').forEach(d => existentes[d.folio_key] = d);
     const nuevos = []; let guias = 0, repetidos = 0, sinVendedor = 0, corregidos = 0; const fechas = {}, sinTerminal = {}, porVendedor = {};
@@ -1057,6 +1075,30 @@ function aplicarAdelanto_(a, d) {
     cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' })));
   d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d);
 }
+/** v181: escribe solo las columnas indicadas de varias filas ya leídas (objs con _row): una escritura por columna, no una por fila. */
+function escribirCols_(name, objs, cols) {
+  if (!objs.length) return;
+  limpiarCache_(name);
+  const sh = sh_(name), n = sh.getLastRow() - 1; if (n < 1) return;
+  cols.forEach(c => {
+    const col = SCHEMA[name].indexOf(c) + 1; if (!col) return;
+    const rng = sh.getRange(2, col, n, 1), vals = rng.getValues();
+    objs.forEach(o => { if (o._row - 2 < n) vals[o._row - 2][0] = o[c] === undefined ? '' : o[c]; });
+    rng.setValues(vals);
+  });
+}
+/** v181: aplica muchos adelantos juntos: borra los pagos viejos de todos, agrega los nuevos y marca los documentos, cada cosa en UNA escritura. lista = [{a, d}]. */
+function aplicarAdelantos_(lista) {
+  if (!lista.length) return;
+  const keys = {}; lista.forEach(x => keys[x.d.folio_key] = 1);
+  deleteRows_('PAGOS', read_('PAGOS').filter(x => keys[x.folio_key]).map(x => x._row));
+  const filas = []; lista.forEach(({ a, d }) => lineasDe_(a).forEach(p => filas.push({ id: uid_(), folio_key: d.folio_key, fecha: d.fecha, vendedor: d.vendedor, forma: p.forma, banco: p.banco || '',
+    monto: num_(p.monto), referencia: p.referencia || '', registrado_por: a.vendedor, registrado: now_(),
+    cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' })));
+  append_('PAGOS', filas);
+  lista.forEach(x => x.d.estado = 'DETALLADO');
+  escribirCols_('DOCUMENTOS', lista.map(x => x.d), ['estado']);
+}
 /** Compara los adelantos pendientes con los documentos ya importados y aplica los que calzan. Se llama dentro de un lock. */
 /** Clave del folio sin ceros a la izquierda ni ".0" (Excel a veces trae 00123 o 123.0): así el folio anotado y el de Mi DTE calzan igual. */
 function keyNorm_(k) { const m = String(k || '').match(/^([A-Z]*)-(.*)$/); if (!m) return String(k || ''); return m[1] + '-' + m[2].trim().replace(/\.0+$/, '').replace(/^0+(?=\d)/, ''); }
@@ -1068,7 +1110,9 @@ function cruzarAdelantos_() {
   if (!pend.length) return { aplicados: 0, revisar: 0, sinLlegar: 0 };
   const docs = {}, porFolio = {}, fechasConDocs = {};
   read_('DOCUMENTOS').forEach(d => { docs[keyNorm_(d.folio_key)] = d; const n = keyNorm_(d.folio_key).split('-').slice(1).join('-'); (porFolio[n] = porFolio[n] || []).push(d); if (String(d.importado || '') > (fechasConDocs[d.fecha] || '')) fechasConDocs[d.fecha] = String(d.importado || ' '); });
-  const desc = read_('DESCUENTOS');
+  const descKey = {}; read_('DESCUENTOS').forEach(x => { if (x.estado === 'PENDIENTE' || x.estado === 'APROBADO') descKey[x.folio_key] = 1; });
+  const anulPorFecha = {}, tieneAnul = d => { const f = d.fecha; if (!anulPorFecha[f]) { anulPorFecha[f] = {}; anulacionesDe_(f).forEach(x => { if (x.estado !== 'RECHAZADA') anulPorFecha[f][x.folio_key] = 1; }); } return !!anulPorFecha[f][d.folio_key]; };
+  const aAplicar = [], cambiados = [];
   let aplicados = 0, revisar = 0, sinLlegar = 0;
   pend.forEach(a => {
     let d = docs[keyNorm_(a.folio_key)];
@@ -1082,12 +1126,14 @@ function cruzarAdelantos_() {
     else if (d.estado === 'DETALLADO') { estado = 'APLICADO'; nota = 'El folio ya estaba detallado.'; }
     else if (d.vendedor !== a.vendedor) { estado = 'REVISAR'; nota = 'Mi DTE lo asignó a otro terminal/vendedor.'; }
     else if (Math.round(num_(d.total)) !== Math.round(num_(a.monto))) { estado = 'REVISAR'; nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + '.' + (num_(d.total) > num_(a.monto) ? ' Si la diferencia es una nota de crédito por hacer, tócalo y queda como nota de crédito.' : ''); }
-    else if (desc.some(x => x.folio_key === d.folio_key && (x.estado === 'PENDIENTE' || x.estado === 'APROBADO'))) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
-    else if (anulacionesDe_(d.fecha).some(x => x.folio_key === d.folio_key && x.estado !== 'RECHAZADA')) { estado = 'REVISAR'; nota = 'Tiene una anulación o nota de crédito: detállalo normal.'; }
-    else { aplicarAdelanto_(a, d); estado = 'APLICADO'; aplicados++; }
+    else if (descKey[d.folio_key]) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
+    else if (tieneAnul(d)) { estado = 'REVISAR'; nota = 'Tiene una anulación o nota de crédito: detállalo normal.'; }
+    else { aAplicar.push({ a, d }); d.estado = 'DETALLADO'; estado = 'APLICADO'; aplicados++; }
     if (estado === 'REVISAR') revisar++;
-    if (a.estado !== estado || a.nota !== nota) { a.estado = estado; a.nota = nota; a.resuelto = now_(); updateRow_('ADELANTOS', a._row, a); }
+    if (a.estado !== estado || a.nota !== nota) { a.estado = estado; a.nota = nota; a.resuelto = now_(); cambiados.push(a); }
   });
+  aplicarAdelantos_(aAplicar);          // v181: una sola escritura de pagos y de estados, no una por folio
+  escribirCols_('ADELANTOS', cambiados, ['estado', 'nota', 'resuelto']);
   return { aplicados, revisar, sinLlegar };
 }
 /** v128: el vendedor anotó un monto menor al de Mi DTE porque había una nota de crédito por hacer. Aplica el adelanto y deja la diferencia
@@ -1600,6 +1646,54 @@ function guardarDetalle(token, fecha, folio_key, pagos, descuento, minimo) {
     d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d);
     if (minimo) return { folio_key, estado: 'DETALLADO' };      // el detalle rápido ya muestra el resultado: no se vuelve a leer todo el día
     return docsDelDia_(d.fecha, d.vendedor).find(x => x.folio_key === folio_key);
+  });
+}
+
+/**
+ * v181: guarda varios detalles de folio en UNA petición (la cola del detalle rápido los manda juntos).
+ * items = [{fecha, folio_key, pagos}]. Un solo bloqueo, una lectura y una escritura por tabla. Devuelve un resultado por folio, en el mismo orden.
+ * Misma validación que guardarDetalle (sin descuentos: el detalle rápido no los usa); un folio con error no impide guardar los demás.
+ */
+function guardarDetalleVarios(token, items) {
+  const u = auth_(token);
+  items = (items || []).slice(0, 100);
+  return withLock_(() => {
+    const docs = {}; read_('DOCUMENTOS').forEach(d => docs[d.folio_key] = d);
+    const descs = read_('DESCUENTOS'), pagosAct = read_('PAGOS'), ncPorFecha = {}, abiertas = {};
+    const res = items.map(() => null), listos = [], keys = {};
+    items.forEach((it, i) => {
+      try {
+        const fecha = it.fecha, key = it.folio_key;
+        if (abiertas[fecha] === undefined) { try { assertAbierta_(fecha); abiertas[fecha] = ''; } catch (e) { abiertas[fecha] = String(e.message || e); } }
+        if (abiertas[fecha]) throw new Error(abiertas[fecha]);
+        const d = docs[key]; if (!d) throw new Error('Documento no encontrado');
+        if (u.rol === 'VENDEDOR' && d.vendedor !== u.usuario) throw new Error('Este documento no es tuyo.');
+        if (keys[key]) throw new Error('Folio repetido en el envío.');
+        const limpios = (it.pagos || []).filter(p => num_(p.monto) > 0).map(p => {
+          if (FORMAS.indexOf(p.forma) < 0) throw new Error('Forma de pago inválida: ' + p.forma);
+          if ((p.forma === 'TRANSFERENCIA' || p.forma === 'DEP_EFECTIVO') && !p.banco) throw new Error('Indica el banco de la transferencia/depósito.');
+          return p.forma === 'CHEQUE' ? Object.assign({}, p, datosCheque_(p)) : p;
+        });
+        const suma = limpios.reduce((a, p) => a + num_(p.monto), 0);
+        const aprobado = descs.find(x => x.folio_key === key && x.estado === 'APROBADO');
+        if (!ncPorFecha[d.fecha]) ncPorFecha[d.fecha] = ncAprobDe_(d.fecha);
+        const descVigente = (aprobado ? num_(aprobado.monto) : 0) + (ncPorFecha[d.fecha][key] || 0);
+        if (Math.round(suma + descVigente) !== Math.round(num_(d.total)))
+          throw new Error('La suma (' + (suma + descVigente) + ') no cuadra con el total del documento (' + num_(d.total) + ').');
+        keys[key] = 1; listos.push({ d, limpios }); res[i] = { ok: true, folio_key: key, estado: 'DETALLADO' };
+      } catch (e) { res[i] = { ok: false, error: String(e.message || e) }; }
+    });
+    if (listos.length) {
+      deleteRows_('PAGOS', pagosAct.filter(x => keys[x.folio_key]).map(x => x._row));
+      const filas = []; listos.forEach(({ d, limpios }) => limpios.forEach(p => filas.push({ id: uid_(), folio_key: d.folio_key, fecha: d.fecha, vendedor: d.vendedor, forma: p.forma,
+        banco: p.banco || '', monto: num_(p.monto), referencia: p.referencia || '', registrado_por: u.usuario, registrado: now_(),
+        cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' })));
+      append_('PAGOS', filas);
+      deleteRows_('DESCUENTOS', descs.filter(x => keys[x.folio_key] && x.estado === 'PENDIENTE').map(x => x._row));    // igual que guardarDetalle: se reemplaza la solicitud pendiente
+      listos.forEach(x => x.d.estado = 'DETALLADO');
+      escribirCols_('DOCUMENTOS', listos.map(x => x.d), ['estado']);
+    }
+    return { resultados: res };
   });
 }
 

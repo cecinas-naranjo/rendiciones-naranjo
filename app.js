@@ -360,6 +360,22 @@ async function sincronizar() {
         }
         continue;
       }
+      // v181: los detalles de folio pendientes también van juntos (guardarDetalleVarios). Solo los del detalle rápido (sin descuento).
+      const gd = (x.fn === 'guardarDetalle' && !COLA_UNO) ? pendActivos().filter(p => p.fn === 'guardarDetalle' && !p.args[3]).slice(0, 50) : [];
+      if (gd.length > 1 && !x.args[3]) {
+        try {
+          const r = await llamar('guardarDetalleVarios', [S.sess.token, gd.map(g => ({ fecha: g.args[0], folio_key: g.args[1], pagos: g.args[2] }))], { op: gd[0].op, rep: !!gd[0].enviado });
+          gd.forEach((g, i) => { const ri = (r && r.resultados || [])[i];
+            if (ri && ri.ok === false) { g.error = String(ri.error || 'No se pudo guardar'); rechazados++; } else { PEND = PEND.filter(p => p !== g); enviados++; } });
+          guardarPend();
+        } catch (e) {
+          if (e.red) { gd.forEach(g => { g.enviado = true; }); guardarPend(); break; }
+          if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; return salir(true); }
+          if (/desconocid/i.test(String(e.message))) { COLA_UNO = true; continue; }
+          gd.forEach(g => { g.error = String(e.message || e).replace('SESION: ', ''); rechazados++; }); guardarPend();
+        }
+        continue;
+      }
       try { await llamar(x.fn, [S.sess.token].concat(x.args), { op: x.op, rep: !!x.enviado }); PEND = PEND.filter(p => p !== x); enviados++; guardarPend(); }
       catch (e) {
         if (e.red) { x.enviado = true; guardarPend(); break; }                      // sigue sin conexión: se intenta más tarde
@@ -1443,14 +1459,26 @@ function encolarGuardado(d, lineas, alGuardar) {
   LOCAL.set(kLocal(S.fecha, d.folio_key), lineas);
   procesarCola();
 }
+let COLA_UNO = false;      // servidor antiguo (sin guardarDetalleVarios): se guarda de a uno, como antes
 async function procesarCola() {
   if (colaCorriendo) return;
   colaCorriendo = true;
   while (COLA.length) {
-    const x = COLA[0];
-    try { await api('guardarDetalle', S.sess.token, x.fecha, x.d.folio_key, x.lineas, null, true); }      // `true`: el servidor responde corto (ya se ve el resultado en pantalla)
-    catch (e) { LOCAL.delete(kLocal(x.fecha, x.d.folio_key)); x.alGuardar(x.d); toast(`No se pudo guardar el folio ${x.d.folio}. Quedó como "Por detallar".`, true); }
-    COLA.shift();
+    // v181: todo lo que se juntó mientras se guardaba va en UNA llamada (hasta 50 folios); antes era una llamada por folio, cada una con su espera
+    const lote = COLA_UNO ? [COLA[0]] : COLA.slice(0, 50);
+    const falla = x => { LOCAL.delete(kLocal(x.fecha, x.d.folio_key)); x.alGuardar(x.d); toast(`No se pudo guardar el folio ${x.d.folio}. Quedó como "Por detallar".`, true); };
+    try {
+      if (lote.length === 1 && COLA_UNO) await api('guardarDetalle', S.sess.token, lote[0].fecha, lote[0].d.folio_key, lote[0].lineas, null, true);
+      else {
+        const r = await api('guardarDetalleVarios', S.sess.token, lote.map(x => ({ fecha: x.fecha, folio_key: x.d.folio_key, pagos: x.lineas })));
+        lote.forEach((x, i) => { const ri = (r && r.resultados || [])[i]; if (ri && ri.ok === false) falla(x); });
+      }
+    } catch (e) {
+      if (/desconocid/i.test(String(e.message)) && !COLA_UNO) { COLA_UNO = true; continue; }      // servidor antiguo: uno por uno
+      if (e.red) { for (const x of lote) { try { await escribir('guardarDetalle', [S.sess.token, x.fecha, x.d.folio_key, x.lineas, null, true]); } catch (e2) { falla(x); } } }       // se cortó internet: cada folio queda en la cola del teléfono
+      else lote.forEach(falla);
+    }
+    COLA.splice(0, lote.length);
   }
   colaCorriendo = false;
 }
@@ -3045,6 +3073,8 @@ async function vResumen(m) {
       ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
         : '<button class="btn ghost" id="pv">Actualizar borrador</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
     <div id="lnk"></div>`);
+  // v181: «Documentos sin vendedor» cuyo terminal ya tiene dueño (p. ej. se editó a mano en la planilla): se asignan solos y se recarga
+  if (r.sinAsignar.length && !S.reasig) { S.reasig = true; api('reasignarSinVendedor', S.sess.token).then(x => { if (x && x.asignados) { olvidarCache(false); toast('Se asignaron ' + x.asignados + ' documentos a su vendedor'); ir('resumen', true); } }).catch(() => {}).finally(() => setTimeout(() => { S.reasig = false; }, 60000)); }
   // Avance de vendedores (v78): detallado, adelantos y última vez que el servidor recibió algo de cada uno
   api('getAvance', S.sess.token, S.fecha).then(av => {
     const box = $('#avc', m); if (!box || !document.body.contains(m) || !av.vendedores.length) return;
