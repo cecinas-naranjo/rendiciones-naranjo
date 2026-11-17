@@ -784,3 +784,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v176 — Otro día: toda la parte de arriba en naranjo (solo frontend: app.js, style.css, sw.js)
 - Se revirtió el CSS de v175 (aviso más fino). Queja: arriba del aviso naranjo quedaba una franja blanca (la `.topbar` del computador es transparente). `pintarDia()` alterna `body.otro-dia` cuando el día mirado no es hoy y el CSS pinta la cabecera (`.topbar` en oficina, `#app>header` en vendedor/bodega) en cobre, continua con el aviso «Estás viendo…». Al volver a hoy vuelve a los colores normales.
+
+## v177 — El naranjo de «otro día» queda solo en oficina (solo CSS + sw.js)
+- Pedido del dueño: en vendedor/bodega (cabecera café) se veía feo con la cabecera naranja; vuelve a la cabecera café de antes. Solo la `.topbar` de oficina se pinta en cobre con `body.otro-dia` (corrige la franja blanca del computador).

@@ -1244,7 +1244,7 @@ details.manual>summary{cursor:pointer;color:var(--cu-2);font-weight:600;text-dec
 body.has-bottom #probar{bottom:84px}
 
 /* v176: al mirar otro día, TODA la parte de arriba (cabecera + aviso) va en naranjo, sin franja blanca */
-body.otro-dia .topbar,body.otro-dia #app>header{background:var(--cu)}
+body.otro-dia .topbar{background:var(--cu)}
 @media (min-width:900px){
   body.otro-dia .topbar{background:var(--cu);color:#fff;padding-bottom:12px}
 }
