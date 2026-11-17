@@ -1273,3 +1273,19 @@ details.vcard.rs[open]>summary{border-bottom:1px solid var(--line-2)}
 /* v186: tarjeta simple del Resumen (abre el detalle completo al tocarla) */
 .vcard.rs{align-self:start}
 .vcard.rs .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+/* v187: Resumen — cada categoría es un bloque con color propio */
+.gsec{margin:22px 0 0;border-radius:14px;padding:0 0 14px;background:var(--gbg);border:1px solid var(--gline)}
+.gsec .gh{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--gline)}
+.gsec .gic{width:40px;height:40px;border-radius:10px;background:var(--gc);display:grid;place-items:center;font-size:20px;flex:none}
+.gsec h4{margin:0;font-size:18px;color:var(--gt)}
+.gsec small{display:block;font-size:13px;color:var(--ink-2);margin-top:2px}
+.gsec .gtot{text-align:right}
+.gsec .gtot span{display:block;font-size:12px;color:var(--ink-2);white-space:nowrap}
+.gsec .gtot b{font-size:18px;color:var(--gt);white-space:nowrap}
+.gsec .vcards{padding:14px 14px 0}
+.gsec .vcard.rs{background:#fff;border:1px solid var(--gline);border-left:5px solid var(--gc2)}
+.gsec.g1{--gbg:#FBF3EC;--gline:#EBD3BF;--gc:#F4DCC7;--gc2:#C2571A;--gt:#8A3D0F}
+.gsec.g2{--gbg:#EEF3FA;--gline:#CBD8EC;--gc:#D6E3F5;--gc2:#3B6FB6;--gt:#1F4A85}
+.gsec.g3{--gbg:#EDF6F3;--gline:#C4DDD5;--gc:#D2EBE2;--gc2:#2E8B72;--gt:#1B6350}
+.gsec.g4{--gbg:#F3F1F6;--gline:#D9D3E3;--gc:#E3DDEE;--gc2:#7A5FA8;--gt:#51397A}
+@media(max-width:560px){.gsec .gh{flex-wrap:wrap}.gsec .gtot{text-align:left;width:100%}}

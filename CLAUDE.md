@@ -822,3 +822,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v186 — Tarjeta del Resumen: simple y abre el detalle de siempre (solo frontend: app.js, style.css, sw.js)
 - Reemplaza la parte «se abre en la misma tarjeta» de v184: la tarjeta (`cardRes`) ya no se despliega; muestra nombre, Venta, A entregar, Crédito y chips, y al tocarla abre `abrirVendedor` (el detalle completo, con kilos, efectivo contado, etc.) como antes. El detalle grande queda en esa ventana, en la inspección impresa y en el archivo de rendición.
+
+## v187 — Resumen: cada categoría es un bloque con color propio (solo frontend: app.js, style.css, sw.js)
+- Pedido del dueño: se veía saturado y las categorías se enredaban. `GRUPOS_RES` = [título, filtro, clase `g1..g4`, ícono]; cada grupo es `section.gsec` con cabecera (ícono, nombre, N rendiciones, folios por detallar, «Venta del grupo») y fondo propio (cobre vendedores, azul supermercados, verde distribuidores, violeta bodega); las tarjetas son blancas con franja de color a la izquierda. Solo CSS/HTML, sin animaciones (v83).
