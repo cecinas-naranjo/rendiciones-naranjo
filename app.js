@@ -759,6 +759,7 @@ function pintarDia() {
   const corta = new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
   if (dt) dt.textContent = f === hoy ? 'Hoy · ' + corta : corta;      // v112: siempre se ve qué día es
   if (p) p.classList.toggle('otro', f !== hoy);
+  document.body.classList.toggle('otro-dia', f !== hoy);   // v176: toda la parte de arriba en naranjo
   guardarFecha();
 }
 /** v112: el día que se está mirando se recuerda (por usuario) para que recargar la app no vuelva a hoy. */

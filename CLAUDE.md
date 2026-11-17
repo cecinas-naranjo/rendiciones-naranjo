@@ -781,3 +781,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v174 — La burbuja «Ver como…» lleva una letra (A, o la inicial de la persona vista) en vez del emoji (solo frontend: app.js, style.css, sw.js)
 
 ## v175 — Aviso «Estás viendo…» más fino y con la fecha bien escrita: «Viernes, 13 de noviembre» (antes «De Noviembre») (solo CSS + sw.js)
+
+## v176 — Otro día: toda la parte de arriba en naranjo (solo frontend: app.js, style.css, sw.js)
+- Se revirtió el CSS de v175 (aviso más fino). Queja: arriba del aviso naranjo quedaba una franja blanca (la `.topbar` del computador es transparente). `pintarDia()` alterna `body.otro-dia` cuando el día mirado no es hoy y el CSS pinta la cabecera (`.topbar` en oficina, `#app>header` en vendedor/bodega) en cobre, continua con el aviso «Estás viendo…». Al volver a hoy vuelve a los colores normales.
