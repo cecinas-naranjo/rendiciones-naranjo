@@ -9,6 +9,7 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const clp = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-CL');
 const kg = n => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const nomR = v => String(v.vendedor || '').indexOf('DIST:') === 0 ? (v.nombre || v.vendedor) : v.vendedor;   // v183: distribuidores se rinden como un vendedor (usuario virtual DIST:<NOMBRE>)
 const soloDigitos = v => Number(String(v).replace(/\D/g, '')) || 0;
 const nk = n => String(Math.round((Number(String(n).replace(',', '.')) || 0) * 100) / 100).replace('.', ',');
 const dec = v => Number(String(v).replace(',', '.')) || 0;
@@ -965,7 +966,8 @@ function ir(t, silencioso) {
 }
 const progreso = p => { const i = $('#prog'); if (i) i.style.width = Math.round(p * 100) + '%'; };
 const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores</option>' : '') +
-  S.cat.vendedores.map(v => `<option value="${esc(v.usuario)}" ${v.usuario === sel ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('');
+  S.cat.vendedores.concat(String(sel || '').indexOf('DIST:') === 0 && !S.cat.vendedores.some(v => v.usuario === sel) ? [{ usuario: sel, nombre: 'Distribuidor ' + String(sel).slice(5).toLowerCase() }] : [])
+    .map(v => `<option value="${esc(v.usuario)}" ${v.usuario === sel ? 'selected' : ''}>${esc(v.nombre)}</option>`).join('');
 
 /* ============ HOY (inicio del vendedor): qué hacer y cómo va el día ============ */
 async function vHoy(m) {
@@ -3049,8 +3051,8 @@ async function vResumen(m) {
     ${r.porVendedor.length ? '' : '<h3>Por vendedor</h3>'}
     ${r.porVendedor.length ? `<div class="row" style="margin:18px 0 8px"><h3 class="grow" style="margin:0">Por vendedor</h3>
       <button type="button" class="btn ghost sm" id="impTodos">Imprimir inspección de todos</button></div>
-    <div class="vcards">${r.porVendedor.map(v => `<div class="vcard clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(v.vendedor)}">
-      <div class="row"><b class="grow" style="font-size:17px">${esc(v.vendedor)}</b>${v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar · Detallar ›</button>` : '<span class="chip ok">Detallado</span>'}</div>
+    <div class="vcards">${r.porVendedor.map(v => `<div class="vcard clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(nomR(v))}">
+      <div class="row"><b class="grow" style="font-size:17px">${esc(nomR(v))}</b>${v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar · Detallar ›</button>` : '<span class="chip ok">Detallado</span>'}</div>
       <dl><dt>Venta (${v.documentos} docs)</dt><dd>${clp(v.ventaDocs != null ? v.ventaDocs : v.venta)}</dd>${v.nc ? `<dt>− Notas de crédito</dt><dd>${clp(v.nc)}</dd><dt>Venta neta</dt><dd>${clp(v.venta)}</dd>` : ''}<dt>Venta contado</dt><dd>${clp(v.contado)}</dd><dt>Crédito total</dt><dd>${clp(v.credito)}</dd>
         ${v.credito ? `<dt class="sub">· a crédito</dt><dd class="sub">${clp(v.creditoVenta)}</dd><dt class="sub">· en cheques</dt><dd class="sub">${clp(v.creditoCheque)}</dd>` : ''}
         <dt>Transferencias y depósitos</dt><dd>${clp(v.TRANSFERENCIA + v.DEP_EFECTIVO)}</dd>

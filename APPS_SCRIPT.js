@@ -1576,7 +1576,8 @@ function docsDelDia_(fecha, vendedor) {
   const anuls = anulacionesDe_(fecha);
   // notas de crédito de Mi DTE ya enlazadas a una anulación aprobada: se ocultan (su efecto ya está en el folio anulado)
   const ncOcultas = {}; anuls.filter(a => a.estado === 'APROBADA' && a.nc_folio).forEach(a => ncOcultas[String(a.nc_folio)] = 1);
-  return byFecha_('DOCUMENTOS', fecha).filter(d => !vendedor || d.vendedor === vendedor)
+  return byFecha_('DOCUMENTOS', fecha).map(d => { const vr = vendedorRend_(d); return vr === d.vendedor ? d : Object.assign({}, d, { vendedor: vr }); })
+    .filter(d => !vendedor || d.vendedor === vendedor)
     .filter(d => !(ncOcultas[String(d.folio).replace(/\D/g, '').replace(/^0+/, '')] && /cr[eé]dito/i.test(String(d.tipo)))).map(d => {
     const p = pagos.filter(x => x.folio_key === d.folio_key);
     const ds = descs.filter(x => x.folio_key === d.folio_key);
@@ -3241,7 +3242,7 @@ function getConteoEfectivo(token, fecha) {
   const fila = x => { const o = {}; BILLETES.forEach(b => o['b' + b] = Math.round(num_((x || {})['b' + b]))); o.monedas = Math.round(num_((x || {}).monedas)); let cm = 0; MONEDAS.forEach(m => { o['m' + m] = Math.round(num_((x || {})['m' + m])); cm += o['m' + m] * m; }); o.monedasOtras = Math.max(0, o.monedas - cm); return o; };
   const g = guardado.GENERAL || {};
   return { fecha, estado: r.estado,
-    vendedores: r.porVendedor.map(t => Object.assign({ usuario: t.vendedor, nombre: nombres[t.vendedor] || t.vendedor, esperado: t.efectivoEntregar, guardado: !!guardado[t.vendedor] }, fila(guardado[t.vendedor]))),
+    vendedores: r.porVendedor.map(t => Object.assign({ usuario: t.vendedor, nombre: t.nombre || nombres[t.vendedor] || t.vendedor, esperado: t.efectivoEntregar, guardado: !!guardado[t.vendedor] }, fila(guardado[t.vendedor]))),
     cajaChicaConteo: Math.round(num_(g.caja_chica)), cajaChicaDia: ccDia_(fecha), cajaChica: Math.round(num_(g.caja_chica)) + ccDia_(fecha), efectivoRecaudado: r.porVendedor.reduce((a, t) => a + Math.max(0, Math.round(num_(t.efectivoEntregar))), 0), obs: g.obs || '' };
 }
 
@@ -3280,19 +3281,18 @@ function resumen_(fecha) {
   const docs = docsDelDia_(fecha);
   const devs = byFecha_('DEVOLUCIONES', fecha);
   const desp = byFecha_('DESPACHO', fecha);
-  const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
+  const detV = remapDetV_(byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia)), docs);
   const unidad = {}; read_('PRODUCTOS').forEach(p => unidad[codeKey_(p.codigo)] = p.unidad);
   const hayDetalle = detV.length > 0;
   const precios = preciosKg_(detV);
   const cob = byFecha_('COBRANZA', fecha), gas = byFecha_('GASTOS', fecha), deps = byFecha_('DEPOSITOS', fecha);
   const prov = byFecha_('PROVEEDORES', fecha), cons = byFecha_('CONSUMO', fecha);
-  const vend = vendedores_().map(v => v.usuario);
-  docs.forEach(d => { if (d.vendedor && vend.indexOf(d.vendedor) < 0) vend.push(d.vendedor); });
+  const vend = rendidores_(docs).map(v => v.usuario);
 
   const contados = contadoPorVendedor_(fecha);
   const porVendedor = vend.map(v => {
     const ds = docs.filter(d => d.vendedor === v);
-    const tot = { vendedor: v, documentos: ds.length, pendientes: ds.filter(d => d.estado !== 'DETALLADO').length,
+    const tot = { vendedor: v, nombre: nombreRend_(v), documentos: ds.length, pendientes: ds.filter(d => d.estado !== 'DETALLADO').length,
       venta: 0, contado: 0, credito: 0, descuentos: 0, descPendientes: 0 };
     FORMAS.forEach(f => tot[f] = 0);
     ds.forEach(d => {
@@ -3386,7 +3386,8 @@ function porDia_(ds, cs, gs) {
 function getInspeccion(token, fecha, vendedor) {
   auth_(token, ['RENDICION','SUPERVISOR','GERENCIA']);
   cargarDia_(fecha, ['DOCUMENTOS', 'PAGOS', 'DESCUENTOS', 'COBRANZA', 'GASTOS', 'DEPOSITOS', 'DESPACHO', 'VENTAS_DETALLE', 'DEVOLUCIONES']);
-  const detV = byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia));
+  const docsI = docsDelDia_(fecha);
+  const detV = remapDetV_(byFecha_('VENTAS_DETALLE', fecha).filter(r => !esGuiaFlag_(r.es_guia)), docsI);
   const unidadP = {}; read_('PRODUCTOS').forEach(p => unidadP[codeKey_(p.codigo)] = p.unidad);
   const precios = preciosKg_(detV);
   const docs = docsDelDia_(fecha), cob = byFecha_('COBRANZA', fecha), gas = byFecha_('GASTOS', fecha), deps = byFecha_('DEPOSITOS', fecha);
@@ -3398,7 +3399,7 @@ function getInspeccion(token, fecha, vendedor) {
   const bancoTr = b => BANCOS.indexOf(b) >= 0 ? b : 'BICE';     // igual que en el archivo de rendición
   const momentoCh = f => f && f > fecha ? 'A fecha' : 'Al día';       // cheque al día o a fecha
   const contados = contadoPorVendedor_(fecha), devsDia = byFecha_('DEVOLUCIONES', fecha);
-  const lista = vendedores_().filter(v => !vendedor || v.usuario === vendedor);
+  const lista = rendidores_(docs).filter(v => !vendedor || v.usuario === vendedor);
   const out = lista.map(v => {
     const ds = docs.filter(d => d.vendedor === v.usuario), cs = cob.filter(c => c.vendedor === v.usuario);
     const gs = gas.filter(g => g.responsable === v.usuario), dps = deps.filter(d => d.vendedor === v.usuario);
@@ -3570,9 +3571,9 @@ Hoja_.prototype.escribir = function (anchos) {
 /** Rendición de un vendedor: cuadratura arriba, luego kilos, ventas, cobranza, gastos y depósitos. */
 function fechaLargaTxt_(f) { const d = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][diaSem_(f)]; return d + ' ' + f.split('-').reverse().join('-'); }
 function hojaVendedor_(ss, fecha, t, u, datos) {
-  const H = new Hoja_(ss, t.vendedor, 15);
+  const H = new Hoja_(ss, String(t.vendedor).indexOf('DIST:') === 0 ? (t.nombre || t.vendedor) : t.vendedor, 15);
   const fechaTxt = fecha.split('-').reverse().join('-');
-  H.titulo('RENDICIÓN ' + (u ? u.nombre : t.vendedor).toUpperCase(), 'Fecha: ' + fechaTxt + (u && u.terminales ? '    Terminal Mi DTE: ' + u.terminales : '') + '    Cecinas Naranjo');
+  H.titulo('RENDICIÓN ' + (u ? u.nombre : (t.nombre || t.vendedor)).toUpperCase(), 'Fecha: ' + fechaTxt + (u && u.terminales ? '    Terminal Mi DTE: ' + u.terminales : '') + '    Cecinas Naranjo');
 
   // espacio reservado para la cuadratura (se llena al final, cuando se conocen las filas de totales)
   H.seccion('CUADRATURA', 5);
@@ -3733,9 +3734,9 @@ function generarArchivo_(fecha, r, borrador) {
       foliosTxt: lista_(d.folios).map(k => folioTxt[k] || k).concat(lista_(d.cobranzas).map(() => 'cobranza')).join(', '), bancoDe: d.banco, link: linkAdj_(d) };
   });
   const bancoDep = {}; depsRaw.forEach(d => { lista_(d.folios).forEach(k => bancoDep[k] = d.banco); lista_(d.cobranzas).forEach(k => bancoDep['C:' + k] = d.banco); });
-  const preciosK = preciosKg_(byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)));
+  const preciosK = preciosKg_(remapDetV_(byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)), docs));
   const fact = {};
-  byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)).forEach(x => {
+  remapDetV_(byFecha_('VENTAS_DETALLE', fecha).filter(x => !esGuiaFlag_(x.es_guia)), docs).forEach(x => {
     const k = x.vendedor + '|' + codeKey_(x.codigo); fact[k] = (fact[k] || 0) + num_(x.cantidad); });
   const kilos = byFecha_('DESPACHO', fecha).map(k => ({ vendedor: k.vendedor, producto: k.producto, salida: num_(k.salida), retorno: num_(k.retorno),
     facturado: Math.round((fact[k.vendedor + '|' + codeKey_(k.codigo)] || 0) * 100) / 100, precio: Math.round(preciosK[k.vendedor + '|' + codeKey_(k.codigo)] || preciosK[codeKey_(k.codigo)] || 0) }));
@@ -3766,7 +3767,7 @@ function generarArchivo_(fecha, r, borrador) {
     { h: 'EFECTIVO', t: '$', sum: 1 }, { h: 'TRANSF. BICE', t: '$', sum: 1 }, { h: 'TRANSF. ESTADO', t: '$', sum: 1 }, { h: 'TRANSF. SANTANDER', t: '$', sum: 1 },
     { h: '· EN CHEQUE', t: '$', sum: 1 }, { h: 'COBRANZA', t: '$', sum: 1 }, { h: 'GASTOS', t: '$', sum: 1 }, { h: 'DEPÓSITOS', t: '$', sum: 1 },
     { h: 'EFECTIVO A ENTREGAR', t: '$', sum: 1 }, { h: 'KG VENDIDOS', t: 'kg', sum: 1 }, { h: 'KG FACTURADOS', t: 'kg', sum: 1 }, { h: 'DIF. KILOS $', t: '$', sum: 1 }],
-    r.porVendedor.map(t => [(usuarios[t.vendedor] || {}).nombre || t.vendedor, t.documentos, t.venta, t.credito, t.descuentos, t.EFECTIVO,
+    r.porVendedor.map(t => [(usuarios[t.vendedor] || {}).nombre || t.nombre || t.vendedor, t.documentos, t.venta, t.credito, t.descuentos, t.EFECTIVO,
       t.bancos.BICE, t.bancos.ESTADO, t.bancos.SANTANDER, t.CHEQUE, t.cobranza, t.gastos, t.depositos, t.efectivoEntregar, t.kilos.vendido, t.kilos.facturado, t.kilos.diferenciaPesos]));
   const sumM = a => a.reduce((x, y) => x + num_(y.monto), 0);
   const prov = byFecha_('PROVEEDORES', fecha), cons = byFecha_('CONSUMO', fecha);
@@ -3877,6 +3878,35 @@ function canalDeDoc_(d) {
     if (CANAL_DIST_NOMBRES_.test(normTxt_(d.cliente))) return 'DISTRIBUIDORES';
   }
   return '';
+}
+/* v183: los distribuidores se rinden como un "vendedor" cada uno (usuario virtual DIST:<NOMBRE>), igual que en Despacho.
+   Sus documentos salen del terminal BODEGA (usuario SALA); aquí se separan por cliente. */
+function distNombre_(d) {
+  const t = normTxt_(d.cliente);
+  const hit = (CFG.DISTRIBUIDORES || []).filter(n => t.indexOf(normTxt_(n)) >= 0)[0];
+  return 'DIST:' + (hit || 'OTROS');
+}
+function vendedorRend_(d) {
+  const v = d.vendedor;
+  if ((v === 'SALA' || !v) && String(d.terminal || '').trim().toUpperCase() === 'BODEGA' && canalDeDoc_(d) === 'DISTRIBUIDORES') return distNombre_(d);
+  return v;
+}
+function nombreRend_(u) {
+  if (String(u).indexOf('DIST:') === 0) { const n = String(u).slice(5); return n === 'OTROS' ? 'Otros distribuidores' : 'Distribuidor ' + n.charAt(0) + n.slice(1).toLowerCase(); }
+  const x = vendedores_().filter(v => v.usuario === u)[0]; return x ? x.nombre : u;
+}
+/** Vendedores + distribuidores (usuarios virtuales) para Resumen, Inspección y archivo de rendición. */
+function rendidores_(docs) {
+  const base = vendedores_().map(v => ({ usuario: v.usuario, nombre: v.nombre }));
+  const vistos = {}; base.forEach(v => vistos[v.usuario] = 1);
+  (CFG.DISTRIBUIDORES || []).map(n => 'DIST:' + n).concat(['DIST:OTROS']).forEach(u => { if (!vistos[u]) { vistos[u] = 1; base.push({ usuario: u, nombre: nombreRend_(u), virtual: true }); } });
+  (docs || []).forEach(d => { if (d.vendedor && !vistos[d.vendedor]) { vistos[d.vendedor] = 1; base.push({ usuario: d.vendedor, nombre: nombreRend_(d.vendedor), virtual: true }); } });
+  return base;
+}
+/** Las líneas del Informe de ventas heredan el vendedor del documento (para que los kilos de un distribuidor no queden en SALA). */
+function remapDetV_(detV, docs) {
+  const m = {}; docs.forEach(d => { if (d.vendedor) m[d.folio_key] = d.vendedor; });
+  return detV.map(r => m[r.folio_key] && m[r.folio_key] !== r.vendedor ? Object.assign({}, r, { vendedor: m[r.folio_key] }) : r);
 }
 function getCanal(token, canal, desde, hasta) {
   auth_(token, ['RENDICION','SUPERVISOR','GERENCIA','ADMIN']);
