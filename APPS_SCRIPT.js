@@ -3891,9 +3891,12 @@ function tipoCliente_(d) {
   return CLI_TIPO_[rut] || CLI_TIPO_[CLI_TIPO_NOMBRE_[normTxt_(d.cliente)]] || null;
 }
 /** 'SUPERMERCADOS' | 'DISTRIBUIDORES' | '' (vendedor o venta en bodega). Solo cuenta lo emitido desde oficina/bodega: lo de un NARANJOT# es del vendedor. */
+const esOficina_ = d => { const t = String(d.terminal || '').trim().toUpperCase(); return t === '' || t === 'SUPERMERCADO' || t === 'BODEGA' || EQUIPO_OFICINA_.test(t); };
+/** Boleta al público (RUT genérico 66666666): sin terminal NARANJOT# es venta en bodega. */
+const esBoletaGenerica_ = d => /^66666666/.test(String(d.rut || '').replace(/[^0-9kK]/g, '')) || normTxt_(d.cliente) === 'CLIENTE BOLETA';
 function canalDeDoc_(d) {
   const t = String(d.terminal || '').trim().toUpperCase();
-  if (!(t === '' || t === 'SUPERMERCADO' || t === 'BODEGA' || EQUIPO_OFICINA_.test(t))) return '';
+  if (!esOficina_(d)) return '';
   const e = tipoCliente_(d);
   if (e) return e[0] === 'S' ? 'SUPERMERCADOS' : e[0] === 'D' ? 'DISTRIBUIDORES' : '';
   return t === 'SUPERMERCADO' ? 'SUPERMERCADOS' : '';
@@ -3908,9 +3911,12 @@ function vendedorRend_(d) {
   const c = canalDeDoc_(d);
   if (c === 'DISTRIBUIDORES') return distNombre_(d);
   if (c === 'SUPERMERCADOS') return 'SUPERMERCADOS';
+  // v193: un cliente de oficina que no está en la lista (ni es la boleta al público) NO se manda a venta en bodega: queda "Sin clasificar"
+  if (esOficina_(d) && !tipoCliente_(d) && !esBoletaGenerica_(d) && !esGuia_(d.tipo)) return 'SIN_CLASIFICAR';
   return d.vendedor;
 }
 function nombreRend_(u) {
+  if (u === 'SIN_CLASIFICAR') return 'Sin clasificar';
   if (String(u).indexOf('DIST:') === 0) { const n = String(u).slice(5); return n === 'OTROS' ? 'Otros distribuidores' : n === 'AAMF' ? 'Distribuidor AAMF' : 'Distribuidor ' + n.toLowerCase().replace(/(^| )(\S)/g, (m, a, c) => a + c.toUpperCase()); }
   const x = vendedores_().filter(v => v.usuario === u)[0]; return x ? x.nombre : u;
 }

@@ -12,9 +12,10 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&am
 const nomR = v => String(v.vendedor || '').indexOf('DIST:') === 0 ? (v.nombre || v.vendedor) : v.vendedor;   // v183: distribuidores se rinden como un vendedor (usuario virtual DIST:<NOMBRE>)
 // v184: Resumen por categoría (Vendedores / Supermercados / Distribuidores / Bodega) con tarjeta simple; al tocarla abre el detalle completo (abrirVendedor)
 const GRUPOS_RES = [   // [título, filtro, clase de color]
-  ['Vendedores', v => !/^(DIST:|SUPERMERCADOS$|DISTRIBUIDOR$|SALA$|CONSUMO$)/.test(v.vendedor), 'g1'],
+  ['Vendedores', v => !/^(DIST:|SUPERMERCADOS$|DISTRIBUIDOR$|SALA$|CONSUMO$|SIN_CLASIFICAR$)/.test(v.vendedor), 'g1'],
   ['Distribuidores', v => /^DIST:/.test(v.vendedor), 'g3'],
-  ['Venta en bodega y consumo', v => /^(SALA|CONSUMO)$/.test(v.vendedor), 'g4']];
+  ['Venta en bodega y consumo', v => /^(SALA|CONSUMO)$/.test(v.vendedor), 'g4'],
+  ['Sin clasificar (cliente fuera de la lista)', v => v.vendedor === 'SIN_CLASIFICAR', 'g5']];
 const difClsR = (v, r) => !v.kilos.salida || !r.hayDetalle ? '' : v.kilos.alerta ? (v.kilos.diferencia > 0 ? 'pos' : 'neg') : '';
 function cardRes(v, r) {
   const difCls = x => difClsR(x, r);

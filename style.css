@@ -1284,7 +1284,7 @@ details.vcard.rs[open]>summary{border-bottom:1px solid var(--line-2)}
 .gsec .gsum b{font-size:18px;color:var(--ink);white-space:nowrap}
 .gsec .vcards{padding:0}
 .gsec .vcard.rs{background:#fff;border:1px solid #E6E3DF;border-left:4px solid var(--gc2)}
-.gsec.g1{--gc2:#C2571A}.gsec.g2{--gc2:#3B6FB6}.gsec.g3{--gc2:#2E8B72}.gsec.g4{--gc2:#7A5FA8}
+.gsec.g1{--gc2:#C2571A}.gsec.g2{--gc2:#3B6FB6}.gsec.g3{--gc2:#2E8B72}.gsec.g4{--gc2:#7A5FA8}.gsec.g5{--gc2:#8A8580}
 @media(max-width:560px){.gsec>header.gh{flex-wrap:wrap}.gsec .gsum{text-align:left;width:100%}}
 /* v190: ficha del vendedor compacta (secciones plegables) */
 .dtop{margin:10px 0 4px;gap:10px}
