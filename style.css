@@ -1248,3 +1248,7 @@ body.otro-dia .topbar{background:var(--cu)}
 @media (min-width:900px){
   body.otro-dia .topbar{background:var(--cu);color:#fff;padding-bottom:12px}
 }
+
+/* v178: el pie fijo de Despacho (kg + Guardar) queda por encima del buscador/categorías al pasar por debajo */
+.sticky-foot{z-index:9}
+.sticky-foot .card{background:#fff}

@@ -787,3 +787,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v177 — El naranjo de «otro día» queda solo en oficina (solo CSS + sw.js)
 - Pedido del dueño: en vendedor/bodega (cabecera café) se veía feo con la cabecera naranja; vuelve a la cabecera café de antes. Solo la `.topbar` de oficina se pinta en cobre con `body.otro-dia` (corrige la franja blanca del computador).
+
+## v178 — Despacho: el pie (kg + Guardar) ya no queda tapado por el buscador (solo CSS + sw.js)
+- La barra fija del buscador/categorías (`.dtool`, z-index 6) tapaba parte del pie `.sticky-foot` al coincidir en pantalla. El pie ahora tiene `z-index:9` y fondo blanco opaco.
