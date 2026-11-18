@@ -3337,7 +3337,9 @@ function resumen_(fecha) {
       tot.depositoDif = dvF.reduce((a, x) => a + num_(x.monto), 0) - incl;
     } else tot.depositoDif = 0;
     tot.efectivoEntregar = tot.EFECTIVO + tot.cobranzaEfectivo - tot.devoluciones - tot.gastos - tot.depositos;   // v148: el gasto baja lo que se entrega (lo repone la caja chica al otro día); v139: la devolución baja lo que se cobra
+    tot.debeEntregar = tot.efectivoEntregar + tot.gastos;   // v194: lo que debía entregar ANTES de cubrir gastos con la plata de la ruta (no cambia por los gastos)
     tot.reposicion = reposDe_(fecha, v);   // v148: gastos de este día ya repuestos desde la caja chica (informativo: no cambia lo que se entrega)
+    tot.gastoPorReponer = Math.max(0, tot.gastos - tot.reposicion);   // v194: gasto cubierto con plata de la ruta que la caja chica aún no repone
     // v108: lo contado en la pestaña Efectivo contra lo que debe entregar (solo aviso)
     tot.efectivoContado = contados[v] === undefined ? null : contados[v];
     tot.efectivoDif = tot.efectivoContado === null ? 0 : tot.efectivoContado - tot.efectivoEntregar;
@@ -3450,7 +3452,7 @@ function getInspeccion(token, fecha, vendedor) {
       docsEfectivo: ds.filter(d => d.pagos.some(p => p.forma === 'EFECTIVO')).length,
       totales: { venta: venta - nc - tDev, ventaDocs: venta, credito, chequesVenta, creditoTotal: credito + chequesVenta, nc, devoluciones: tDev, devolucionesN: devoluciones.length, devSinCliente: devoluciones.filter(x => !x.cliente).length, descuentos: desc, contado: venta - nc - tDev - credito - chequesVenta - desc, efVentas, efCob, gastos: tGas, depositos: tDep,
         efContado: contados[v.usuario] === undefined ? null : contados[v.usuario],
-        entregar: efVentas + efCob - tDev - tGas - tDep, reposicion: reposDe_(fecha, v.usuario), cheques: cheques.reduce((a, x) => a + x.monto, 0) },
+        entregar: efVentas + efCob - tDev - tGas - tDep, debeEntregar: efVentas + efCob - tDev - tDep, porReponer: Math.max(0, tGas - reposDe_(fecha, v.usuario)), reposicion: reposDe_(fecha, v.usuario), cheques: cheques.reduce((a, x) => a + x.monto, 0) },
       transf, cheques, cobranza, gastos, depositos, devoluciones, creditos, porDia: porDia_(ds, cs, gs),
       kilos: kilosDe_(v.usuario, desp, detV, unidadP, precios, anulKg_(fecha)), sinRetorno: desp.filter(x => x.vendedor === v.usuario && x.salida !== '' && x.retorno === '').length,
       folios: ds.map(d => ({ folio_key: d.folio_key, folio: d.folio, tipo: d.tipo.replace(' Electrónica', ''), cliente: d.cliente, rut: d.rut || '',
@@ -3676,12 +3678,12 @@ function hojaVendedor_(ss, fecha, t, u, datos) {
     ['Efectivo de ventas', '=' + ref(V, 6)],
     ['(+) Efectivo de cobranza', '=' + ref(C, 3)],
     ['(−) Devoluciones (merma / reproceso)', num_(t.devoluciones)],
-    ['(−) Gastos del día', '=' + ref(G, 2)],
+    ['(−) Gastos del día (cubiertos con la plata de la ruta)', '=' + ref(G, 2)],
     ['(−) Depositado a la empresa', '=' + ref(D, 2)],
-    ['EFECTIVO A ENTREGAR', '=D{9}+D{10}-D{11}-D{12}-D{13}'],
+    ['EFECTIVO A ENTREGAR (en mano, después de gastos)', '=D{9}+D{10}-D{11}-D{12}-D{13}'],
     ['Efectivo recibido', contEf != null ? contEf : (datos.recibidoManual && datos.recibidoManual[t.vendedor] !== undefined ? datos.recibidoManual[t.vendedor] : '')],
     ['DIFERENCIA', '=IF(D{15}="","",D{15}-D{14})'],
-    ['Gastos repuestos desde caja chica (informativo)', num_(t.reposicion)],
+    ['Falta reponer gastos desde caja chica (repuesto: $' + Math.round(num_(t.reposicion)).toLocaleString('es-CL') + ')', Math.max(0, num_(t.gastos) - num_(t.reposicion))],
     ['Firma vendedor: ____________________        Firma recibe: ____________________', '']
   ];
   lineas.forEach((l, i) => {

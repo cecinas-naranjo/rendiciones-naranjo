@@ -23,9 +23,10 @@ function cardRes(v, r) {
   const kDif = r.hayDetalle && v.kilos.salida && difCls(v) === 'neg';
   const chips = [v.pendientes ? `<button type="button" class="chip cu" data-detallar="${esc(v.vendedor)}" title="Detallar sus folios">${v.pendientes} por detallar ›</button>` : '<span class="chip ok">Detallado</span>',
     falta ? `<span class="chip bad">${v.efectivoDif < 0 ? 'Falta ' : 'Sobra '}${clp(Math.abs(v.efectivoDif))}</span>` : '',
+    v.gastoPorReponer > 0 ? `<span class="chip cu">Falta reponer gastos ${clp(v.gastoPorReponer)}</span>` : '',
     kDif ? '<span class="chip bad">Kilos</span>' : ''].join('');
   return `<div class="vcard rs clic" data-ver="${esc(v.vendedor)}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(nomR(v))}"><div class="row"><b class="grow">${esc(nomR(v))}</b><span class="chips">${chips}</span></div>
-    <div class="rs3"><div><span>Venta</span><b>${clp(v.venta)}</b></div><div><span>A entregar</span><b>${clp(v.efectivoEntregar)}</b></div><div><span>Crédito</span><b>${clp(v.credito)}</b></div></div></div>`;
+    <div class="rs3"><div><span>Venta</span><b>${clp(v.venta)}</b></div><div><span>Debe entregar</span><b>${clp(v.debeEntregar !== undefined ? v.debeEntregar : v.efectivoEntregar)}</b></div><div><span>Crédito</span><b>${clp(v.credito)}</b></div></div></div>`;
 }
 const soloDigitos = v => Number(String(v).replace(/\D/g, '')) || 0;
 const nk = n => String(Math.round((Number(String(n).replace(',', '.')) || 0) * 100) / 100).replace('.', ',');
@@ -2356,7 +2357,8 @@ async function abrirVendedor(usuario) {
   const fila = (a, b, monto) => `<div class="dfila"><span class="grow">${a}</span><span class="muted">${b || ''}</span><b>${clp(monto)}</b></div>`;
   const trTot = Object.keys(v.transf).reduce((a, k) => a + v.transf[k].reduce((s, x) => s + x.monto, 0), 0);
   const difEf = t.efContado === null || t.efContado === undefined ? null : t.efContado - t.entregar;
-  const cuentaCorta = 'Ventas ' + clp(t.efVentas) + ' + cobranza ' + clp(t.efCob) + (t.devoluciones ? ' − devoluciones ' + clp(t.devoluciones) : '') + (t.gastos ? ' − gastos ' + clp(t.gastos) : '') + (t.depositos ? ' − depositado ' + clp(t.depositos) : '');
+  const debe = t.debeEntregar !== undefined ? t.debeEntregar : t.entregar, porRep = t.porReponer || 0;
+  const cuentaCorta = 'Ventas ' + clp(t.efVentas) + ' + cobranza ' + clp(t.efCob) + (t.devoluciones ? ' − devoluciones ' + clp(t.devoluciones) : '') + (t.depositos ? ' − depositado ' + clp(t.depositos) : '');
   const pintar = () => {
     const folios = v.folios.filter(f => filtro === 'todos' || (filtro === 'pend' ? f.estado !== 'DETALLADO' : f.estado === 'DETALLADO'))
       .sort((a, b) => (a.estado === 'DETALLADO') - (b.estado === 'DETALLADO') || String(a.folio).localeCompare(String(b.folio), 'es', { numeric: true }));
@@ -2365,8 +2367,8 @@ async function abrirVendedor(usuario) {
         <div style="font-weight:700;font-size:21px">${esc(v.nombre)}</div></div>
         ${pend.length ? `<span class="chip cu">${pend.length} por detallar</span>` : '<span class="chip ok">Todo detallado</span>'}</div>
       <div class="dtop">
-        <div class="dbox"><span>Efectivo a entregar</span><b>${clp(t.entregar)}</b>
-          <small>${cuentaCorta}</small></div>
+        <div class="dbox"><span>Debe entregar</span><b>${clp(debe)}</b>
+          <small>${cuentaCorta}</small>${t.gastos ? `<small>Gastos del día ${clp(t.gastos)} (cubiertos con la plata de la ruta) → entrega en mano ${clp(t.entregar)}${porRep ? ' · <b>Falta reponer gastos ' + clp(porRep) + '</b> (Caja chica)' : ' · repuestos desde caja chica'}</small>` : ''}</div>
         <div class="dres">
           ${fila('Venta' + (t.nc ? ' neta' : '') + ' (' + v.documentos + ' docs)', '', t.venta)}${fila('Crédito', '', t.creditoTotal || 0)}
           ${trTot ? fila('Transferencias', '', trTot) : ''}${t.cheques - t.chequesVenta > 0 ? fila('Cheques de cobranza', '', t.cheques - t.chequesVenta) : ''}
@@ -2379,8 +2381,8 @@ async function abrirVendedor(usuario) {
         return plg('cuenta', 'Cuenta del efectivo', difEf === null ? 'sin contar' : difEf === 0 ? 'cuadra' : difEf < 0 ? 'falta ' + clp(-difEf) : 'sobra ' + clp(difEf), `
           ${fila('Venta contado', 'venta − crédito − cheques − descuentos', t.contado)}${fila('− Transferencias de ventas', '', trV)}
           ${fila('= Efectivo de ventas', dV ? 'ojo: lo anotado es ' + clp(t.efVentas) + ' (diferencia ' + clp(Math.abs(dV)) + ')' : 'calza con lo anotado', ef0)}
-          ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.devoluciones ? fila('− Devoluciones', 'merma / reproceso', t.devoluciones) : ''}${t.gastos ? fila('− Gastos del día', '', t.gastos) : ''}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
-          ${fila('= Debe entregar', '', t.entregar)}
+          ${fila('+ Cobranza en efectivo', '', t.efCob)}${t.devoluciones ? fila('− Devoluciones', 'merma / reproceso', t.devoluciones) : ''}${t.depositos ? fila('− Depositado', '', t.depositos) : ''}
+          ${fila('= Debe entregar', '', debe)}${t.gastos ? fila('− Gastos del día', 'los cubrió con la plata de la ruta', t.gastos) + fila('= Entrega en mano', porRep ? 'falta reponer gastos ' + clp(porRep) : 'gastos repuestos', t.entregar) : ''}
           ${dif === null ? '<div class="muted" style="padding:6px 0">Todavía no se cuenta el efectivo (pestaña Efectivo).</div>'
             : fila('Efectivo contado', dif === 0 ? 'cuadra' : dif < 0 ? 'FALTA ' + clp(-dif) : 'SOBRA ' + clp(dif), cont)}`); })()}
       ${plg('folios', 'Folios', v.detallados + ' de ' + v.documentos + ' detallados', `
@@ -2451,10 +2453,12 @@ async function imprimirInspeccion(usuario) {
     const resumen = [
       suma('Efectivo total', `ventas ${clp(t.efVentas)} + cobranza ${clp(t.efCob)}`, efTotal, false),
       dev ? suma('(−) Devoluciones', 'merma / reproceso', -dev, false) : '',
-      gas ? suma('(−) Gastos del día', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'}`, -gas, false) : '',
       t.depositos ? suma('(−) Depositado', 'ya está en el banco', -t.depositos, false) : '',
-      suma('Efectivo a entregar', '', aEntregar, true, 'sub'),
+      gas ? suma('Debe entregar', '', efTotal - dev - t.depositos, false, 'sub') : '',
+      gas ? suma('(−) Gastos del día', `${v.gastos.length} gasto${v.gastos.length === 1 ? '' : 's'} · cubiertos con la plata de la ruta`, -gas, false) : '',
+      suma(gas ? 'Entrega en mano' : 'Efectivo a entregar', '', aEntregar, true, 'sub'),
       rep ? suma('(+) Repuesto desde caja chica', 'gastos de este día', rep, true) : '',
+      gas > rep ? suma('Falta reponer gastos', 'lo repone la caja chica', gas - rep, false) : '',
       t.depositos ? suma('Depósitos de efectivo', 'en el banco', t.depositos, true) : '',
       ...bancos.map(b => suma('Transferencias ' + b, '', tb[b], true)),
       chCob ? suma('Cheques de cobranza', '', chCob, true) : '',
