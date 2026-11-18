@@ -97,7 +97,7 @@ const SCHEMA = {
   OPERACIONES: ['op','fn','fecha'],
   CHEQUES_ESTADO: ['clave','estado','fecha','registrado_por','registrado','obs'],
   NC_EMITIDAS: ['clave','nc_folio','fecha','registrado_por','registrado'],
-  CAJA_CHICA:  ['id','fecha','tipo','fecha_gasto','vendedor','monto','obs','registrado_por','registrado'],
+  CAJA_CHICA:  ['id','fecha','tipo','fecha_gasto','vendedor','monto','obs','registrado_por','registrado','b20000','b10000','b5000','b2000','b1000'],
   POZO_MONEDAS: ['id','fecha','tipo','monto','banco','operacion','obs','registrado_por','registrado'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
@@ -2891,6 +2891,10 @@ function asegurarCajaChica_() {
     const sh = ss.insertSheet('CAJA_CHICA'), head = SCHEMA.CAJA_CHICA;
     sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
     MEMO_.CAJA_CHICA = null;
+  } else {   // v195: la caja chica se saca con el detalle de billetes (cantidades por tipo)
+    const sh = ss.getSheetByName('CAJA_CHICA'), h = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]; let n = h.filter(String).length, hecho = false;
+    ['b20000','b10000','b5000','b2000','b1000'].forEach(c => { if (h.indexOf(c) < 0) { sh.getRange(1, ++n).setValue(c).setFontWeight('bold'); hecho = true; } });
+    if (hecho) { MEMO_.CAJA_CHICA = null; SLICE_ = {}; }
   }
   MEMO_.__cc = true;
 }
@@ -2907,10 +2911,24 @@ function ccDia_(fecha) {
   asegurarCajaChica_();
   return read_('CAJA_CHICA').filter(x => x.tipo === 'INGRESO' && normFecha_(x.fecha) === fecha).reduce((a, x) => a + Math.round(num_(x.monto)), 0);
 }
-/** v150: efectivo recaudado ese día (lo que entregan los vendedores) y lo que ya se sacó para caja chica. */
+/** v195: billetes (cantidades por tipo) que la caja chica sacó del efectivo de un día. */
+function ccBilletesDia_(fecha) {
+  asegurarCajaChica_();
+  const o = {}; ['20000','10000','5000','2000','1000'].forEach(b => o[b] = 0);
+  read_('CAJA_CHICA').filter(x => x.tipo === 'INGRESO' && normFecha_(x.fecha) === fecha).forEach(x => Object.keys(o).forEach(b => o[b] += Math.round(num_(x['b' + b]))));
+  return o;
+}
+/** v195: billetes contados ese día en «Efectivo del día» (suma de todos los vendedores; las monedas no entran). */
+function billetesContadosDia_(fecha) {
+  const o = {}; ['20000','10000','5000','2000','1000'].forEach(b => o[b] = 0);
+  byFecha_('CONTEO_EFECTIVO', fecha).filter(x => x.vendedor !== 'GENERAL').forEach(x => Object.keys(o).forEach(b => o[b] += Math.round(num_(x['b' + b]))));
+  return o;
+}
+/** v150/v195: billetes contados ese día, lo que ya sacó la caja chica y lo que queda disponible, por tipo de billete. */
 function efectivoDiaCC_(fecha) {
-  const r = resumen_(fecha), total = r.porVendedor.reduce((a, t) => a + Math.max(0, Math.round(num_(t.efectivoEntregar))), 0), ya = ccDia_(fecha);
-  return { total, ya, disponible: Math.max(0, total - ya) };
+  const con = billetesContadosDia_(fecha), sac = ccBilletesDia_(fecha), billetes = {}; let total = 0, disponible = 0;
+  Object.keys(con).forEach(b => { billetes[b] = Math.max(0, con[b] - sac[b]); total += con[b] * Number(b); disponible += billetes[b] * Number(b); });
+  return { total, ya: ccDia_(fecha), disponible, billetes, contados: con, contado: total > 0 };
 }
 /** v171: detalle de los gastos de un día y una persona (concepto, monto, nota), para ver en qué se gastó. */
 function gastosDetalle_(fecha, v) {
@@ -2921,7 +2939,8 @@ function getCajaChica(token) {
   asegurarCajaChica_();
   const nom = {}; read_('USUARIOS').forEach(u => nom[u.usuario] = u.nombre || u.usuario); nom.GENERAL = 'General planta';
   const movs = read_('CAJA_CHICA').map(x => ({ id: String(x.id), fecha: normFecha_(x.fecha), tipo: x.tipo, fechaGasto: normFecha_(x.fecha_gasto), vendedor: x.vendedor || '', nombre: nom[x.vendedor] || x.vendedor || '',
-    monto: Math.round(num_(x.monto)), obs: x.obs || '', por: nom[x.registrado_por] || x.registrado_por || '', registrado: x.registrado || '' }));
+    monto: Math.round(num_(x.monto)), obs: x.obs || '', por: nom[x.registrado_por] || x.registrado_por || '', registrado: x.registrado || '',
+    billetes: x.tipo === 'INGRESO' ? { 20000: Math.round(num_(x.b20000)), 10000: Math.round(num_(x.b10000)), 5000: Math.round(num_(x.b5000)), 2000: Math.round(num_(x.b2000)), 1000: Math.round(num_(x.b1000)) } : null }));
   movs.forEach(x => { if (x.tipo === 'REPOSICION') x.detalle = gastosDetalle_(x.fechaGasto, x.vendedor); });
   const suma = t => movs.filter(x => x.tipo === t).reduce((a, x) => a + x.monto, 0);
   const ingresos = suma('INGRESO'), repuesto = suma('REPOSICION'), gastosCaja = suma('GASTO');
@@ -2938,7 +2957,12 @@ function guardarCajaChica(token, tipo, datos) {
   const u = auth_(token, ['RENDICION', 'SUPERVISOR']);
   tipo = String(tipo || '').toUpperCase(); datos = datos || {};
   if (tipo !== 'INGRESO' && tipo !== 'REPOSICION' && tipo !== 'GASTO') throw new Error('Tipo de movimiento no válido.');
-  const monto = Math.round(num_(datos.monto)); if (!(monto > 0)) throw new Error('Escribe un monto mayor a cero.');
+  let monto = Math.round(num_(datos.monto)), bil = null;
+  if (tipo === 'INGRESO') {   // v195: se saca con el detalle de billetes; el monto es la suma
+    bil = {}; monto = 0;
+    ['20000','10000','5000','2000','1000'].forEach(b => { const c = Math.round(num_((datos.billetes || {})[b])); if (c < 0) throw new Error('Cantidad de billetes no válida.'); bil[b] = c; monto += c * Number(b); });
+  }
+  if (!(monto > 0)) throw new Error(tipo === 'INGRESO' ? 'Indica cuántos billetes de cada tipo saca la caja chica.' : 'Escribe un monto mayor a cero.');
   return withLock_(() => {
     asegurarCajaChica_();
     const o = { id: uid_(), fecha: hoy_(), tipo, fecha_gasto: '', vendedor: '', monto, obs: String(datos.obs || '').trim(), registrado_por: u.usuario, registrado: now_() };
@@ -2947,7 +2971,9 @@ function guardarCajaChica(token, tipo, datos) {
       // v150: la caja chica se saca de lo recaudado en efectivo de un día cualquiera (no tiene que ser hoy)
       o.fecha = normFecha_(datos.fecha) || hoy_();
       const e = efectivoDiaCC_(o.fecha);
-      if (monto > e.disponible) throw new Error('Ese día solo hay $' + e.disponible.toLocaleString('es-CL') + ' de efectivo disponible para caja chica (recaudado $' + e.total.toLocaleString('es-CL') + (e.ya ? ', ya sacado $' + e.ya.toLocaleString('es-CL') : '') + ').');
+      if (!e.contado) throw new Error('Primero cuenta y guarda los billetes de ese día en Efectivo del día: la caja chica se saca de los billetes contados.');
+      ['20000','10000','5000','2000','1000'].forEach(b => { if (bil[b] > e.billetes[b]) throw new Error('Ese día solo quedan ' + e.billetes[b] + ' billete(s) de $' + Number(b).toLocaleString('es-CL') + ' disponibles (contados ' + e.contados[b] + (e.contados[b] > e.billetes[b] ? ', ya sacados ' + (e.contados[b] - e.billetes[b]) : '') + ').'); });
+      ['20000','10000','5000','2000','1000'].forEach(b => o['b' + b] = bil[b]);
       if (estadoDia_(o.fecha) === 'CERRADA') throw new Error('El día ' + o.fecha + ' ya está cerrado (su efectivo ya se contó y depositó). Saca la caja chica de un día abierto, o pide al administrador que lo reabra.');
     }
     else if (tipo === 'GASTO') {
@@ -3256,7 +3282,7 @@ function getConteoEfectivo(token, fecha) {
   const g = guardado.GENERAL || {};
   return { fecha, estado: r.estado,
     vendedores: r.porVendedor.map(t => Object.assign({ usuario: t.vendedor, nombre: t.nombre || nombres[t.vendedor] || t.vendedor, esperado: t.efectivoEntregar, guardado: !!guardado[t.vendedor] }, fila(guardado[t.vendedor]))),
-    cajaChicaConteo: Math.round(num_(g.caja_chica)), cajaChicaDia: ccDia_(fecha), cajaChica: Math.round(num_(g.caja_chica)) + ccDia_(fecha), efectivoRecaudado: r.porVendedor.reduce((a, t) => a + Math.max(0, Math.round(num_(t.efectivoEntregar))), 0), obs: g.obs || '' };
+    cajaChicaConteo: Math.round(num_(g.caja_chica)), cajaChicaBil: ccBilletesDia_(fecha), cajaChicaDia: ccDia_(fecha), cajaChica: Math.round(num_(g.caja_chica)) + ccDia_(fecha), efectivoRecaudado: r.porVendedor.reduce((a, t) => a + Math.max(0, Math.round(num_(t.efectivoEntregar))), 0), obs: g.obs || '' };
 }
 
 /** datos: {filas:[{vendedor, b20000, b10000, b5000, b2000, b1000, monedas}], cajaChica, obs} */
@@ -3815,6 +3841,9 @@ function generarArchivo_(fecha, r, borrador) {
     EF.tabla('', [{ h: 'VENDEDOR' }, { h: 'ESPERADO', t: '$', sum: 1 }, { h: '$20.000' }, { h: '$10.000' }, { h: '$5.000' }, { h: '$2.000' }, { h: '$1.000' },
       { h: 'BILLETES', t: '$', sum: 1 }, { h: 'MONEDAS', t: '$', sum: 1 }, { h: 'CONTADO', t: '$', sum: 1 }, { h: 'DIFERENCIA', t: '$', sum: 1 }],
       vs.map(x => [nom(x.vendedor), esp[x.vendedor] || 0, num_(x.b20000), num_(x.b10000), num_(x.b5000), num_(x.b2000), num_(x.b1000), bil(x), num_(x.monedas), bil(x) + num_(x.monedas), bil(x) + num_(x.monedas) - (esp[x.vendedor] || 0)]));
+    const ccb = ccBilletesDia_(fecha), conB = {}; BILLETES.forEach(b => conB[b] = vs.reduce((a, x) => a + num_(x['b' + b]), 0));
+    EF.tabla('BILLETES A DEPOSITAR (contados − caja chica)', [{ h: 'BILLETE' }, { h: 'CONTADOS' }, { h: 'CAJA CHICA' }, { h: 'A DEPOSITAR' }, { h: 'MONTO A DEPOSITAR', t: '$', sum: 1 }],
+      BILLETES.map(b => [b, conB[b], num_(ccb[b]), conB[b] - num_(ccb[b]), (conB[b] - num_(ccb[b])) * b]));
     EF.tabla('A DEPOSITAR', [{ h: 'CONCEPTO' }, { h: 'MONTO', t: '$', sum: 0 }],
       [['Billetes contados', totBil], ['(−) Caja chica' + (gen.obs ? ' · ' + gen.obs : ''), -cc], ['EFECTIVO A DEPOSITAR (las monedas no se depositan)', totBil - cc]]);
     EF.escribir([150, 100, 70, 70, 70, 70, 70, 100, 90, 100, 100, 10]);

@@ -1307,3 +1307,6 @@ details.dpl .dfolio{padding:6px 0}
 .gsec>header.gh{padding-bottom:12px;margin-bottom:14px;border-bottom-width:3px}
 .gsec .gsum b{font-size:21px}
 .gsec .gsum span{font-size:13px}
+
+/* v195: billetes a depositar (contados − caja chica) */
+.efb2{margin:10px 0 6px;width:100%}.efb2 td,.efb2 th{padding:6px 8px}

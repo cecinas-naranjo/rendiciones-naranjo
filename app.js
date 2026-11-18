@@ -3002,13 +3002,14 @@ async function vEfectivo(m) {
       </div></div>`).join('')}
     <div class="card" id="efs" style="border:1.5px solid var(--ink)">
       <dl class="efd"><dt>Efectivo que debían entregar</dt><dd id="s_esp"></dd>
-        <dt>Billetes contados</dt><dd id="s_bil"></dd><dt class="muted" id="s_det" style="grid-column:1/-1;text-align:left"></dt>
+        <dt>Billetes contados</dt><dd id="s_bil"></dd>
         <dt>Monedas (van al pozo de monedas)</dt><dd id="s_mon"></dd>
         <dt>Diferencia (contado − esperado)</dt><dd id="s_dif"></dd></dl>
       <div class="row" style="margin:10px 0;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="min-width:180px"><label class="f" for="cc">Caja chica sacada de este día</label><input class="in n" id="cc" inputmode="numeric" value="${r.cajaChica || ''}" placeholder="0" disabled></div>
         ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost" id="ccSacar" type="button">Sacar caja chica de este día</button>'}</div>
-      <p class="muted" style="margin:0 0 8px">La caja chica se saca del efectivo recaudado y se descuenta del depósito. Se anota aquí o en Caja → Caja chica.</p>
-      <div class="dbox" style="margin-top:6px"><span>Efectivo a depositar</span><b id="s_dep"></b><small>Billetes contados − caja chica</small></div>
+      <p class="muted" style="margin:0 0 8px">La caja chica se saca de los billetes contados (con el detalle de cada tipo) y se descuenta del depósito. Se anota aquí o en Caja → Caja chica; guarda el conteo antes.</p>
+      <table class="t efb2" aria-label="Billetes a depositar"><thead><tr><th>Billete</th><th class="m">Contados</th><th class="m">Caja chica</th><th class="m">A depositar</th></tr></thead><tbody id="s_tb"></tbody></table>
+      <div class="dbox" style="margin-top:6px"><span>Efectivo a depositar</span><b id="s_dep"></b><small>Billetes contados − caja chica, por tipo de billete</small></div>
       ${cerrada ? '<p class="muted">El día está cerrado: solo ADMIN puede reabrirlo para cambiar el conteo.</p>' : '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="efg">Guardar conteo</button></div>'}</div>`);
   const filas = $$('.efv', m);
   function calc() {
@@ -3024,7 +3025,10 @@ async function vEfectivo(m) {
     });
     const cc = n($('#cc')), dif = bil + mon - esp;
     $('#s_esp').textContent = clp(esp); $('#s_bil').textContent = clp(bil); $('#s_mon').textContent = clp(mon);
-    $('#s_det').textContent = BILLETES.filter(b => por[b]).map(b => clp(b) + ': ' + clp(por[b])).join(' · ') || 'Sin billetes contados todavía';
+    const ccb = r.cajaChicaBil || {}, ccSin = Math.max(0, (r.cajaChica || 0) - BILLETES.reduce((a, b) => a + (ccb[b] || 0) * b, 0));
+    $('#s_tb').innerHTML = BILLETES.map(b => { const c = Math.round(por[b] / b), k = ccb[b] || 0, d = c - k;
+        return `<tr><td>${clp(b)}</td><td class="m">${c} <span class="muted">(${clp(por[b])})</span></td><td class="m">${k ? '− ' + k + ' <span class="muted">(' + clp(k * b) + ')</span>' : '—'}</td><td class="m"><b>${d} <span class="muted">(${clp(d * b)})</span></b>${d < 0 ? ' <span class="chip bad">sobran en caja chica</span>' : ''}</td></tr>`; }).join('')
+      + (ccSin ? `<tr><td colspan="3">Caja chica anotada sin detalle de billetes</td><td class="m">− ${clp(ccSin)}</td></tr>` : '');
     $('#s_dif').innerHTML = bil + mon === 0 ? '—' : dif === 0 ? '<span class="chip ok">Cuadra</span>' : `<span class="chip ${dif < 0 ? 'bad' : 'warn'}">${dif < 0 ? 'Faltan ' : 'Sobran '}${clp(Math.abs(dif))}</span>`;
     $('#s_dep').textContent = clp(bil - cc);
     return { esp, bil, mon, cc };
@@ -3039,7 +3043,7 @@ async function vEfectivo(m) {
     const h = e.target.closest('.efh'); if (h) { const f = h.closest('.efv'); abrirEf(f.classList.contains('abierto') ? null : f); }
   });
   calc();
-  if ($('#ccSacar')) $('#ccSacar').onclick = () => sacarCajaChica(S.fecha, async () => { olvidarCache(true); purgarListas(); S.tocado = false; ir('efectivo', true); });
+  if ($('#ccSacar')) $('#ccSacar').onclick = () => { if (S.tocado) return toast('Primero guarda el conteo: la caja chica se saca de los billetes guardados.', true); sacarCajaChica(S.fecha, async () => { olvidarCache(true); purgarListas(); S.tocado = false; ir('efectivo', true); }); };
   if ($('#efg')) $('#efg').onclick = async () => {
     const mal = $$('[data-b],[data-m]', m).find(i => n(i) % Number(i.dataset.b || i.dataset.m));
     if (mal) { toast('Revisa los montos: cada uno debe ser múltiplo de su billete o moneda'); mal.focus(); return; }
@@ -3773,27 +3777,36 @@ function pedirMonto(titulo, detalle, monto, conNota, alOk) {
 }
 /** v150: elegir un día, ver cuánto efectivo se recaudó y sacar un monto para la caja chica. */
 function sacarCajaChica(fecha0, alOk) {
-  const ov = document.createElement('div'); ov.className = 'ov'; const hoy = hoyCL();
+  const ov = document.createElement('div'); ov.className = 'ov'; const hoy = hoyCL(), BIL = [20000, 10000, 5000, 2000, 1000];
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Sacar caja chica"><div class="grip"></div><div class="body">
     <div style="font-weight:700;font-size:19px;margin-bottom:4px">Sacar caja chica del efectivo</div>
-    <div class="muted" style="margin-bottom:10px">Elige el día y cuánto sacas de lo recaudado en efectivo. Se descuenta del efectivo a depositar de ese día.</div>
+    <div class="muted" style="margin-bottom:10px">Elige el día y cuánto sacas de cada tipo de billete contado. Se descuenta, con ese mismo detalle, del efectivo a depositar de ese día.</div>
     <label class="f" for="scD">Día</label><input class="in" type="date" id="scD" max="${hoy}" value="${fecha0 || hoy}">
-    <div class="dbox" style="margin:10px 0"><span>Efectivo disponible ese día</span><b id="scE">…</b><small id="scS"></small></div>
-    <label class="f" for="scM">Monto</label><input class="in n gmon" id="scM" inputmode="numeric" autocomplete="off" placeholder="$ 0">
-    <label class="f" for="scN" style="margin-top:10px">Para qué <span class="muted">(opcional)</span></label><input class="in" id="scN" autocomplete="off" placeholder="Ej.: fondo para gastos">
+    <div class="dbox" style="margin:10px 0"><span>Billetes disponibles ese día</span><b id="scE">…</b><small id="scS"></small></div>
+    <div class="bill">${BIL.map(b => `<label><span>${clp(b)}</span><input class="in n" inputmode="numeric" data-sb="${b}" placeholder="0" aria-label="Total que se saca en billetes de ${clp(b)}"><em class="sub" data-sd="${b}"></em></label>`).join('')}</div>
+    <div class="dbox" style="margin:10px 0"><span>Total caja chica</span><b id="scT">$0</b></div>
+    <label class="f" for="scN">Para qué <span class="muted">(opcional)</span></label><input class="in" id="scN" autocomplete="off" placeholder="Ej.: fondo para gastos">
     <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" id="scX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="scOk" type="button">Guardar</button></div></div></div>`;
   document.body.appendChild(ov);
   const cerrar = () => cerrarHoja(ov); $('#scX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
-  let disp = 0;
+  let disp = {};
+  const montos = () => { const o = {}; let t = 0; $$('[data-sb]', ov).forEach(i => { const m = soloDigitos(i.value), b = Number(i.dataset.sb); o[b] = m / b; t += m; }); return { cant: o, total: t }; };
+  const pintar = () => { let ok = true; $$('[data-sb]', ov).forEach(i => { const m = soloDigitos(i.value), b = Number(i.dataset.sb), c = m / b, hay = disp[b] || 0;
+      const msg = m % b ? 'Debe ser múltiplo de ' + clp(b) : c > hay ? 'Solo hay ' + hay + ' billete(s)' : ''; if (msg) ok = false;
+      $('[data-sd="' + b + '"]', ov).innerHTML = msg ? '<span style="color:var(--bad,#b3261e)">' + msg + '</span>' : (hay ? 'hay ' + hay : ''); });
+    $('#scT', ov).textContent = clp(montos().total); return ok; };
+  ov.addEventListener('input', e => { if (e.target.matches('[data-sb]')) pintar(); });
   const cargar = async () => { $('#scE', ov).textContent = '…'; $('#scS', ov).textContent = '';
-    try { const e = await api('efectivoCajaChica', S.sess.token, $('#scD', ov).value); disp = e.disponible; $('#scE', ov).textContent = clp(e.disponible);
-      $('#scS', ov).textContent = 'Recaudado ' + clp(e.total) + (e.ya ? ' · ya sacado ' + clp(e.ya) : ''); } catch (x) { $('#scE', ov).textContent = '—'; $('#scS', ov).textContent = String(x.message || x); } };
-  $('#scD', ov).onchange = cargar; cargar(); setTimeout(() => $('#scM', ov).focus(), 60);
+    try { const e = await api('efectivoCajaChica', S.sess.token, $('#scD', ov).value); disp = e.billetes || {};
+      $('#scE', ov).textContent = clp(e.disponible);
+      $('#scS', ov).textContent = !e.contado ? 'Ese día aún no hay billetes contados: cuéntalos y guarda el conteo en Efectivo del día.' : BIL.map(b => (disp[b] || 0) + ' × ' + clp(b)).join(' · ') + (e.ya ? ' · ya sacado ' + clp(e.ya) : ''); pintar(); }
+    catch (x) { disp = {}; $('#scE', ov).textContent = '—'; $('#scS', ov).textContent = String(x.message || x); } };
+  $('#scD', ov).onchange = cargar; cargar(); setTimeout(() => { const i = $('[data-sb]', ov); if (i) i.focus(); }, 60);
   $('#scOk', ov).onclick = async () => {
-    const mt = Number(soloDigitos($('#scM', ov).value)); if (!(mt > 0)) return toast('Escribe un monto.', true);
-    if (mt > disp) return toast('Ese día solo hay ' + clp(disp) + ' disponibles.', true);
+    const { cant, total } = montos(); if (!(total > 0)) return toast('Escribe cuánto sacas de cada billete.', true);
+    if (!pintar()) return toast('Revisa los billetes: cada monto debe ser múltiplo de su billete y no pasar lo disponible.', true);
     const b = $('#scOk', ov), fin = botonOcupado(b, 'Guardando…');
-    try { const o = await api('guardarCajaChica', S.sess.token, 'INGRESO', { fecha: $('#scD', ov).value, monto: mt, obs: $('#scN', ov).value }); olvidarCache(true); purgarListas(); toast(o.aviso || 'Caja chica anotada', !!o.aviso); cerrar(); await alOk(); } catch (e) { fin(); throw e; }
+    try { const o = await api('guardarCajaChica', S.sess.token, 'INGRESO', { fecha: $('#scD', ov).value, billetes: cant, obs: $('#scN', ov).value }); olvidarCache(true); purgarListas(); toast(o.aviso || 'Caja chica anotada', !!o.aviso); cerrar(); await alOk(); } catch (e) { fin(); throw e; }
   };
 }
 /** v171: hoja con campos para anotar un gasto de la caja chica o un depósito de monedas. campos: [{id, label, tipo, ph, valor, opciones}] */
@@ -3834,7 +3847,7 @@ async function vCajaChica(m) {
     <h3 style="margin-top:18px">Movimientos</h3>
     ${r.movimientos.length ? `<table class="t"><thead><tr><th>Día</th><th>Qué</th><th>Detalle</th><th class="m">Monto</th><th></th></tr></thead><tbody>${r.movimientos.map(x => `<tr>
       <td>${fcorta(x.tipo === 'GASTO' ? x.fechaGasto : x.fecha)}</td><td>${quien(x)}</td>
-      <td>${x.tipo === 'REPOSICION' ? esc(x.nombre) + ' · gasto del ' + fcorta(x.fechaGasto) : ''}${x.obs ? ' ' + esc(x.obs) : ''}${x.tipo === 'REPOSICION' ? detalleGastos(x.detalle) : ''}<div class="muted">${esc(x.por)}</div></td>
+      <td>${x.tipo === 'INGRESO' && x.billetes ? '<div class="muted">' + [20000, 10000, 5000, 2000, 1000].filter(b => x.billetes[b]).map(b => x.billetes[b] + ' × ' + clp(b)).join(' · ') + '</div>' : ''}${x.tipo === 'REPOSICION' ? esc(x.nombre) + ' · gasto del ' + fcorta(x.fechaGasto) : ''}${x.obs ? ' ' + esc(x.obs) : ''}${x.tipo === 'REPOSICION' ? detalleGastos(x.detalle) : ''}<div class="muted">${esc(x.por)}</div></td>
       <td class="m"><b>${x.tipo === 'INGRESO' ? '+' : '−'} ${clp(x.monto)}</b></td>${puede ? `<td><button class="x" type="button" data-d="${esc(x.id)}" aria-label="Borrar">×</button></td>` : '<td></td>'}</tr>`).join('')}</tbody></table>`
       : '<div class="empty">Aún no hay movimientos.</div>'}`);
   const bi = $('#ccIn', m);
