@@ -878,3 +878,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v201 — Retorno vacío = 0 (solo frontend: app.js, sw.js)
 - El bodeguero no anota los ceros; el producto con salida y retorno vacío figuraba «sin retorno registrado» (y bloqueaba la alerta de kilos). Ahora, al Guardar en el paso Retorno (y si el retorno no está bloqueado), todo producto con salida > 0 y retorno vacío se guarda con retorno 0 (y unidades 0 si usa unidades). Solo sintaxis verificada.
+
+## v202 — Cobranza: filtro por vendedor (solo frontend: app.js, sw.js)
+- En «Cobrar a un cliente» (oficina: RENDICION/SUPERVISOR/ADMIN; el vendedor ya ve solo lo suyo) hay un selector «Todos los vendedores» sobre el buscador (aparece si hay más de un vendedor con deuda). Al elegir uno quedan solo los clientes con facturas de ese vendedor, con sus facturas y deuda recalculadas; el buscador sigue funcionando sobre eso. El vendedor de cada factura viene de `porCobrar` (`facturas[].vendedor`, nombre). Solo sintaxis verificada.

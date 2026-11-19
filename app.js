@@ -3302,10 +3302,12 @@ const fcorta = iso => { const [a, m, d] = String(iso || '').split('-'); return d
 async function cobrarDesdeLista(box, alTerminar) {
   box.innerHTML = '<div class="card"><div class="sk" style="height:46px;margin:0"></div></div>';
   let r; try { r = await api('porCobrar', S.sess.token); } catch (e) { box.innerHTML = ''; return; }
-  const clientes = r.clientes;
+  const todos = r.clientes; let clientes = todos;
+  const vendsC = S.sess.rol === 'VENDEDOR' ? [] : [...new Set(todos.flatMap(c => c.facturas.map(f => f.vendedor || '')))].filter(Boolean).sort((a, b) => a.localeCompare(b));
   if (!clientes.length) { box.innerHTML = '<div class="card"><b>Por cobrar</b><p class="muted" style="margin:4px 0 0">No hay créditos por cobrar cargados. La encargada puede subir la lista en <b>Importar Mi DTE</b>.</p></div>'; return; }
   const edad = d => d > 60 ? 'bad' : d > 30 ? 'warn' : 'ok';
   box.innerHTML = `<div class="card"><div class="row"><b class="grow" style="font-size:17px">Cobrar a un cliente</b><span class="muted">${clientes.length} con deuda · ${clp(clientes.reduce((a, c) => a + c.deuda, 0))}</span></div>
+    ${vendsC.length > 1 ? `<select class="in" id="cvf" style="margin-top:10px"><option value="">Todos los vendedores</option>${vendsC.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select>` : ''}
     <input class="in" id="cq" placeholder="Nombre, RUT o folio" autocomplete="off" inputmode="search" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
   const res = $('#cres', box), pan = $('#cpan', box);
   const lista = q => {
@@ -3318,6 +3320,11 @@ async function cobrarDesdeLista(box, alTerminar) {
   };
   lista('');
   $('#cq', box).oninput = e => { pan.innerHTML = ''; lista(e.target.value); };
+  { const sel = $('#cvf', box); if (sel) sel.onchange = () => {        // filtro por vendedor (oficina): solo sus facturas, con la deuda recalculada
+      const v = sel.value;
+      clientes = !v ? todos : todos.map(c => { const fs = c.facturas.filter(f => f.vendedor === v); return fs.length ? Object.assign({}, c, { facturas: fs, deuda: fs.reduce((a, f) => a + f.saldo, 0) }) : null; }).filter(Boolean);
+      const tt = $('.row .muted', box); if (tt) tt.textContent = clientes.length + ' con deuda · ' + clp(clientes.reduce((a, c) => a + c.deuda, 0));
+      pan.innerHTML = ''; lista($('#cq', box).value); }; }
   res.onclick = e => { const b = e.target.closest('.cli'); if (!b || res.dataset.ocupado) return; res.dataset.ocupado = '1';
     const c = clientes.find(x => x.clave === b.dataset.k), fq = String($('#cq', box).value || '').replace(/\D/g, '');
     $$('.cli', res).forEach(x => x.classList.add(x === b ? 'sel' : 'apag'));          // el elegido queda marcado y los demás se desvanecen
