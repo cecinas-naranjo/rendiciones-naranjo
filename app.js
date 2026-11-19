@@ -1022,6 +1022,15 @@ async function vHoy(m) {
 
 /* ============ FOLIOS ============ */
 /** Hoja para anotar folios por adelantado (tipo, N°, monto y cómo pagó: una forma o varias). Funciona sin conexión: queda en el teléfono y se envía sola. */
+const _svg = d => '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+const ICO_AD = {
+  Boleta: _svg('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'),
+  Factura: _svg('<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>'),
+  EFECTIVO: _svg('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/>'),
+  TRANSFERENCIA: _svg('<path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/>'),
+  CREDITO: _svg('<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4M9 15h2"/>'),
+  CHEQUE: _svg('<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 15h6M15 11l1.5 1.5L19 9.5"/>')
+};
 const FORMAS_AD = [['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CREDITO', 'Crédito'], ['CHEQUE', 'Cheque']];
 function abrirAdelanto(vend, alCerrar) {
   let tipo = '', ncOn = false, lineas = [{ forma: '', banco: '', monto: '', ch: {} }];     // v196: ni el tipo ni la forma de pago vienen elegidos: se elige cada vez
@@ -1030,7 +1039,7 @@ function abrirAdelanto(vend, alCerrar) {
     <div style="font-weight:700;font-size:20px">Anotar un folio</div>
     <p class="muted" style="margin:2px 0 12px">Sigue los 3 pasos. Cuando el folio llegue de Mi DTE se detalla solo. Sirve también sin internet.</p>
     <div class="adp" id="adp1"><div class="adh"><i>1</i>¿Qué documento emitiste?</div>
-      <div class="adt" id="adT"><button type="button" data-t="Boleta">Boleta</button><button type="button" data-t="Factura">Factura</button></div></div>
+      <div class="adt" id="adT"><button type="button" data-t="Boleta">${ICO_AD.Boleta}<span>Boleta</span></button><button type="button" data-t="Factura">${ICO_AD.Factura}<span>Factura</span></button></div></div>
     <div class="adp" id="adp2"><div class="adh"><i>2</i>Número y monto</div>
       <div class="grid g2"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off" placeholder="Ej: 57443"></label>
         <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off" placeholder="Total del documento"></label></div>
@@ -1068,7 +1077,7 @@ function abrirAdelanto(vend, alCerrar) {
     const n = lineas.length;
     $('#adPg', ov).innerHTML = lineas.map((l, i) => `<div class="adln" data-i="${i}">
       ${n > 1 ? `<div class="row" style="margin:6px 0 2px"><b>Pago ${i + 1}</b><span class="grow"></span><button type="button" class="btn ghost sm" data-q>Quitar</button></div>` : ''}
-      <div class="adt" data-fs>${FORMAS_AD.map(([f, nm]) => `<button type="button" data-f="${f}" class="${l.forma === f ? 'on' : ''}">${nm}</button>`).join('')}</div>
+      <div class="adt" data-fs>${FORMAS_AD.map(([f, nm]) => `<button type="button" data-f="${f}" class="${l.forma === f ? 'on' : ''}">${ICO_AD[f] || ''}<span>${nm}</span></button>`).join('')}</div>
       ${l.forma === 'TRANSFERENCIA' ? `<div class="adh sub">¿A qué banco?</div><div class="adt b3" data-bs>${['BICE', 'ESTADO', 'SANTANDER'].map(b => `<button type="button" data-b="${b}" class="${l.banco === b ? 'on' : ''}">${b.charAt(0) + b.slice(1).toLowerCase()}</button>`).join('')}</div>` : ''}
       ${l.forma === 'CHEQUE' ? camposCheque(l.ch, 'ad' + i) : ''}
       ${n > 1 ? `<label class="f" style="margin:8px 0 0">Monto de este pago $<input class="in n" data-m inputmode="numeric" value="${esc(l.monto)}"></label>` : ''}</div>`).join('') + (n > 1 ? '<div id="adRest"></div>' : '');
