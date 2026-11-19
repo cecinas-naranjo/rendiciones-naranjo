@@ -460,7 +460,7 @@ function superponer(fn, args, data) {
         if (p.fn === 'adelantarFolio' && p.args[0] === args[1] && (S.sess.rol === 'VENDEDOR' || p.args[5] === args[2])) {
           const pg = p.args[4] || [], fol = String(p.args[2]).replace(/\D/g, '').replace(/^0+/, '');
           data = data.filter(x => !(String(x.folio) === fol && x.tipo === (/bol/i.test(p.args[1]) ? 'Boleta' : 'Factura')));
-          data.unshift({ id: 'pend_' + p.op, tipo: /bol/i.test(p.args[1]) ? 'Boleta' : 'Factura', folio: fol, monto: soloDigitos(p.args[3]), forma: pg.length > 1 ? 'MIXTO' : (pg[0] || {}).forma, banco: (pg[0] || {}).banco || '', estado: 'ESPERANDO', nota: '', sinEnviar: true });
+          data.unshift({ id: 'pend_' + p.op, tipo: /bol/i.test(p.args[1]) ? 'Boleta' : 'Factura', folio: fol, monto: soloDigitos(p.args[3]), nc: pg.filter(l => l.forma === 'NOTA_CREDITO').reduce((t, l) => t + (Number(l.monto) || 0), 0), forma: pg.filter(l => l.forma !== 'NOTA_CREDITO').length > 1 ? 'MIXTO' : ((pg.filter(l => l.forma !== 'NOTA_CREDITO')[0] || {}).forma || 'NOTA_CREDITO'), banco: (pg.filter(l => l.forma !== 'NOTA_CREDITO')[0] || {}).banco || '', estado: 'ESPERANDO', nota: '', sinEnviar: true });
         }
         if (p.fn === 'borrarAdelanto') data = data.filter(x => x.id !== p.args[0]);
       });
@@ -1024,8 +1024,7 @@ async function vHoy(m) {
 /** Hoja para anotar folios por adelantado (tipo, N°, monto y cómo pagó: una forma o varias). Funciona sin conexión: queda en el teléfono y se envía sola. */
 const FORMAS_AD = [['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CREDITO', 'Crédito'], ['CHEQUE', 'Cheque']];
 function abrirAdelanto(vend, alCerrar) {
-  let tipo = 'Boleta', lineas = [{ forma: '', banco: '', monto: '', ch: {} }];
-  try { tipo = localStorage.getItem('rn_adl_tipo') || tipo; } catch (e) {}
+  let tipo = '', ncOn = false, lineas = [{ forma: '', banco: '', monto: '', ch: {} }];     // v196: ni el tipo ni la forma de pago vienen elegidos: se elige cada vez
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anotar folio"><div class="grip"></div><div class="body">
     <div style="font-weight:700;font-size:19px">Anotar un folio</div>
@@ -1033,9 +1032,11 @@ function abrirAdelanto(vend, alCerrar) {
     <div class="seg" id="adT"><button type="button" data-t="Boleta">Boleta</button><button type="button" data-t="Factura">Factura</button></div>
     <div class="grid g2" style="margin-top:10px"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off"></label>
       <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off"></label></div>
-    <div class="muted" style="margin-top:10px;font-weight:700">¿Cómo pagó?</div>
+    <button type="button" class="ghostlink" id="adNcB" style="display:block;margin-top:8px;background:none;border:0;padding:4px 0;color:var(--cu-2);font-weight:600;cursor:pointer">+ Lleva nota de crédito</button>
+    <div id="adNcW" hidden style="margin-top:4px"><label class="f" style="margin:0">Monto de la nota de crédito $<input class="in n" id="adN" inputmode="numeric" autocomplete="off"></label><div class="muted" id="adNi" style="margin-top:4px"></div></div>
+    <div id="adPW"><div class="muted" style="margin-top:10px;font-weight:700">¿Cómo pagó?</div>
     <div id="adPg"></div>
-    <button type="button" class="ghostlink" id="adMas" style="display:block;margin-top:6px;background:none;border:0;padding:4px 0;color:var(--cu-2);font-weight:600;cursor:pointer">+ Pago mixto (agregar otra forma de pago)</button>
+    <button type="button" class="ghostlink" id="adMas" style="display:block;margin-top:6px;background:none;border:0;padding:4px 0;color:var(--cu-2);font-weight:600;cursor:pointer">+ Pago mixto (agregar otra forma de pago)</button></div>
     <div id="adL" style="margin-top:12px"></div></div>
     <div class="foot"><button class="btn ghost" id="adX" type="button">Listo</button><span class="grow"></span><button class="btn cu" id="adS" type="button">Guardar y anotar otro</button></div></div>`;
   document.body.appendChild(ov);
@@ -1043,8 +1044,17 @@ function abrirAdelanto(vend, alCerrar) {
   const cerrar = () => { cerrarHoja(ov); if (cambios && alCerrar) alCerrar(); };
   $('#adX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
   const total = () => Number($('#adM', ov).value.replace(/\D/g, '')) || 0;
-  const resto = () => { const e = $('#adRest', ov); if (!e) return; const r = total() - lineas.reduce((a, l) => a + (Number(String(l.monto).replace(/\D/g, '')) || 0), 0);
+  const ncM = () => ncOn ? Number($('#adN', ov).value.replace(/\D/g, '')) || 0 : 0;
+  const aPagar = () => total() - ncM();         // lo que se paga de verdad: el total menos la nota de crédito
+  const resto = () => { const e = $('#adRest', ov); if (!e) return; const r = aPagar() - lineas.reduce((a, l) => a + (Number(String(l.monto).replace(/\D/g, '')) || 0), 0);
     e.textContent = !total() ? 'Escribe primero el monto total.' : r === 0 ? 'Cuadra ✓' : r > 0 ? 'Faltan ' + clp(r) : 'Sobran ' + clp(-r); e.className = 'muted ' + (r === 0 && total() ? 'okt' : ''); };
+  function pintarNC() {
+    const t = total(), nc = ncM(); $('#adNcW', ov).hidden = !ncOn; $('#adNcB', ov).textContent = ncOn ? '− Quitar la nota de crédito' : '+ Lleva nota de crédito';
+    $('#adNi', ov).innerHTML = !ncOn ? '' : !nc ? 'Escribe cuánto se acredita (puede ser el total).' : nc > t ? '<span class="bad">La nota de crédito no puede ser mayor al total.</span>' : nc === t ? 'Nota de crédito por el total: no hay pago.' : 'Se paga ' + clp(t - nc) + ' (total − nota de crédito).';
+    $('#adPW', ov).hidden = ncOn && nc > 0 && nc === t; resto();
+  }
+  $('#adNcB', ov).onclick = () => { ncOn = !ncOn; if (!ncOn) $('#adN', ov).value = ''; pintarNC(); if (ncOn) setTimeout(() => $('#adN', ov).focus(), 30); };
+  $('#adN', ov).addEventListener('input', pintarNC);
   function pintarPagos() {
     const n = lineas.length;
     $('#adPg', ov).innerHTML = lineas.map((l, i) => `<div class="adln" data-i="${i}">
@@ -1065,10 +1075,10 @@ function abrirAdelanto(vend, alCerrar) {
     if (e.target.matches('[data-m]')) { l.monto = e.target.value.replace(/\D/g, ''); resto(); }
     else if (e.target.dataset.c) l.ch[e.target.dataset.c] = e.target.value; });
   $('#adPg', ov).addEventListener('change', e => { const bx = e.target.closest('.adln'); if (bx && e.target.dataset.c) lineas[Number(bx.dataset.i)].ch[e.target.dataset.c] = e.target.value; });
-  $('#adM', ov).addEventListener('input', resto);
-  $('#adMas', ov).onclick = () => { if (lineas.length === 1) { const t = total(); if (t && !lineas[0].monto) lineas[0].monto = String(t); } lineas.push({ forma: '', banco: '', monto: '', ch: {} }); pintarPagos(); };
-  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; try { localStorage.setItem('rn_adl_tipo', tipo); } catch (x) {} $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); } };
-  const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto' };
+  $('#adM', ov).addEventListener('input', pintarNC);
+  $('#adMas', ov).onclick = () => { if (lineas.length === 1) { const t = aPagar(); if (t && !lineas[0].monto) lineas[0].monto = String(t); } lineas.push({ forma: '', banco: '', monto: '', ch: {} }); pintarPagos(); };
+  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); } };
+  const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto', NOTA_CREDITO: 'Nota de crédito' };
   const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
   const hh = t => { const m = String(t || '').match(/(\d{2}:\d{2})/); return m ? m[1] : ''; };
   async function lista() {
@@ -1080,7 +1090,7 @@ function abrirAdelanto(vend, alCerrar) {
     $('#adL', ov).innerHTML = cab + ls.map(x => { const [t, c] = x.sinEnviar ? ['Guardado en el teléfono · se envía al volver internet', 'b'] : (ESTADO[x.estado] || [x.estado, '']);
       const pasos = x.sinEnviar ? '' : `<div class="muted" style="font-size:.85em">① Anotado${hh(x.anotado) ? ' ' + hh(x.anotado) : ''} · ${x.llego ? '② Llegó en Mi DTE' + (x.docCliente ? ' (' + esc(x.docCliente) + ', ' + clp(x.docTotal) + ')' : '') : '② Aún no llega de Mi DTE'} · ${x.estado === 'APLICADO' ? '③ Detallado ✓' + (hh(x.resuelto) ? ' ' + hh(x.resuelto) : '') : x.estado === 'REVISAR' ? '③ No se pudo detallar' : '③ Pendiente'}</div>`;
       return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
-      <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)} · ${esc(FTXT[x.forma] || x.forma)}${x.forma === 'TRANSFERENCIA' && x.banco ? ' ' + esc(x.banco) : ''}
+      <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)}${x.nc ? ' · <span class="bad">con nota de crédito ' + clp(x.nc) + '</span>' : ''} · ${esc(x.forma === 'NOTA_CREDITO' ? 'sin pago' : FTXT[x.forma] || x.forma)}${x.forma === 'TRANSFERENCIA' && x.banco ? ' ' + esc(x.banco) : ''}
       <div class="dvst ${c}">${t}</div>${pasos}${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}${x.estado === 'REVISAR' && x.llego && x.docTotal > x.monto && x.docEstado !== 'DETALLADO' && /^Anotaste/.test(x.nota || '') ? `<button class="btn sm" data-nc type="button" style="margin-top:6px">Registrar ${clp(x.docTotal - x.monto)} como nota de crédito</button>` : ''}</span>${x.estado === 'APLICADO' ? '' : '<button class="btn ghost sm" data-del type="button">Quitar</button>'}</div>`; }).join('');
   }
   $('#adL', ov).onclick = async e => { const re = e.target.closest('#adRe'); if (re) { re.disabled = true; try { const r = await api('reintentarAdelantos', S.sess.token); cambios = true; toast(r.aplicados ? r.aplicados + ' folio' + (r.aplicados > 1 ? 's' : '') + ' detallado' + (r.aplicados > 1 ? 's' : '') : 'Nada nuevo para cruzar.'); await lista(); } catch (x) { toast(x.message || 'No se pudo', true); } finally { re.disabled = false; } return; }
@@ -1088,28 +1098,32 @@ function abrirAdelanto(vend, alCerrar) {
     const b = e.target.closest('[data-del]'); if (!b) return; const id = b.closest('.dfila').dataset.id; b.disabled = true;
     try { await api('borrarAdelanto', S.sess.token, id); cambios = true; await lista(); } finally { b.disabled = false; } };
   $('#adS', ov).onclick = async () => {
-    const f = $('#adF', ov).value.trim(), m = total();
+    const f = $('#adF', ov).value.trim(), m = total(), nc = ncM(), ap = m - nc;
+    if (!tipo) return toast('Elige si es Boleta o Factura.', true);
     if (!f) return toast('Escribe el N° de folio.', true);
     if (!m) return toast('Escribe el monto.', true);
+    if (ncOn && !nc) return toast('Escribe el monto de la nota de crédito o quítala.', true);
+    if (nc > m) return toast('La nota de crédito no puede ser mayor al total.', true);
     const pagos = [];
-    for (let i = 0; i < lineas.length; i++) { const l = lineas[i];
+    for (let i = 0; ap > 0 && i < lineas.length; i++) { const l = lineas[i];
       if (!l.forma) return toast(lineas.length > 1 ? 'Elige la forma del pago ' + (i + 1) + '.' : 'Elige cómo pagó.', true);
       if (l.forma === 'TRANSFERENCIA' && !l.banco) return toast('Elige el banco de la transferencia.', true);
-      const monto = lineas.length === 1 ? m : Number(String(l.monto).replace(/\D/g, '')) || 0;
+      const monto = lineas.length === 1 ? ap : Number(String(l.monto).replace(/\D/g, '')) || 0;
       if (!monto) return toast('Falta el monto del pago ' + (i + 1) + '.', true);
       let p = { forma: l.forma, banco: l.banco, monto };
       if (l.forma === 'CHEQUE') { const r = leerCheque($('[data-cheque=ad' + i + ']', ov)); if (r.error) return toast(r.error, true); p = Object.assign(p, r.datos); }
       pagos.push(p); }
+    if (nc) pagos.push({ forma: 'NOTA_CREDITO', banco: '', monto: nc });
     if (pagos.reduce((a, p) => a + p.monto, 0) !== m) return toast('Los pagos no suman el monto del folio (' + clp(m) + ').', true);
     const b = $('#adS', ov); b.disabled = true;
     try {
       const r = await api('adelantarFolio', S.sess.token, S.fecha, tipo, f, String(m), pagos, vend); cambios = true;
       toast(r._pendiente ? 'Guardado en el teléfono. Se envía solo cuando vuelva internet.' : r.estado === 'APLICADO' ? 'Folio ' + f + ' detallado' : r.estado === 'REVISAR' ? r.nota : 'Anotado. Se detalla solo cuando llegue de Mi DTE.', r.estado === 'REVISAR');
-      $('#adF', ov).value = ''; $('#adM', ov).value = ''; lineas = [{ forma: '', banco: '', monto: '', ch: {} }]; pintarPagos(); await lista(); $('#adF', ov).focus();
+      $('#adF', ov).value = ''; $('#adM', ov).value = ''; $('#adN', ov).value = ''; ncOn = false; tipo = ''; $$('#adT button', ov).forEach(y => y.classList.remove('on'));
+      lineas = [{ forma: '', banco: '', monto: '', ch: {} }]; pintarNC(); pintarPagos(); await lista(); $('#adF', ov).focus();
     } finally { b.disabled = false; }
   };
-  $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo));
-  pintarPagos(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
+  pintarNC(); pintarPagos(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
 }
 /* ============ ANULAR FOLIO / NOTA DE CRÉDITO (v72) ============ */
 const MOTIVOS_AN = ['Error en un producto', 'Cobré de más', 'El cliente devolvió producto', 'Documento mal emitido', 'Otro'];

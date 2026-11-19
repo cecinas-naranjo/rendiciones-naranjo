@@ -1050,7 +1050,9 @@ function importarDTE(token, filas) {
 // El vendedor anota en su celular el tipo, el N° de folio, el monto y cómo le pagaron, ANTES de que el folio llegue en Mi DTE.
 // Cuando la encargada importa Ventas Diarias, la app cruza por tipo+folio y deja el folio ya detallado (si el monto calza).
 // Pago único o mixto (varias líneas, guardadas como JSON en `pagos`). Estados: ESPERANDO (aún no llega de Mi DTE) · APLICADO (cruzado y detallado) · REVISAR (no calza; `nota` dice por qué; el folio queda por detallar normal).
-const FORMAS_ADELANTO_ = ['EFECTIVO', 'TRANSFERENCIA', 'CREDITO', 'CHEQUE'];
+const FORMAS_ADELANTO_ = ['EFECTIVO', 'TRANSFERENCIA', 'CREDITO', 'CHEQUE', 'NOTA_CREDITO'];   // v196: NOTA_CREDITO = parte del folio que lleva nota de crédito (una sola línea)
+/** v196: forma y banco que se muestran del adelanto: el pago principal (la nota de crédito va aparte). */
+function formaAdel_(ls) { const pp = ls.filter(x => x.forma !== 'NOTA_CREDITO'); return { forma: pp.length > 1 ? 'MIXTO' : pp.length ? pp[0].forma : 'NOTA_CREDITO', banco: pp.length ? (pp[0].banco || '') : '' }; }
 function asegurarAdelantos_() {
   const ss = SpreadsheetApp.getActive();
   const ex = ss.getSheetByName('ADELANTOS');
@@ -1182,10 +1184,11 @@ function validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, vend2) 
     if (p.forma === 'TRANSFERENCIA' && !p.banco) throw new Error('Indica el banco de la transferencia.');
     const mm = (pagos.length === 1 && !p.monto) ? m : Number(String(p.monto == null ? '' : p.monto).replace(/\D/g, '')) || 0;
     if (!(mm > 0)) throw new Error('Falta el monto de uno de los pagos.');
-    const o = { forma: p.forma, banco: p.banco || '', monto: mm, referencia: '' };
+    const o = { forma: p.forma, banco: p.forma === 'NOTA_CREDITO' ? '' : (p.banco || ''), monto: mm, referencia: '' };
     return p.forma === 'CHEQUE' ? Object.assign(o, datosCheque_(p)) : o;
   });
   if (!ls.length) throw new Error('Indica cómo pagó.');
+  if (ls.filter(x => x.forma === 'NOTA_CREDITO').length > 1) throw new Error('Solo puede haber una nota de crédito por folio.');
   if (ls.reduce((a, p) => a + p.monto, 0) !== m) throw new Error('Los pagos no suman el monto del folio ($' + m + ').');
   return { v, fecha, t, f, m, ls, key: folioKey_(t, f) };
 }
@@ -1196,7 +1199,7 @@ function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2
     asegurarAdelantos_();
     const prev = read_('ADELANTOS').filter(a => a.folio_key === p.key);
     if (prev.some(a => a.estado === 'APLICADO')) return { estado: 'APLICADO', nota: 'Ese folio ya estaba detallado.', id: prev[0].id };
-    const reg = { id: uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: p.ls.length > 1 ? 'MIXTO' : p.ls[0].forma, banco: p.ls[0].banco || '',
+    const reg = { id: uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: formaAdel_(p.ls).forma, banco: formaAdel_(p.ls).banco,
       estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls) };
     if (prev.length) { reg.id = prev[0].id; updateRow_('ADELANTOS', prev[0]._row, reg); } else append_('ADELANTOS', [reg]);
     cruzarAdelantos_();      // si el folio ya llegó de Mi DTE, se cruza al tiro
@@ -1223,7 +1226,7 @@ function adelantarVarios(token, items) {
     ok.forEach(o => {
       const p = o.p, prev = existentes[p.key] || [];
       if (prev.some(a => a.estado === 'APLICADO')) { res[o.i] = { ok: true, estado: 'APLICADO', nota: 'Ese folio ya estaba detallado.' }; return; }
-      const reg = { id: (nuevos[p.key] || prev[0] || {}).id || uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: p.ls.length > 1 ? 'MIXTO' : p.ls[0].forma, banco: p.ls[0].banco || '',
+      const reg = { id: (nuevos[p.key] || prev[0] || {}).id || uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: formaAdel_(p.ls).forma, banco: formaAdel_(p.ls).banco,
         estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls) };
       ids[p.key] = reg.id;
       if (prev.length) updateRow_('ADELANTOS', prev[0]._row, reg); else nuevos[p.key] = reg;      // si el mismo folio viene dos veces, vale el último
@@ -1267,7 +1270,7 @@ function listarAdelantos(token, fecha, vendedor) {
   return read_('ADELANTOS').filter(a => a.fecha === fecha && (!v || a.vendedor === v))
     .map(a => { const d = docs[keyNorm_(a.folio_key)];
       return { id: a.id, tipo: /bol/i.test(a.tipo) ? 'Boleta' : 'Factura', folio: a.folio, monto: num_(a.monto), forma: a.forma, banco: a.banco, estado: a.estado, nota: a.nota, vendedor: a.vendedor,
-        anotado: a.registrado, resuelto: a.resuelto, llego: !!d, docCliente: d ? d.cliente : '', docTotal: d ? num_(d.total) : 0, docEstado: d ? d.estado : '' }; })
+        nc: lineasDe_(a).filter(x => x.forma === 'NOTA_CREDITO').reduce((t, x) => t + num_(x.monto), 0), anotado: a.registrado, resuelto: a.resuelto, llego: !!d, docCliente: d ? d.cliente : '', docTotal: d ? num_(d.total) : 0, docEstado: d ? d.estado : '' }; })
     .reverse();
 }
 function borrarAdelanto(token, id) {
