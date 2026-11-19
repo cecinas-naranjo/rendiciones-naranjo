@@ -875,3 +875,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v200 — «Anotar un folio» con letra más grande (solo frontend: style.css, sw.js)
 - Pedido del dueño: mismo tamaño de hoja pero letra mayor (títulos de paso 17 px, botones 17 px, campos 17 px). Solo CSS.
+
+## v201 — Retorno vacío = 0 (solo frontend: app.js, sw.js)
+- El bodeguero no anota los ceros; el producto con salida y retorno vacío figuraba «sin retorno registrado» (y bloqueaba la alerta de kilos). Ahora, al Guardar en el paso Retorno (y si el retorno no está bloqueado), todo producto con salida > 0 y retorno vacío se guarda con retorno 0 (y unidades 0 si usa unidades). Solo sintaxis verificada.

@@ -1862,8 +1862,17 @@ async function vDespacho(m) {
     }); }
   const aUn = (el, x) => String(x).replace(',', '.');
   const guardar = async sigue => {
+    // v201: en Retorno, un producto con salida y retorno vacío = volvió 0 (el bodeguero no anota los ceros)
+    const ceroRet = S.dmod === 'retorno' && !r.retornoBloqueado;
     const datos = filas.map(el => { const su = inp(el, 'salidaUn'), ru = inp(el, 'retornoUn'), o = { codigo: el.dataset.c, salida: aUn(el, S0(el)), retorno: aUn(el, R0(el)), obs: el.dataset.obs || '' };
-      if (su) { o.salidaUn = su.value.replace(',', '.'); o.retornoUn = ru.value.replace(',', '.'); } return o; });
+      if (su) { o.salidaUn = su.value.replace(',', '.'); o.retornoUn = ru.value.replace(',', '.'); }
+      if (ceroRet) {
+        const conSal = (o.salida !== '' && dec(o.salida) > 0) || (o.salidaUn !== undefined && o.salidaUn !== '' && dec(o.salidaUn) > 0);
+        if (conSal) { if (o.retorno === '') o.retorno = '0'; if (o.salidaUn !== undefined && o.salidaUn !== '' && o.retornoUn === '') o.retornoUn = '0'; }
+      }
+      return o; });
+    if (ceroRet) datos.forEach((o, i) => { const el = filas[i]; if (R0(el) === '' && o.retorno === '0') { const ri = inp(el, 'retorno'); if (ri) ri.value = '0'; } });
+    if (ceroRet) calc();
     await api('saveDespacho', S.sess.token, S.fecha, S.vend, datos); sucio = false;
     toast('Despacho de ' + nomDe(S.vend) + ' guardado');
   };
