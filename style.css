@@ -1347,3 +1347,13 @@ details.dpl .dfolio{padding:6px 0}
 .adp .adnc{margin-top:7px;padding:7px;font-size:13.5px}
 .adp .in{padding-top:8px;padding-bottom:8px}
 .adh.sub{margin:8px 0 6px}
+
+/* Anotar folio: letra más grande (v200) */
+.adh{font-size:17px}
+.adh i{width:25px;height:25px;font-size:14px}
+.adt button{font-size:17px;min-height:48px}
+.adt button svg{width:24px;height:24px}
+.adt.b3 button{min-height:42px}
+.adp .adnc{font-size:15.5px;padding:9px}
+.adp .in{font-size:17px}
+.adp label,.adp .lbl{font-size:14px}

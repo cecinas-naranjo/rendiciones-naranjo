@@ -872,3 +872,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v199 — «Anotar un folio» más compacto (solo frontend: app.js, style.css, sw.js)
 - Pedido del dueño: la hoja era muy alta. Botones de 44 px con el ícono a la izquierda del texto (antes 84 px con el ícono arriba), tarjetas de paso con menos relleno, textos más chicos y una sola línea de introducción. Mismo diseño de 3 pasos. Solo sintaxis verificada.
+
+## v200 — «Anotar un folio» con letra más grande (solo frontend: style.css, sw.js)
+- Pedido del dueño: mismo tamaño de hoja pero letra mayor (títulos de paso 17 px, botones 17 px, campos 17 px). Solo CSS.
