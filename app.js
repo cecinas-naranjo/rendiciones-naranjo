@@ -1027,16 +1027,19 @@ function abrirAdelanto(vend, alCerrar) {
   let tipo = '', ncOn = false, lineas = [{ forma: '', banco: '', monto: '', ch: {} }];     // v196: ni el tipo ni la forma de pago vienen elegidos: se elige cada vez
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anotar folio"><div class="grip"></div><div class="body">
-    <div style="font-weight:700;font-size:19px">Anotar un folio</div>
-    <p class="muted" style="margin:2px 0 10px">Cuando el folio llegue de Mi DTE, queda detallado solo si el monto calza. Sirve también sin internet.</p>
-    <div class="seg" id="adT"><button type="button" data-t="Boleta">Boleta</button><button type="button" data-t="Factura">Factura</button></div>
-    <div class="grid g2" style="margin-top:10px"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off"></label>
-      <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off"></label></div>
-    <button type="button" class="ghostlink" id="adNcB" style="display:block;margin-top:8px;background:none;border:0;padding:4px 0;color:var(--cu-2);font-weight:600;cursor:pointer">+ Lleva nota de crédito</button>
-    <div id="adNcW" hidden style="margin-top:4px"><label class="f" style="margin:0">Monto de la nota de crédito $<input class="in n" id="adN" inputmode="numeric" autocomplete="off"></label><div class="muted" id="adNi" style="margin-top:4px"></div></div>
-    <div id="adPW"><div class="muted" style="margin-top:10px;font-weight:700">¿Cómo pagó?</div>
-    <div id="adPg"></div>
-    <button type="button" class="ghostlink" id="adMas" style="display:block;margin-top:6px;background:none;border:0;padding:4px 0;color:var(--cu-2);font-weight:600;cursor:pointer">+ Pago mixto (agregar otra forma de pago)</button></div>
+    <div style="font-weight:700;font-size:20px">Anotar un folio</div>
+    <p class="muted" style="margin:2px 0 12px">Sigue los 3 pasos. Cuando el folio llegue de Mi DTE se detalla solo. Sirve también sin internet.</p>
+    <div class="adp" id="adp1"><div class="adh"><i>1</i>¿Qué documento emitiste?</div>
+      <div class="adt" id="adT"><button type="button" data-t="Boleta">Boleta</button><button type="button" data-t="Factura">Factura</button></div></div>
+    <div class="adp" id="adp2"><div class="adh"><i>2</i>Número y monto</div>
+      <div class="grid g2"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off" placeholder="Ej: 57443"></label>
+        <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off" placeholder="Total del documento"></label></div>
+      <button type="button" class="adnc" id="adNcB">+ Lleva nota de crédito</button>
+      <div id="adNcW" hidden style="margin-top:6px"><label class="f" style="margin:0">Monto de la nota de crédito $<input class="in n" id="adN" inputmode="numeric" autocomplete="off"></label><div class="muted" id="adNi" style="margin-top:4px"></div></div></div>
+    <div class="adp" id="adp3"><div id="adPW"><div class="adh"><i>3</i>¿Cómo pagó el cliente?</div>
+      <div id="adPg"></div>
+      <button type="button" class="adnc" id="adMas">+ Pagó con más de una forma (pago mixto)</button></div>
+      <div class="muted" id="adSinPago" hidden>La nota de crédito cubre todo el folio: no hay pago que anotar.</div></div>
     <div id="adL" style="margin-top:12px"></div></div>
     <div class="foot"><button class="btn ghost" id="adX" type="button">Listo</button><span class="grow"></span><button class="btn cu" id="adS" type="button">Guardar y anotar otro</button></div></div>`;
   document.body.appendChild(ov);
@@ -1051,19 +1054,25 @@ function abrirAdelanto(vend, alCerrar) {
   function pintarNC() {
     const t = total(), nc = ncM(); $('#adNcW', ov).hidden = !ncOn; $('#adNcB', ov).textContent = ncOn ? '− Quitar la nota de crédito' : '+ Lleva nota de crédito';
     $('#adNi', ov).innerHTML = !ncOn ? '' : !nc ? 'Escribe cuánto se acredita (puede ser el total).' : nc > t ? '<span class="bad">La nota de crédito no puede ser mayor al total.</span>' : nc === t ? 'Nota de crédito por el total: no hay pago.' : 'Se paga ' + clp(t - nc) + ' (total − nota de crédito).';
-    $('#adPW', ov).hidden = ncOn && nc > 0 && nc === t; resto();
+    const sp = ncOn && nc > 0 && nc === t; $('#adPW', ov).hidden = sp; $('#adSinPago', ov).hidden = !sp; resto(); pasos();
   }
   $('#adNcB', ov).onclick = () => { ncOn = !ncOn; if (!ncOn) $('#adN', ov).value = ''; pintarNC(); if (ncOn) setTimeout(() => $('#adN', ov).focus(), 30); };
   $('#adN', ov).addEventListener('input', pintarNC);
+  function pasos() {
+    const ok = (id, v) => $('#' + id, ov).classList.toggle('ok', !!v);
+    ok('adp1', tipo); ok('adp2', $('#adF', ov).value.trim() && total() && (!ncOn || ncM()));
+    ok('adp3', (ncOn && ncM() && ncM() === total()) || lineas.every(l => l.forma && (l.forma !== 'TRANSFERENCIA' || l.banco)));
+  }
+  $('#adF', ov).addEventListener('input', pasos);
   function pintarPagos() {
     const n = lineas.length;
     $('#adPg', ov).innerHTML = lineas.map((l, i) => `<div class="adln" data-i="${i}">
       ${n > 1 ? `<div class="row" style="margin:6px 0 2px"><b>Pago ${i + 1}</b><span class="grow"></span><button type="button" class="btn ghost sm" data-q>Quitar</button></div>` : ''}
-      <div class="seg wrap" data-fs>${FORMAS_AD.map(([f, nm]) => `<button type="button" data-f="${f}" class="${l.forma === f ? 'on' : ''}">${nm}</button>`).join('')}</div>
-      ${l.forma === 'TRANSFERENCIA' ? `<div class="seg" data-bs style="margin-top:8px">${['BICE', 'ESTADO', 'SANTANDER'].map(b => `<button type="button" data-b="${b}" class="${l.banco === b ? 'on' : ''}">${b.charAt(0) + b.slice(1).toLowerCase()}</button>`).join('')}</div>` : ''}
+      <div class="adt" data-fs>${FORMAS_AD.map(([f, nm]) => `<button type="button" data-f="${f}" class="${l.forma === f ? 'on' : ''}">${nm}</button>`).join('')}</div>
+      ${l.forma === 'TRANSFERENCIA' ? `<div class="adh sub">¿A qué banco?</div><div class="adt b3" data-bs>${['BICE', 'ESTADO', 'SANTANDER'].map(b => `<button type="button" data-b="${b}" class="${l.banco === b ? 'on' : ''}">${b.charAt(0) + b.slice(1).toLowerCase()}</button>`).join('')}</div>` : ''}
       ${l.forma === 'CHEQUE' ? camposCheque(l.ch, 'ad' + i) : ''}
       ${n > 1 ? `<label class="f" style="margin:8px 0 0">Monto de este pago $<input class="in n" data-m inputmode="numeric" value="${esc(l.monto)}"></label>` : ''}</div>`).join('') + (n > 1 ? '<div id="adRest"></div>' : '');
-    $$('.cheque', ov).forEach(avisoTipoCheque); resto();
+    $$('.cheque', ov).forEach(avisoTipoCheque); resto(); pasos();
     $('#adMas', ov).hidden = n >= 4;
   }
   $('#adPg', ov).onclick = e => { const bx = e.target.closest('.adln'); if (!bx) return; const l = lineas[Number(bx.dataset.i)];
@@ -1077,7 +1086,7 @@ function abrirAdelanto(vend, alCerrar) {
   $('#adPg', ov).addEventListener('change', e => { const bx = e.target.closest('.adln'); if (bx && e.target.dataset.c) lineas[Number(bx.dataset.i)].ch[e.target.dataset.c] = e.target.value; });
   $('#adM', ov).addEventListener('input', pintarNC);
   $('#adMas', ov).onclick = () => { if (lineas.length === 1) { const t = aPagar(); if (t && !lineas[0].monto) lineas[0].monto = String(t); } lineas.push({ forma: '', banco: '', monto: '', ch: {} }); pintarPagos(); };
-  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); } };
+  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); pasos(); } };
   const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto', NOTA_CREDITO: 'Nota de crédito' };
   const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
   const hh = t => { const m = String(t || '').match(/(\d{2}:\d{2})/); return m ? m[1] : ''; };

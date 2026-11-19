@@ -1310,3 +1310,20 @@ details.dpl .dfolio{padding:6px 0}
 
 /* v195: billetes a depositar (contados − caja chica) */
 .efb2{margin:10px 0 6px;width:100%}.efb2 td,.efb2 th{padding:6px 8px}
+
+/* Anotar folio por pasos (v197) */
+.adp{border:1px solid #E3DED9;border-radius:14px;padding:12px;margin-bottom:10px;background:#fff}
+.adp.ok{border-color:#B9D8C2;background:#F6FBF7}
+.adh{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;margin-bottom:10px}
+.adh i{font-style:normal;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--cu);color:#fff;font-size:14px;flex:none}
+.adp.ok .adh i{background:#2E7D4F;font-size:0}
+.adp.ok .adh i::before{content:"✓";font-size:15px}
+.adh.sub{font-size:14px;margin:12px 0 8px;color:var(--ink-2)}
+.adt{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.adt.b3{grid-template-columns:1fr 1fr 1fr}
+.adt button{min-height:52px;border:2px solid #DDD7D1;background:#fff;border-radius:12px;font-weight:700;font-size:16px;color:var(--ink);padding:8px}
+.adt button.on{border-color:var(--cu);background:#FBEBDD;color:var(--cu-2)}
+.adnc{display:block;width:100%;margin-top:10px;padding:10px;border:1.5px dashed #CDB8A8;background:#FAF6F2;border-radius:12px;color:var(--cu-2);font-weight:700;font-size:14.5px;text-align:center}
+.adp .adln{margin-bottom:8px}
+@media(max-width:380px){.adt.b3{grid-template-columns:1fr}}
+.adnc[hidden],#adNcW[hidden],#adSinPago[hidden],#adPW[hidden]{display:none!important}
