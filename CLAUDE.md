@@ -869,3 +869,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v198 — «Anotar un folio» más visual (solo frontend: app.js, style.css, sw.js)
 - Mismo diseño de 3 pasos de v197 (el dueño lo aprobó); cada botón de documento y de forma de pago lleva un ícono grande arriba del texto (`ICO_AD`, SVG de línea) y el elegido se pinta cobre sólido con texto e ícono blancos. Los bancos de la transferencia quedan como botones bajos en fila. Solo sintaxis verificada.
+
+## v199 — «Anotar un folio» más compacto (solo frontend: app.js, style.css, sw.js)
+- Pedido del dueño: la hoja era muy alta. Botones de 44 px con el ícono a la izquierda del texto (antes 84 px con el ícono arriba), tarjetas de paso con menos relleno, textos más chicos y una sola línea de introducción. Mismo diseño de 3 pasos. Solo sintaxis verificada.

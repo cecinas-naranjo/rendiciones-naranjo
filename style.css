@@ -1335,3 +1335,15 @@ details.dpl .dfolio{padding:6px 0}
 .adt button.on svg{color:#fff}
 .adt.b3 button{min-height:52px;flex-direction:row}
 .adp.ok .adh i{background:#2E7D4F}
+
+/* Anotar folio compacto (v199) */
+.adp{padding:9px 10px;margin-bottom:7px;border-radius:12px}
+.adh{font-size:14.5px;margin-bottom:7px;gap:7px}
+.adh i{width:22px;height:22px;font-size:12.5px}
+.adt{gap:6px}
+.adt button{flex-direction:row;gap:8px;min-height:44px;padding:6px 8px;font-size:14.5px;border-width:1.5px;border-radius:10px}
+.adt button svg{width:22px;height:22px}
+.adt.b3 button{min-height:38px}
+.adp .adnc{margin-top:7px;padding:7px;font-size:13.5px}
+.adp .in{padding-top:8px;padding-bottom:8px}
+.adh.sub{margin:8px 0 6px}

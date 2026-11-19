@@ -1036,8 +1036,8 @@ function abrirAdelanto(vend, alCerrar) {
   let tipo = '', ncOn = false, lineas = [{ forma: '', banco: '', monto: '', ch: {} }];     // v196: ni el tipo ni la forma de pago vienen elegidos: se elige cada vez
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anotar folio"><div class="grip"></div><div class="body">
-    <div style="font-weight:700;font-size:20px">Anotar un folio</div>
-    <p class="muted" style="margin:2px 0 12px">Sigue los 3 pasos. Cuando el folio llegue de Mi DTE se detalla solo. Sirve también sin internet.</p>
+    <div style="font-weight:700;font-size:18px">Anotar un folio</div>
+    <p class="muted" style="margin:0 0 8px;font-size:13px">Se detalla solo cuando llegue de Mi DTE.</p>
     <div class="adp" id="adp1"><div class="adh"><i>1</i>¿Qué documento emitiste?</div>
       <div class="adt" id="adT"><button type="button" data-t="Boleta">${ICO_AD.Boleta}<span>Boleta</span></button><button type="button" data-t="Factura">${ICO_AD.Factura}<span>Factura</span></button></div></div>
     <div class="adp" id="adp2"><div class="adh"><i>2</i>Número y monto</div>
