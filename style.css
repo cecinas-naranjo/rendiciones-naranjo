@@ -1327,3 +1327,11 @@ details.dpl .dfolio{padding:6px 0}
 .adp .adln{margin-bottom:8px}
 @media(max-width:380px){.adt.b3{grid-template-columns:1fr}}
 .adnc[hidden],#adNcW[hidden],#adSinPago[hidden],#adPW[hidden]{display:none!important}
+
+/* Anotar folio más visual (v198) */
+.adt button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:84px;padding:10px 6px;font-size:15px}
+.adt button svg{color:var(--cu);flex:none}
+.adt button.on{background:var(--cu);border-color:var(--cu);color:#fff}
+.adt button.on svg{color:#fff}
+.adt.b3 button{min-height:52px;flex-direction:row}
+.adp.ok .adh i{background:#2E7D4F}

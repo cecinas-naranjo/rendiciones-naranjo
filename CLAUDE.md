@@ -866,3 +866,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v197 — «Anotar un folio» en 3 pasos (solo frontend: app.js, style.css, sw.js)
 - Pedido del dueño: más didáctico. Hoja con tres tarjetas numeradas (1 ¿Qué documento emitiste? · 2 Número y monto, con «+ Lleva nota de crédito» · 3 ¿Cómo pagó el cliente?), botones grandes tipo ficha (`.adt`, `.adp`, `.adh`) y cada paso se marca con ✓ verde al completarse (`pasos()`). Mismos ids y lógica de v196; el banco de la transferencia pregunta «¿A qué banco?». Solo sintaxis verificada.
+
+## v198 — «Anotar un folio» más visual (solo frontend: app.js, style.css, sw.js)
+- Mismo diseño de 3 pasos de v197 (el dueño lo aprobó); cada botón de documento y de forma de pago lleva un ícono grande arriba del texto (`ICO_AD`, SVG de línea) y el elegido se pinta cobre sólido con texto e ícono blancos. Los bancos de la transferencia quedan como botones bajos en fila. Solo sintaxis verificada.
