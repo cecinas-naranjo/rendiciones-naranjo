@@ -54,7 +54,7 @@ const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate
 const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const FL = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', DEP_EFECTIVO: 'Depósito en efectivo', CHEQUE: 'Cheque', CREDITO: 'Crédito', NOTA_CREDITO: 'Nota de crédito' };
 const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 'Congelados', LACTEOS: 'Lácteos', LAMINADOS: 'Laminados, quesos y verduras', REVISAR: 'Por clasificar' };
-const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor', GERENCIA: 'Gerencia' };
+const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor', GERENCIA: 'Gerencia', REEMPLAZO: 'Reemplazo' };
 
 /** Pestañas del rol (todos los vendedores tienen Depósito, por si hace falta). */
 const tabsRol = () => TABS[S.sess.rol] || [];
@@ -653,25 +653,26 @@ const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 /* ===== VER COMO (solo ADMIN): saltar entre usuarios para ver cómo ven la app los demás ===== */
 try { S_ADMIN = JSON.parse(localStorage.getItem('rn_admin') || 'null'); } catch (e) { S_ADMIN = null; }
 var S_ADMIN;
-const ROL_TXT = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Encargada de rendición', GERENCIA: 'Gerencia', VENDEDOR: 'Vendedores', BODEGA: 'Bodega' };
+const ROL_TXT = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Encargada de rendición', GERENCIA: 'Gerencia', VENDEDOR: 'Vendedores', BODEGA: 'Bodega', REEMPLAZO: 'Mi usuario' };
 function montarProbar() {
   const v = $('#probar'); if (v) v.remove();
   if (!S.sess || !(S_ADMIN || S.sess.rol === 'ADMIN')) return;
+  if (S_ADMIN && S_ADMIN.rol === 'REEMPLAZO' && !S.sess.reemplazo && S.sess.rol !== 'VENDEDOR') return;
   const b = document.createElement('button'); b.id = 'probar'; b.type = 'button';
-  b.title = S_ADMIN ? 'Viendo como ' + S.sess.nombre + ' · toca para cambiar' : 'Ver como… (solo administración)';
+  b.title = S_ADMIN ? (S_ADMIN.rol === 'REEMPLAZO' ? 'Reemplazando a ' : 'Viendo como ') + S.sess.nombre + ' · toca para cambiar' : 'Ver como… (solo administración)';
   b.className = S_ADMIN ? 'viendo' : '';
   b.innerHTML = S_ADMIN ? `<span class="ic">${esc(S.sess.nombre.charAt(0))}</span><b>${esc(S.sess.nombre.split(' ')[0])}</b>` : '<span class="ic">A</span>';
   b.onclick = abrirProbar; document.body.appendChild(b);
 }
 async function abrirProbar() {
-  const adm = S_ADMIN || S.sess, ov = document.createElement('div'); ov.className = 'ov';
-  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Ver como"><div class="grip"></div><div class="body">
-    <h3 style="margin-top:0">Ver como…</h3><p class="muted">Entras como esa persona para ver su pantalla, sin pedir su clave. Lo que registres queda a su nombre. Para volver, elige tu usuario.</p>
+  const adm = S_ADMIN || S.sess, ov = document.createElement('div'); ov.className = 'ov', reemp = adm.rol === 'REEMPLAZO';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${reemp ? 'Reemplazar a' : 'Ver como'}"><div class="grip"></div><div class="body">
+    <h3 style="margin-top:0">${reemp ? '¿A quién reemplazas?' : 'Ver como…'}</h3><p class="muted">${reemp ? 'Trabajas con los datos de ese vendedor. Queda anotado que lo hiciste tú. Para salir de este vendedor, elige tu usuario.' : 'Entras como esa persona para ver su pantalla, sin pedir su clave. Lo que registres queda a su nombre. Para volver, elige tu usuario.'}</p>
     <div id="pul"><div class="sk" style="height:46px"></div></div></div><div class="foot"><button class="btn ghost grow" id="pcx">Cerrar</button></div></div>`;
   document.body.appendChild(ov);
   $('#pcx', ov).onclick = () => cerrarHoja(ov); ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
-  let us; try { us = await api('listarUsuariosAdmin', adm.token); } catch (e) { cerrarHoja(ov); return; }
-  const orden = ['ADMIN', 'SUPERVISOR', 'RENDICION', 'GERENCIA', 'VENDEDOR', 'BODEGA'];
+  let us; try { us = reemp ? (await api('vendedoresReemplazo', adm.token)).map(v => Object.assign({ activo: true, rol: 'VENDEDOR' }, v)).concat([{ usuario: adm.usuario, nombre: adm.nombre + ' (yo)', rol: 'REEMPLAZO', activo: true }]) : await api('listarUsuariosAdmin', adm.token); } catch (e) { cerrarHoja(ov); return; }
+  const orden = reemp ? ['VENDEDOR', 'REEMPLAZO'] : ['ADMIN', 'SUPERVISOR', 'RENDICION', 'GERENCIA', 'VENDEDOR', 'BODEGA'];
   us = us.filter(u => u.activo).sort((x, y) => orden.indexOf(x.rol) - orden.indexOf(y.rol) || x.nombre.localeCompare(y.nombre));
   $('#pul', ov).innerHTML = orden.map(r => { const g = us.filter(u => u.rol === r); return g.length ? `<div class="sg" style="margin:10px 0 4px;color:var(--ink-2)">${ROL_TXT[r]}</div>` +
     g.map(u => `<button class="urow ${S.sess.usuario === u.usuario ? 'on' : ''}" data-u="${esc(u.usuario)}"><span class="grow"><b>${esc(u.nombre)}</b><small>${esc(u.usuario)}${u.terminales ? ' · ' + esc(u.terminales) : ''}</small></span>${S.sess.usuario === u.usuario ? '<span class="chip ok">Actual</span>' : '<span class="go">›</span>'}</button>`).join('') : ''; }).join('');
@@ -686,20 +687,34 @@ async function cambiarA(usuario, adm) {
       api('logout', S.sess.token).catch(() => {});
       S.sess = S_ADMIN; S_ADMIN = null; try { localStorage.removeItem('rn_admin'); localStorage.setItem('rn_sess', JSON.stringify(S.sess)); } catch (e) {}
     } else {
-      const s = await api('entrarComo', adm.token, usuario, hoyCL());
+      const s = await api(adm.rol === 'REEMPLAZO' ? 'reemplazarA' : 'entrarComo', adm.token, usuario, hoyCL());
       if (!S_ADMIN) { S_ADMIN = { token: adm.token, usuario: adm.usuario, nombre: adm.nombre, rol: adm.rol, puedeAutorizar: adm.puedeAutorizar }; try { localStorage.setItem('rn_admin', JSON.stringify(S_ADMIN)); } catch (e) {} }
       else if (S.sess.token !== adm.token) api('logout', S.sess.token).catch(() => {});
       const lote = s.lote || []; delete s.lote;
       lote.forEach(x => CACHE.set(claveApi(x.fn, x.args), { t: Date.now(), d: x.data })); if (lote.length) guardarCache();
       S.sess = s; try { localStorage.setItem('rn_sess', JSON.stringify(s)); } catch (e) {}
     }
+    montarProbar();
     S.tab = null; S.vend = ''; S.filtro = 'pend'; S.grupos = null; S.ultimoDeGrupo = {};
     await iniciar();
-    toast('Ahora ves la app como ' + S.sess.nombre + ' (' + S.sess.rol + ')');
+    if (S.sess.rol !== 'REEMPLAZO') toast(S.sess.reemplazo ? 'Ahora reemplazas a ' + S.sess.nombre : 'Ahora ves la app como ' + S.sess.nombre + ' (' + S.sess.rol + ')');
   } catch (e) { /* api ya mostró el motivo */ }
 }
 
 
+/* v203: usuario de reemplazo: elige a qué vendedor reemplaza y trabaja con sus datos */
+async function pantallaReemplazo() {
+  document.body.classList.remove('has-bottom', 'oficina', 'solo-leer');
+  const pb = $('#probar'); if (pb) pb.remove();
+  $('#app').innerHTML = `<main><div class="card" style="max-width:520px;margin:24px auto"><h2 style="margin-top:0">¿A quién reemplazas hoy?</h2>
+    <p class="muted">Vas a ver y registrar con los datos de ese vendedor. Queda anotado que lo hiciste tú.</p>
+    <div id="rvl"><div class="sk" style="height:46px"></div></div><button class="btn ghost" id="rvo" type="button" style="margin-top:14px">Salir</button></div></main>`;
+  $('#rvo').onclick = () => salir();
+  let vs; try { vs = await api('vendedoresReemplazo', S.sess.token); } catch (e) { return; }
+  const adm = S.sess;
+  $('#rvl').innerHTML = vs.length ? vs.map(v => `<button class="urow" type="button" data-u="${esc(v.usuario)}"><span class="grow"><b>${esc(v.nombre)}</b></span><span class="go">›</span></button>`).join('') : '<p class="muted">No hay vendedores activos.</p>';
+  $('#rvl').onclick = async e => { const bt = e.target.closest('.urow'); if (!bt) return; bt.disabled = true; await cambiarA(bt.dataset.u, adm); bt.disabled = false; };
+}
 function salir(expirada) {
   if (!expirada && pendActivos().length && !confirm('Tienes ' + pendActivos().length + ' cambio(s) guardados en el teléfono que aún no se envían. Si sales, se enviarán cuando vuelvas a ingresar con tu usuario. ¿Salir igual?')) return;
   if (!expirada && S.sess) api('logout', S.sess.token).catch(() => {});
@@ -837,6 +852,7 @@ function abrirFecha(cambiar) {
 /* ---------- estructura ---------- */
 async function iniciar() {
   const app = $('#app');
+  if (S.sess.rol === 'REEMPLAZO') return pantallaReemplazo();       // v203: primero elige a quién reemplaza
   app.innerHTML = `<main>${skeleton(4)}</main>`;
   S.cat = await api('catalogo', S.sess.token);
   S.fecha = S.fecha || fechaGuardada() || hoyCL();
@@ -2236,7 +2252,7 @@ async function vUsuarios(m) {
     const ov = document.createElement('div'); ov.className = 'ov'; const nuevo = !u; u = u || { nombre: '', rol: 'VENDEDOR', rut: '', correo: '', terminales: '', activo: true, usuario: '' };
     ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div><div class="body"><div style="font-weight:700;font-size:19px">${nuevo ? 'Nuevo usuario' : 'Editar a ' + esc(u.nombre)}</div>
       <label class="f" for="u1">Nombre</label><input class="in" id="u1" value="${esc(u.nombre)}" autocomplete="off">
-      <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'GERENCIA', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
+      <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'REEMPLAZO', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'GERENCIA', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
       <label class="f" for="u3" style="margin-top:10px">RUT</label><input class="in" id="u3" value="${esc(u.rut)}" placeholder="12.345.678-5" autocomplete="off">
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
       <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
@@ -3142,7 +3158,7 @@ async function vResumen(m) {
     box.innerHTML = `<details class="avd" ${abierto ? 'open' : ''}><summary><b>Avance de vendedores</b><span class="muted">${act} de ${av.vendedores.length} con actividad hoy</span></summary>
       <p class="muted" style="margin:8px 0">Lo que cada vendedor ya envió. Si anotó sin internet, aparece cuando recupere la señal.</p>
       <div class="avs">${av.vendedores.map(v => { const a = v.adelantos, ad = a.esperando + a.aplicado + a.revisar, [t, c] = cuando(v.ultima), p = v.documentos ? Math.round(v.detallados / v.documentos * 100) : 0;
-        return `<div class="av"><div class="row"><b class="grow">${esc(v.nombre)}</b><span class="chip ${c === 'warn' ? 'warn' : c === 'ok' ? 'ok' : ''}" title="Última vez que el servidor recibió algo de este vendedor">${esc(t)}</span></div>
+        return `<div class="av"><div class="row"><b class="grow">${esc(v.nombre)}${v.reemplazo ? ` <span class="chip" title="Hoy lo reemplazó">Reemplazo: ${esc(v.reemplazo)}</span>` : ''}</b><span class="chip ${c === 'warn' ? 'warn' : c === 'ok' ? 'ok' : ''}" title="Última vez que el servidor recibió algo de este vendedor">${esc(t)}</span></div>
           <div class="meter" style="margin:8px 0 4px"><div class="bar"><i style="width:${p}%"></i></div><b>${v.documentos ? v.detallados + ' de ' + v.documentos : 'Sin folios'}</b></div>
           <div class="muted">${ad ? `Adelantos: ${[a.esperando ? a.esperando + ' esperando Mi DTE' : '', a.aplicado ? a.aplicado + ' aplicados' : '', a.revisar ? a.revisar + ' por revisar' : ''].filter(Boolean).join(' · ')}` : 'Sin folios adelantados'}${v.cobranza || v.gastos || v.depositos ? ` · ${[v.cobranza ? v.cobranza + ' cobranza' : '', v.gastos ? v.gastos + ' gastos' : '', v.depositos ? v.depositos + ' depósito' + (v.depositos > 1 ? 's' : '') : ''].filter(Boolean).join(', ')}` : ''}</div></div>`; }).join('')}</div></details>`;
     $('.avd', box).ontoggle = e => { try { localStorage.setItem('rn_avc', e.target.open ? '1' : '0'); } catch (x) {} };

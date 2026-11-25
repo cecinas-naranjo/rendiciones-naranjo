@@ -881,3 +881,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v202 — Cobranza: filtro por vendedor (solo frontend: app.js, sw.js)
 - En «Cobrar a un cliente» (oficina: RENDICION/SUPERVISOR/ADMIN; el vendedor ya ve solo lo suyo) hay un selector «Todos los vendedores» sobre el buscador (aparece si hay más de un vendedor con deuda). Al elegir uno quedan solo los clientes con facturas de ese vendedor, con sus facturas y deuda recalculadas; el buscador sigue funcionando sobre eso. El vendedor de cada factura viene de `porCobrar` (`facturas[].vendedor`, nombre). Solo sintaxis verificada.
+
+## v203 — Usuario de reemplazo (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Rol `REEMPLAZO` (se crea en Usuarios con su RUT/correo y clave propia; no lleva terminales). Al entrar elige «¿A quién reemplazas hoy?» (`pantallaReemplazo`, API `vendedoresReemplazo`) y `reemplazarA(token, vendedor, fecha)` le abre una sesión COMO ese vendedor: ve y registra con sus datos y todo queda a nombre del vendedor (cuenta en su rendición, `registrado_por` = vendedor).
+- Constancia de quién lo hizo: hoja REEMPLAZOS (`id, fecha, reemplazo, vendedor, inicio`; `asegurarReemplazos_` la crea sola) y Logger. «Avance de vendedores» (`getAvance`) muestra el chip «Reemplazo: <nombre>» en el vendedor reemplazado ese día. No cambia los «Registró» de cada fila (siguen mostrando al vendedor).
+- Para cambiar de vendedor o volver a su propio usuario: burbuja `#probar` (mismo mecanismo de «Ver como…», guarda la sesión original en `rn_admin`). Sin pruebas en teléfono; solo sintaxis verificada.

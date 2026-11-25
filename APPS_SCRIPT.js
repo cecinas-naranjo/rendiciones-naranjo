@@ -101,6 +101,7 @@ const SCHEMA = {
   POZO_MONEDAS: ['id','fecha','tipo','monto','banco','operacion','obs','registrado_por','registrado'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
+  REEMPLAZOS:  ['id','fecha','reemplazo','vendedor','inicio'],
   ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos'],
   ANULACIONES: ['id','fecha','vendedor','tipo','folio','folio_key','cliente','modo','lineas','monto','motivo','reemplazo','vuelve','estado','nc_folio','nota','registrado_por','registrado','resuelto_por','resuelto']
 };
@@ -300,7 +301,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, getCanal, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -661,7 +662,7 @@ const SESION_DIAS = 30; // la sesión dura 30 días en el celular: nadie tiene q
    Cada persona entra con su RUT (o correo) y su clave personal; el rol lo asigna la administración. La clave se guarda con sal y
    SHA-256 repetido (nunca en texto). Una clave nueva o restablecida es temporal: la persona debe cambiarla al entrar.
    5 intentos fallidos bloquean la cuenta 15 minutos. */
-const CLAVE_MIN = 4, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR','GERENCIA'];
+const CLAVE_MIN = 4, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR','GERENCIA','REEMPLAZO'];
 function hashClave_(clave, sal) {
   const D = Utilities.DigestAlgorithm.SHA_256;
   let h = Utilities.computeDigest(D, String(sal) + '|' + String(clave), Utilities.Charset.UTF_8);
@@ -790,7 +791,7 @@ function sesionDe_(u, fecha) {
     const primera = u.rol === 'VENDEDOR' ? ['misDocumentos', [token, f, '']]
       : u.rol === 'BODEGA' ? ['getDespacho', [token, f, (cat.vendedores[0] || {}).usuario || '']]
       : ['getResumen', [token, f]];
-    const lote = [['catalogo', [token]], primera].map(l => ({ fn: l[0], args: l[1], data: API[l[0]].apply(null, l[1]) }));
+    const lote = [['catalogo', [token]], u.rol === 'REEMPLAZO' ? null : primera].filter(Boolean).map(l => ({ fn: l[0], args: l[1], data: API[l[0]].apply(null, l[1]) }));
     sesion.lote = lote;
   } catch (e) { /* si algo falla, la app pide cada cosa por separado como siempre */ }
   return sesion;
@@ -804,6 +805,44 @@ function entrarComo(token, usuario, fecha) {
   if (!u || !activo_(u)) throw new Error('Ese usuario no existe o está desactivado.');
   Logger.log('VER COMO: ' + adm.usuario + ' entró como ' + u.usuario);
   return sesionDe_(u, fecha);
+}
+
+/* ---------- Usuario de reemplazo (v203) ----------
+ * Rol REEMPLAZO: entra con su propia clave, elige a qué vendedor reemplaza y trabaja con los datos de ese vendedor.
+ * Lo que registra queda a nombre del vendedor (así cuenta en su rendición); la hoja REEMPLAZOS deja constancia de quién lo hizo. */
+function asegurarReemplazos_() {
+  if (MEMO_.__reemp) return;
+  const ss = SpreadsheetApp.getActive();
+  if (!ss.getSheetByName('REEMPLAZOS')) {
+    const sh = ss.insertSheet('REEMPLAZOS'), head = SCHEMA.REEMPLAZOS;
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
+    MEMO_.REEMPLAZOS = null;
+  }
+  MEMO_.__reemp = true;
+}
+function vendedoresReemplazo(token) {
+  auth_(token, ['REEMPLAZO']);
+  return read_('USUARIOS').filter(u => u.rol === 'VENDEDOR' && activo_(u)).map(u => ({ usuario: u.usuario, nombre: u.nombre, terminales: u.terminales || '' }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+function reemplazarA(token, usuario, fecha) {
+  const yo = auth_(token, ['REEMPLAZO']);
+  const v = read_('USUARIOS').find(x => x.usuario === String(usuario) && x.rol === 'VENDEDOR');
+  if (!v || !activo_(v)) throw new Error('Ese vendedor no existe o está desactivado.');
+  withLock_(() => {
+    asegurarReemplazos_();
+    const f = hoy_(), hay = read_('REEMPLAZOS').find(r => String(r.fecha) === f && r.reemplazo === yo.usuario && r.vendedor === v.usuario);
+    if (!hay) append_('REEMPLAZOS', [{ id: uid_(), fecha: f, reemplazo: yo.usuario, vendedor: v.usuario, inicio: now_() }]);
+  });
+  Logger.log('REEMPLAZO: ' + yo.usuario + ' trabaja como ' + v.usuario);
+  const s = sesionDe_(v, fecha); s.reemplazo = { usuario: yo.usuario, nombre: yo.nombre };
+  return s;
+}
+/** Para el Resumen/Avance: quién reemplazó a cada vendedor ese día (nombres). */
+function reemplazosDe_(fecha) {
+  asegurarReemplazos_(); const nom = {}, por = {}; read_('USUARIOS').forEach(u => { nom[u.usuario] = u.nombre; });
+  read_('REEMPLAZOS').filter(r => String(r.fecha) === String(fecha)).forEach(r => { (por[r.vendedor] = por[r.vendedor] || []).indexOf(nom[r.reemplazo] || r.reemplazo) < 0 && por[r.vendedor].push(nom[r.reemplazo] || r.reemplazo); });
+  return por;
 }
 
 function logout(token) {
@@ -1258,6 +1297,7 @@ function getAvance(token, fecha) {
   byFecha_('DEPOSITOS', fecha).forEach(x => { const o = por[x.vendedor]; if (!o) return; o.depositos++; if (x.registrado_por === x.vendedor) ult(o, x.registrado); });
   read_('ADELANTOS').filter(a => a.fecha === fecha).forEach(a => { const o = por[a.vendedor]; if (!o) return;
     const k = a.estado === 'APLICADO' ? 'aplicado' : a.estado === 'REVISAR' ? 'revisar' : 'esperando'; o.adelantos[k]++; ult(o, a.registrado); });
+  const reemp = reemplazosDe_(fecha); Object.keys(por).forEach(k => { por[k].reemplazo = (reemp[k] || []).join(', '); });
   return { fecha, vendedores: Object.keys(por).map(k => por[k]).sort((a, b) => a.nombre.localeCompare(b.nombre)) };
 }
 
