@@ -168,7 +168,7 @@ const PRODUCTOS_BASE = [
 // 1) Ejecuta `vistaPreviaLimpieza` y mira en el registro cuántas filas se borrarían.
 // 2) En `limpiarPruebas` cambia `CONFIRMO = false` por `true`, guarda y ejecútala. Después vuelve a dejarlo en false.
 // Se conservan los usuarios, sus claves y los productos. Todo lo demás queda vacío (folios, pagos, cobranza, gastos, inventario, saldos de clientes, etc.).
-const LIMPIEZA_CONSERVAR = ['USUARIOS', 'PRODUCTOS'];
+const LIMPIEZA_CONSERVAR = ['USUARIOS', 'PRODUCTOS', 'CLIENTES'];
 function tablasALimpiar_() { return Object.keys(SCHEMA).filter(n => LIMPIEZA_CONSERVAR.indexOf(n) < 0); }
 function vistaPreviaLimpieza() {
   const ss = SpreadsheetApp.getActive();

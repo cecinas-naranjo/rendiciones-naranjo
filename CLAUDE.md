@@ -889,3 +889,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v204 — El reemplazo solo elige vendedores de ruta (requiere pegar APPS_SCRIPT.js COMPLETO)
 - `vendedoresReemplazo` y `reemplazarA` excluyen los usuarios de `CFG.DESTINO_DE_VENDEDOR` (SUPERMERCADOS, SALA/«Venta en bodega», DISTRIBUIDOR, CONSUMO). Solo servidor.
+
+## v205 — La limpieza conserva también CLIENTES (requiere pegar APPS_SCRIPT.js COMPLETO)
+- Pedido del dueño: los clientes («la conciencia de la app») no se borran. `LIMPIEZA_CONSERVAR` = USUARIOS, PRODUCTOS y CLIENTES (razón social por RUT y alias). `limpiarPruebas` sigue vaciando todo lo demás, incluido CREDITOS_CARGA (el control de créditos se vuelve a subir). Solo servidor; sintaxis verificada.
