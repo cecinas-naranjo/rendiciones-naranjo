@@ -822,12 +822,12 @@ function asegurarReemplazos_() {
 }
 function vendedoresReemplazo(token) {
   auth_(token, ['REEMPLAZO']);
-  return read_('USUARIOS').filter(u => u.rol === 'VENDEDOR' && activo_(u)).map(u => ({ usuario: u.usuario, nombre: u.nombre, terminales: u.terminales || '' }))
+  return read_('USUARIOS').filter(u => u.rol === 'VENDEDOR' && activo_(u) && !CFG.DESTINO_DE_VENDEDOR[u.usuario]).map(u => ({ usuario: u.usuario, nombre: u.nombre, terminales: u.terminales || '' }))   // sin Supermercados ni Venta en bodega
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
 function reemplazarA(token, usuario, fecha) {
   const yo = auth_(token, ['REEMPLAZO']);
-  const v = read_('USUARIOS').find(x => x.usuario === String(usuario) && x.rol === 'VENDEDOR');
+  const v = read_('USUARIOS').find(x => x.usuario === String(usuario) && x.rol === 'VENDEDOR' && !CFG.DESTINO_DE_VENDEDOR[x.usuario]);
   if (!v || !activo_(v)) throw new Error('Ese vendedor no existe o está desactivado.');
   withLock_(() => {
     asegurarReemplazos_();
