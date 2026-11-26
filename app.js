@@ -1688,11 +1688,11 @@ async function vHelados(m) {
   const sinTilde = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const val = {};                                   // lo escrito por producto: {e: entra, s: sale, c: conteo}; se conserva al filtrar
   const num = v => v === undefined || v === '' ? null : Number(String(v).replace(/\D/g, ''));
-  const quedara = p => { const x = val[p.codigo] || {}, e = num(x.e) || 0, s = num(x.s) || 0, c = num(x.c); return c !== null ? c : p.stock + e - s; };
+  const quedara = p => { const x = val[p.codigo] || {}, e = (num(x.e) || 0) + (num(x.f) || 0), s = num(x.s) || 0, c = num(x.c); return c !== null ? c : p.stock + e - s; };
   const nIn = (k, p) => `<input class="in n" data-k="${k}" data-c="${esc(p.codigo)}" inputmode="numeric" enterkeyhint="next" autocomplete="off" placeholder="" value="${esc((val[p.codigo] || {})[k] || '')}">`;
   const tabla = () => { const q = sinTilde($('#helQ', m) ? $('#helQ', m).value : '');
     const xs = r.productos.filter(p => (S.helCat === 'TODAS' || p.categoria === S.helCat) && (!q || sinTilde(p.nombre + ' ' + p.codigo).includes(q)));
-    $('#helT', m).innerHTML = xs.length ? `<table class="t"><thead><tr><th>Producto</th><th class="m">Hay</th>${puede ? '<th class="m">Entra</th><th class="m">Sale</th><th class="m">Conteo físico</th><th class="m">Quedará</th>' : ''}</tr></thead><tbody>${xs.map(p => `<tr data-r="${esc(p.codigo)}"><td data-col="Producto">${esc(p.nombre)}<div class="muted">${esc(p.categoria)}</div></td><td class="m" data-col="Hay"><b>${p.stock}</b></td>${puede ? `<td class="m" data-col="Entra">${nIn('e', p)}</td><td class="m" data-col="Sale">${nIn('s', p)}</td><td class="m" data-col="Conteo físico">${nIn('c', p)}</td><td class="m" data-col="Quedará"><b data-q>${quedara(p)}</b></td>` : ''}</tr>`).join('')}</tbody></table>` : '<div class="empty">No hay productos con ese filtro.</div>'; };
+    $('#helT', m).innerHTML = xs.length ? `<table class="t"><thead><tr><th>Producto</th><th class="m">Hay</th>${puede ? '<th class="m">Entra</th><th class="m">Entrada de fábrica</th><th class="m">Sale</th><th class="m">Conteo físico</th><th class="m">Quedará</th>' : ''}</tr></thead><tbody>${xs.map(p => `<tr data-r="${esc(p.codigo)}"><td data-col="Producto">${esc(p.nombre)}<div class="muted">${esc(p.categoria)}</div></td><td class="m" data-col="Hay"><b>${p.stock}</b></td>${puede ? `<td class="m" data-col="Entra">${nIn('e', p)}</td><td class="m" data-col="Entrada de fábrica">${nIn('f', p)}</td><td class="m" data-col="Sale">${nIn('s', p)}</td><td class="m" data-col="Conteo físico">${nIn('c', p)}</td><td class="m" data-col="Quedará"><b data-q>${quedara(p)}</b></td>` : ''}</tr>`).join('')}</tbody></table>` : '<div class="empty">No hay productos con ese filtro.</div>'; };
   render(m, `<h2>Inventario helados</h2>
     <div class="kpis"><div class="cash"><span>Cajas en stock</span><b>${r.stock}</b></div></div>
     ${puede ? `<p class="muted" style="margin:8px 0">Escribe lo que entra, lo que sale o lo que contaste de cada producto y toca Guardar. Los helados no se conectan con el DTE.</p>
@@ -1706,7 +1706,7 @@ async function vHelados(m) {
       <div class="muted">${x.items.map(i => esc(i.nombre) + ' <b>' + (x.tipo === 'AJUSTE' && i.cantidad > 0 ? '+' : '') + i.cantidad + '</b>').join(' · ')}</div><div class="muted">${esc(x.por)}${x.obs ? ' · ' + esc(x.obs) : ''}</div></span>
       ${puede ? `<button class="x" type="button" data-l="${esc(x.lote)}" aria-label="Borrar">×</button>` : ''}</div></div>`).join('') : '<div class="empty">Todavía no hay movimientos anotados.</div>'}`);
   tabla();
-  const cuenta = () => { const n = Object.keys(val).filter(k => ['e', 's', 'c'].some(j => num(val[k][j]) !== null)).length; const el = $('#helCam', m); if (el) el.textContent = n ? n + ' producto(s) con cambios' : 'Sin cambios'; };
+  const cuenta = () => { const n = Object.keys(val).filter(k => ['e', 'f', 's', 'c'].some(j => num(val[k][j]) !== null)).length; const el = $('#helCam', m); if (el) el.textContent = n ? n + ' producto(s) con cambios' : 'Sin cambios'; };
   $('#helQ', m).oninput = tabla;
   $('#helC', m).onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; S.helCat = b.dataset.c; $$('#helC button', m).forEach(x => x.classList.toggle('on', x === b)); tabla(); };
   const T = $('#helT', m);
@@ -1715,14 +1715,15 @@ async function vHelados(m) {
   T.onkeydown = e => { if (e.key !== 'Enter' || !e.target.matches('input[data-k]')) return; e.preventDefault(); const xs = $$('input[data-k]', T), i = xs.indexOf(e.target); if (xs[i + 1]) xs[i + 1].focus(); };
   const ok = $('#helOk', m);
   if (ok) ok.onclick = async () => {
-    const ing = [], sal = [], aju = [];
-    for (const p of r.productos) { const x = val[p.codigo] || {}, e = num(x.e) || 0, s = num(x.s) || 0, c = num(x.c), base = p.stock + e - s;
-      if (base < 0) return toast(p.nombre + ': no puede salir más de lo que hay (' + (p.stock + e) + ').');
-      if (e) ing.push({ codigo: p.codigo, cantidad: e }); if (s) sal.push({ codigo: p.codigo, cantidad: s }); if (c !== null && c !== base) aju.push({ codigo: p.codigo, cantidad: c - base }); }
-    if (!ing.length && !sal.length && !aju.length) return toast('No hay nada que guardar.');
+    const ing = [], fab = [], sal = [], aju = [];
+    for (const p of r.productos) { const x = val[p.codigo] || {}, e = num(x.e) || 0, f = num(x.f) || 0, s = num(x.s) || 0, c = num(x.c), base = p.stock + e + f - s;
+      if (base < 0) return toast(p.nombre + ': no puede salir más de lo que hay (' + (p.stock + e + f) + ').');
+      if (e) ing.push({ codigo: p.codigo, cantidad: e }); if (f) fab.push({ codigo: p.codigo, cantidad: f }); if (s) sal.push({ codigo: p.codigo, cantidad: s }); if (c !== null && c !== base) aju.push({ codigo: p.codigo, cantidad: c - base }); }
+    if (!ing.length && !fab.length && !sal.length && !aju.length) return toast('No hay nada que guardar.');
     const doc = ($('#hlD', m).value || '').trim() || 'Sin documento', fecha = $('#hlF', m).value, fin = botonOcupado(ok, 'Guardando…');
     try {
       if (ing.length) await api('guardarHelados', S.sess.token, { tipo: 'INGRESO', fecha, documento: doc, obs: '', items: ing });
+      if (fab.length) await api('guardarHelados', S.sess.token, { tipo: 'INGRESO', fecha, documento: 'Entrada de fábrica', obs: '', items: fab });
       if (sal.length) await api('guardarHelados', S.sess.token, { tipo: 'SALIDA', fecha, documento: doc, obs: '', items: sal });
       if (aju.length) await api('guardarHelados', S.sess.token, { tipo: 'AJUSTE', fecha, documento: '', obs: ($('#hlD', m).value || '').trim(), items: aju });
       toast('Guardado'); ir('helados', true);

@@ -937,3 +937,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v218 — Helados: entradas, salidas y conteo en la tabla, como el inventario (solo frontend: app.js, sw.js)
 - Pedido del dueño: anotar como en las otras planillas. `vHelados` es una tabla con Producto | Hay | Entra | Sale | Conteo físico | Quedará (en vivo); arriba Día y N° de factura/guía (opcional; si falta se guarda «Sin documento»). Un solo Guardar manda hasta tres lotes (`INGRESO`, `SALIDA`, `AJUSTE` = conteo − (hay + entra − sale)) con `guardarHelados`. Se quitaron los 3 botones y `formHelados`. Servidor sin cambios. Solo sintaxis verificada.
+
+## v219 — Helados: casilla «Entrada de fábrica» (solo frontend: app.js, sw.js)
+- Columna nueva aparte de «Entra»: se guarda como un INGRESO propio con documento «Entrada de fábrica» (así se distingue en Movimientos). Suma al «Quedará». Servidor sin cambios.
