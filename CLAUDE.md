@@ -934,3 +934,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v217 — Rol STOCK: consulta de stock de producto terminado y cámara de carnes (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Rol `STOCK` («Consulta de stock», se crea en Usuarios; en `ROLES_VALIDOS`). Solo lectura: ve únicamente la pantalla Inventario en «Ver stock» y solo las secciones TERMINADOS y CAMARA (`getInventario` filtra `secciones` y `filas` en el servidor; las demás funciones lo rechazan). Sin «Editar planilla», sin «Planilla del día», sin migración de nómina; usa `body.solo-leer`. `login` le precarga `getInventario`. Helper `LEE_INV()` (GERENCIA o STOCK). Solo sintaxis verificada.
+
+## v218 — Helados: entradas, salidas y conteo en la tabla, como el inventario (solo frontend: app.js, sw.js)
+- Pedido del dueño: anotar como en las otras planillas. `vHelados` es una tabla con Producto | Hay | Entra | Sale | Conteo físico | Quedará (en vivo); arriba Día y N° de factura/guía (opcional; si falta se guarda «Sin documento»). Un solo Guardar manda hasta tres lotes (`INGRESO`, `SALIDA`, `AJUSTE` = conteo − (hay + entra − sale)) con `guardarHelados`. Se quitaron los 3 botones y `formHelados`. Servidor sin cambios. Solo sintaxis verificada.
