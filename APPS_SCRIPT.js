@@ -2118,11 +2118,11 @@ function inventarioDia_(fecha) {
   const desp = read_('DESPACHO').filter(d => d.fecha <= fecha);
   // por producto → por fecha
   const dia = {};
-  const D = (c, f) => { const k = c + '|' + f; return dia[k] = dia[k] || { saldo: null, ingreso: 0, salVend: {}, retVend: {}, otras: {}, otrasMan: {}, conteo: null }; };
+  const D = (c, f) => { const k = c + '|' + f; return dia[k] = dia[k] || { saldo: null, ingreso: 0, ingreso2: 0, salVend: {}, retVend: {}, otras: {}, otrasMan: {}, conteo: null }; };
   const fechas = {};
   movs.forEach(m => { const c = codeKey_(m.codigo), x = D(c, m.fecha), q = num_(m.cantidad); fechas[m.fecha] = 1;
     if (m.tipo === 'SALDO_INICIAL') x.saldo = q;
-    else if (m.tipo === 'INGRESO') x.ingreso += q;
+    else if (m.tipo === 'INGRESO') { if (String(m.destino) === 'FAB2') x.ingreso2 += q; else x.ingreso += q; }
     else if (m.tipo === 'SALIDA') { x.otras[m.destino] = (x.otras[m.destino] || 0) + q; x.otrasMan[m.destino] = (x.otrasMan[m.destino] || 0) + q; }
     else if (m.tipo === 'CONTEO') x.conteo = q; });
   const pm = {}; prods.forEach(p => pm[p.codigo] = p);
@@ -2138,7 +2138,7 @@ function inventarioDia_(fecha) {
   const orden = Object.keys(fechas).filter(f => f < fecha).sort();
   const sum = o => Object.keys(o).reduce((a, k) => a + o[k], 0);
   const cierre = x => { // devuelve [teórico, final] de un día dado su inicial
-    return ini => { const t = ini - sum(x.salVend) - sum(x.otras) + x.ingreso + sum(x.retVend); return [t, x.conteo !== null ? x.conteo : t]; };
+    return ini => { const t = ini - sum(x.salVend) - sum(x.otras) + x.ingreso + x.ingreso2 + sum(x.retVend); return [t, x.conteo !== null ? x.conteo : t]; };
   };
   const filas = prods.map(p => {
     let stock = 0, conHistoria = false;
@@ -2150,7 +2150,7 @@ function inventarioDia_(fecha) {
     const inicial = x.saldo !== null ? x.saldo : stock;
     const [teorico, final] = cierre(x)(inicial);
     return Object.assign({}, p, { inicial: r3_(inicial), inicialManual: x.saldo !== null, conHistoria: conHistoria || x.saldo !== null,
-      salVend: x.salVend, retVend: x.retVend, otras: x.otras, otrasManual: x.otrasMan, ingreso: r3_(x.ingreso), conteo: x.conteo,
+      salVend: x.salVend, retVend: x.retVend, otras: x.otras, otrasManual: x.otrasMan, ingreso: r3_(x.ingreso), ingreso2: r3_(x.ingreso2), conteo: x.conteo,
       teorico: r3_(teorico), final: r3_(final), ajuste: x.conteo !== null ? r3_(x.conteo - teorico) : 0 });
   });
   return { fecha, vendedores: colVend.map(u => ({ usuario: u, nombre: (vend.find(v => v.usuario === u) || {}).nombre || u })),
@@ -2190,6 +2190,7 @@ function guardarInventario(token, fecha, filas) {
         add(c, 'SALDO_INICIAL', '', f.inicial);
       }
       add(c, 'INGRESO', '', f.ingreso);
+      add(c, 'INGRESO', 'FAB2', f.ingreso2);
       Object.keys(f.otras || {}).forEach(d => add(c, 'SALIDA', normTxt_(d), f.otras[d]));
       add(c, 'CONTEO', '', f.conteo);
     });
@@ -2320,7 +2321,7 @@ function escribirHojaInventario_(sh, inv, enlaces) {
       const n = g.length + 1;
       const row = [f.nombre, f.inicialManual ? f.inicial : (refInicial_(enlaces, sec, f.nombre) || f.inicial)]
         .concat(vend.map(v => v0(f.salVend[v.usuario])), destinos.map(dd => v0(f.otras[dd])),
-          ['=SUM(' + L(Ly.cSal0) + n + ':' + L(Ly.cSal1) + n + ')', '=B' + n + '-' + L(Ly.cTot) + n, v0(f.ingreso)],
+          ['=SUM(' + L(Ly.cSal0) + n + ':' + L(Ly.cSal1) + n + ')', '=B' + n + '-' + L(Ly.cTot) + n, v0(r3_(f.ingreso + (f.ingreso2 || 0)))],
           vend.map(v => v0(f.retVend[v.usuario])), ['=SUM(' + L(Ly.cRet0) + n + ':' + L(Ly.cRet1) + n + ')'],
           hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
           ['=' + L(Ly.cDif) + n + '+' + L(Ly.cIng) + n + '+' + L(Ly.cTotR) + n + (hayAjuste ? '+' + L(Ly.cAj) + n : '')]);
@@ -2343,7 +2344,7 @@ function escribirHojaInventario_(sh, inv, enlaces) {
   const hc = fila(camH); ops.push([hc, 1, 1, camH.length, x => x.setFontWeight('bold').setHorizontalAlignment('center').setWrap(true)]);
   inv.filas.filter(f => f.seccion === 'CAMARA').forEach(f => {
     const n = g.length + 1, sf = f.otras.FABRICA || 0, sv = f.otras.VENDEDORES || 0;
-    fila([f.nombre, f.inicialManual ? f.inicial : (refInicial_(enlaces, 'CAMARA', f.nombre) || f.inicial), v0(sf), v0(sv), v0(f.ingreso)].concat(hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
+    fila([f.nombre, f.inicialManual ? f.inicial : (refInicial_(enlaces, 'CAMARA', f.nombre) || f.inicial), v0(sf), v0(sv), v0(r3_(f.ingreso + (f.ingreso2 || 0)))].concat(hayAjuste ? [f.conteo !== null && f.conteo !== undefined ? f.ajuste : ''] : [],
       ['=B' + n + '-C' + n + '-D' + n + '+E' + n + (hayAjuste ? '+F' + n : '')]));
     ops.push([n, 2, 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);
     ops.push([n, camH.length, 1, 1, x => x.setFontWeight('bold').setFontColor(rojo)]);

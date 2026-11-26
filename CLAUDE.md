@@ -940,3 +940,9 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v219 — Helados: casilla «Entrada de fábrica» (solo frontend: app.js, sw.js)
 - Columna nueva aparte de «Entra»: se guarda como un INGRESO propio con documento «Entrada de fábrica» (así se distingue en Movimientos). Suma al «Quedará». Servidor sin cambios.
+
+## v220 — Segunda casilla «Entrada de fábrica» en el Inventario (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Pedido del dueño: otra casilla «Entrada de fábrica» aparte de «Entra de fábrica» en Contar y anotar (la v219 de helados fue un malentendido; esa columna queda sin uso importante). Se guarda como INGRESO en INVENTARIO_MOV con `destino = 'FAB2'` (clave distinta). `inventarioDia_` devuelve `ingreso2` y lo suma al teórico/final; `guardarInventario` acepta `ingreso2`. «Ver stock» y la planilla Excel muestran «Entró» = ingreso + ingreso2. Solo sintaxis verificada.
+
+## v220 — Segunda casilla «Entrada de fábrica» en el Inventario (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Pedido del dueño: otra casilla «Entrada de fábrica» aparte de «Entra de fábrica» en Contar y anotar (la v219 de helados fue un malentendido). Se guarda como INGRESO en INVENTARIO_MOV con `destino = 'FAB2'` (clave distinta). `inventarioDia_` devuelve `ingreso2` y lo suma al teórico/final; `guardarInventario` acepta `ingreso2`. «Ver stock» y la planilla Excel muestran «Entró» = ingreso + ingreso2. Solo sintaxis verificada.

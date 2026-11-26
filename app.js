@@ -2154,12 +2154,12 @@ async function vInventario(m) {
   const est = {};
   inv.filas.forEach(f => {
     const desp = {}; Object.keys(f.otras).forEach(k => { const d = (f.otras[k] || 0) - ((f.otrasManual || {})[k] || 0); if (Math.abs(d) > 1e-9) desp[k] = d; });
-    est[f.codigo] = { f, ingreso: f.ingreso || '', otras: Object.assign({}, f.otrasManual || {}), desp, conteo: f.conteo === null ? '' : f.conteo,
+    est[f.codigo] = { f, ingreso: f.ingreso || '', ingreso2: f.ingreso2 || '', otras: Object.assign({}, f.otrasManual || {}), desp, conteo: f.conteo === null ? '' : f.conteo,
       inicial: f.inicial, inicialEditable: !f.conHistoria || f.inicialManual, cambio: false };
   });
   const calc = e => {
     const f = e.f, ini = e.inicialEditable ? dec(e.inicial) : f.inicial;
-    const t = ini - sum(f.salVend) - sum(e.desp) - sum(e.otras) + dec(e.ingreso) + sum(f.retVend);
+    const t = ini - sum(f.salVend) - sum(e.desp) - sum(e.otras) + dec(e.ingreso) + dec(e.ingreso2) + sum(f.retVend);
     const final = e.conteo === '' ? t : dec(e.conteo);
     return { t, final, ajuste: e.conteo === '' ? 0 : final - t };
   };
@@ -2188,7 +2188,7 @@ async function vInventario(m) {
     $('#npc').hidden = !contar; $('#invfoot').hidden = !contar;
     $('#invh').textContent = contar ? 'Lo de los vendedores llega solo desde Despacho. Aquí anota lo que entra de fábrica, lo que sale a otros lados y lo que cuentas.' : 'Cuánto había al empezar el día, qué se movió y cuánto queda de cada producto.';
     if (LEE_INV()) { $('#invm').hidden = true; S.invM = 'ver'; }
-    const conMov = f => { const e = est[f.codigo]; return e.cambio || sum(f.salVend) + sum(f.retVend) + sum(e.desp) + sum(e.otras) > 0 || dec(e.ingreso) > 0 || e.conteo !== ''; };
+    const conMov = f => { const e = est[f.codigo]; return e.cambio || sum(f.salVend) + sum(f.retVend) + sum(e.desp) + sum(e.otras) > 0 || dec(e.ingreso) > 0 || dec(e.ingreso2) > 0 || e.conteo !== ''; };
     const conDif = f => { const c = calc(est[f.codigo]); return (est[f.codigo].conteo !== '' && Math.abs(c.ajuste) > 0.001) || c.final < -0.001; };
     const todos = S.secInv === 'TODOS';
     const filtrar = sec => inv.filas.filter(f => f.seccion === sec && (!q || String(f.nombre).toLowerCase().indexOf(q) >= 0) && (!mov || conMov(f)) && (!dife || conDif(f)));
@@ -2203,7 +2203,7 @@ async function vInventario(m) {
       const nOtras = Object.keys(e.otras).filter(k => e.otras[k]).length;
       if (!contar) {
         const est2 = c.final < -0.001 ? '<span class="chip difc">negativo</span>' : e.conteo !== '' && Math.abs(c.ajuste) > 0.001 ? `<span class="chip difc">conteo ${c.ajuste > 0 ? '+' : '−'}${fq(Math.abs(c.ajuste))}</span>` : '';
-        return `<tr data-c="${esc(f.codigo)}" class="${c.final < -0.001 ? 'neg' : ''}">${nom}<td data-col="Empezó">${fq(e.inicialEditable ? dec(e.inicial) : f.inicial)}</td><td data-col="Entró">${dec(e.ingreso) ? fq(dec(e.ingreso)) : '—'}</td>
+        return `<tr data-c="${esc(f.codigo)}" class="${c.final < -0.001 ? 'neg' : ''}">${nom}<td data-col="Empezó">${fq(e.inicialEditable ? dec(e.inicial) : f.inicial)}</td><td data-col="Entró">${dec(e.ingreso) + dec(e.ingreso2) ? fq(dec(e.ingreso) + dec(e.ingreso2)) : '—'}</td>
           <td data-col="${cam ? 'Salió' : 'Salió (vendedores)'}">${cam ? fq(otr) : sal ? fq(sal) : '—'}</td>${cam ? '' : `<td data-col="Volvió">${ret ? fq(ret) : '—'}</td><td data-col="Otras salidas">${otr ? fq(otr) : '—'}</td>`}
           <td class="q" data-col="Quedan">${fq(c.final)}</td><td data-col="Estado">${est2}</td></tr>`;
       }
@@ -2211,12 +2211,13 @@ async function vInventario(m) {
       return `<tr data-c="${esc(f.codigo)}" class="${e.cambio ? 'mod' : ''}">${nom.replace('</td>', det ? `<small>${det}</small></td>` : '</td>')}
         <td data-col="Empezó">${e.inicialEditable ? ip('inicial', '0', e.inicial) : fq(f.inicial)}</td><td class="q dh" data-col="Debería haber">${fq(c.t)}</td>
         <td data-col="${cam ? 'Entra producto' : 'Entra de fábrica'}">${ip('ingreso', '0', e.ingreso)}</td>
+        <td data-col="Entrada de fábrica">${ip('ingreso2', '0', e.ingreso2)}</td>
         ${cam ? `<td data-col="Sale a fábrica">${ip('o:FABRICA', '0', e.otras.FABRICA || '')}</td><td data-col="Sale a vendedores">${ip('o:VENDEDORES', '0', e.otras.VENDEDORES || '')}</td>` : ''}
         <td data-col="Conteo físico">${ip('conteo', '—', e.conteo)}</td><td class="df" data-col="Diferencia">${difH(e, c, fq)}</td>
         ${cam ? '' : `<td class="lk" data-col=""><button type="button" class="ghostlink" data-otras="1">${nOtras ? `Otras salidas ${fq(sum(e.otras))} ›` : 'Otras salidas ›'}</button></td>`}</tr>`;
     };
     const cabF = () => contar
-      ? `<tr><th>Producto</th><th>Empezó</th><th>Debería haber</th><th>${cam ? 'Entra producto' : 'Entra de fábrica'}</th>${cam ? '<th>Sale a fábrica</th><th>Sale a vendedores</th>' : ''}<th>Conteo físico</th><th>Diferencia</th>${cam ? '' : '<th></th>'}</tr>`
+      ? `<tr><th>Producto</th><th>Empezó</th><th>Debería haber</th><th>${cam ? 'Entra producto' : 'Entra de fábrica'}</th><th>Entrada de fábrica</th>${cam ? '<th>Sale a fábrica</th><th>Sale a vendedores</th>' : ''}<th>Conteo físico</th><th>Diferencia</th>${cam ? '' : '<th></th>'}</tr>`
       : `<tr><th>Producto</th><th>Empezó</th><th>Entró</th><th>Salió${cam ? '' : ' (vendedores)'}</th>${cam ? '' : '<th>Volvió</th><th>Otras salidas</th>'}<th>Quedan</th><th>Estado</th></tr>`;
     const tabla = sec => { cam = sec === 'CAMARA'; const fs = filtrar(sec); return fs.length ? `<div class="invt"><table>${cabF()}${fs.map(fila).join('')}</table></div>` : ''; };
     const secs = todos ? inv.secciones.map(x => x.id) : [S.secInv];
@@ -2279,7 +2280,7 @@ async function vInventario(m) {
     try {
       const nuevo = await api('guardarInventario', S.sess.token, S.fecha, cambiados.map(e => {
         const o = {}; Object.keys(e.otras).forEach(k => { if (e.otras[k] !== '' && dec(e.otras[k])) o[k] = dec(e.otras[k]); });
-        const r = { codigo: e.f.codigo, ingreso: e.ingreso === '' ? '' : dec(e.ingreso), otras: o, conteo: e.conteo === '' ? '' : dec(e.conteo) };
+        const r = { codigo: e.f.codigo, ingreso: e.ingreso === '' ? '' : dec(e.ingreso), ingreso2: e.ingreso2 === '' ? '' : dec(e.ingreso2), otras: o, conteo: e.conteo === '' ? '' : dec(e.conteo) };
         if (e.inicialEditable && String(e.inicial) !== String(e.f.inicial)) r.inicial = dec(e.inicial);
         return r; }));
       toast('Inventario guardado');
