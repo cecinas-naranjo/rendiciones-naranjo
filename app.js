@@ -1684,26 +1684,20 @@ const HEL_TIPOS = { INGRESO: ['Entró mercadería', 'N° de factura recibida', '
 async function vHelados(m) {
   const r = await api('getHelados', S.sess.token), puede = S.sess.rol !== 'GERENCIA';
   const cats = Array.from(new Set(r.productos.map(p => p.categoria))); if (!S.helCat || (S.helCat !== 'TODAS' && cats.indexOf(S.helCat) < 0)) S.helCat = 'TODAS';
-  const pocos = r.productos.filter(p => p.alcanza != null && p.alcanza <= 3 && p.semaforo !== 'ROJO').sort((x, y) => x.alcanza - y.alcanza);
-  const colSem = { VERDE: '#1f7a46', AMARILLO: '#b7791f', ROJO: '#b42318' }, nsem = x => String(x).replace('.', ',');
-  const fila = p => `<tr><td>${esc(p.nombre)}<div class="muted">${esc(p.categoria)} · #${p.ranking}</div></td><td class="m"><b>${p.stock}</b></td><td class="m">${p.vendido}</td><td class="m">${nsem(p.porSemana)}</td>
-    <td class="m">${p.alcanza == null ? '—' : (p.alcanza <= 3 ? '<b style="color:#b42318">' : '<b>') + nsem(p.alcanza) + ' sem.</b>'}</td><td><span style="color:${colSem[p.semaforo]};font-weight:700">● ${Math.round(p.pct * 1000) / 10}%</span></td></tr>`;
-  const tabla = () => { const q = ($('#helQ', m) ? $('#helQ', m).value : '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-    const xs = r.productos.filter(p => (S.helCat === 'TODAS' || p.categoria === S.helCat) && (!q || (p.nombre + ' ' + p.codigo).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(q))).sort((x, y) => x.ranking - y.ranking);
-    $('#helT', m).innerHTML = xs.length ? `<table class="t"><thead><tr><th>Producto</th><th class="m">Stock</th><th class="m">Vendido</th><th class="m">Por semana</th><th class="m">Alcanza</th><th>% venta</th></tr></thead><tbody>${xs.map(fila).join('')}</tbody></table>` : '<div class="empty">No hay productos con ese filtro.</div>'; };
+  const sinTilde = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const tabla = () => { const q = sinTilde($('#helQ', m) ? $('#helQ', m).value : '');
+    const xs = r.productos.filter(p => (S.helCat === 'TODAS' || p.categoria === S.helCat) && (!q || sinTilde(p.nombre + ' ' + p.codigo).includes(q)));
+    $('#helT', m).innerHTML = xs.length ? `<table class="t"><thead><tr><th>Producto</th><th class="m">Stock (cajas)</th></tr></thead><tbody>${xs.map(p => `<tr><td>${esc(p.nombre)}<div class="muted">${esc(p.categoria)}</div></td><td class="m"><b>${p.stock}</b></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No hay productos con ese filtro.</div>'; };
   render(m, `<h2>Inventario helados</h2>
-    <p class="lead" style="margin:0 0 12px">Helados Kreems y Maca, en cajas. Todo se anota a mano; no depende del DTE.</p>
-    <div class="kpis"><div class="cash"><span>Cajas en stock</span><b>${r.stock}</b></div><div><span>Vendidas desde el ${fcorta(r.desde)}</span><b>${r.vendido}</b></div><div><span>Ventas por semana</span><b>${nsem(Math.round(r.vendido / r.semanas))}</b></div></div>
+    <div class="kpis"><div class="cash"><span>Cajas en stock</span><b>${r.stock}</b></div></div>
     ${puede ? '<div class="row" style="margin:12px 0;gap:8px;flex-wrap:wrap"><button class="btn cu" type="button" data-t="INGRESO">+ Entró mercadería</button><button class="btn ghost" type="button" data-t="SALIDA">− Salió mercadería</button><button class="btn ghost" type="button" data-t="AJUSTE">Contar stock</button></div>' : ''}
-    ${pocos.length ? `<div class="card" style="border-left:4px solid #b42318"><b>Se acaban pronto (menos de 3 semanas al ritmo actual)</b><div class="muted" style="margin-top:4px">${pocos.map(p => `${esc(p.nombre)}: <b>${p.stock}</b> cajas (${nsem(p.alcanza)} sem.)`).join('<br>')}</div></div>` : ''}
     <div class="row" style="gap:8px;margin:12px 0;flex-wrap:wrap"><div class="seg" id="helC">${['TODAS'].concat(cats).map(c => `<button type="button" data-c="${esc(c)}" class="${S.helCat === c ? 'on' : ''}">${c === 'TODAS' ? 'Todas' : esc(c)}</button>`).join('')}</div>
       <input class="in grow" id="helQ" placeholder="Buscar producto…" autocomplete="off" style="min-width:150px"></div>
     <div id="helT"></div>
-    <p class="muted" style="margin:6px 0 0">Alcanza = semanas que dura el stock al ritmo de venta promedio. % venta: verde 5 % o más, amarillo 2–5 %, rojo menos de 2 %. Las ventas de antes del 25-nov vienen de la planilla.</p>
     <h3 style="margin-top:18px">Movimientos anotados</h3>
     ${r.movimientos.length ? r.movimientos.map(x => `<div class="cfac"><div class="ccr"><span class="grow"><b>${esc(HEL_TIPOS[x.tipo][0])}</b> <span class="muted">· ${fcorta(x.fecha)}${x.documento ? ' · ' + esc(x.documento) : ''}</span>
       <div class="muted">${x.items.map(i => esc(i.nombre) + ' <b>' + (x.tipo === 'AJUSTE' && i.cantidad > 0 ? '+' : '') + i.cantidad + '</b>').join(' · ')}</div><div class="muted">${esc(x.por)}${x.obs ? ' · ' + esc(x.obs) : ''}</div></span>
-      ${puede ? `<button class="x" type="button" data-l="${esc(x.lote)}" aria-label="Borrar">×</button>` : ''}</div></div>`).join('') : '<div class="empty">Todavía no hay movimientos anotados desde la planilla.</div>'}`);
+      ${puede ? `<button class="x" type="button" data-l="${esc(x.lote)}" aria-label="Borrar">×</button>` : ''}</div></div>`).join('') : '<div class="empty">Todavía no hay movimientos anotados.</div>'}`);
   tabla();
   $('#helQ', m).oninput = tabla;
   $('#helC', m).onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; S.helCat = b.dataset.c; $$('#helC button', m).forEach(x => x.classList.toggle('on', x === b)); tabla(); };

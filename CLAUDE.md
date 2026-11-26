@@ -928,3 +928,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Stock = inicial + ingresos + ajustes − salidas. API `getHelados` (BODEGA/RENDICION/SUPERVISOR/GERENCIA), `guardarHelados(token,{tipo,fecha,documento,obs,items:[{codigo,cantidad}]})` (un lote = una factura recibida, guía/venta o conteo; la salida no puede superar el stock; en AJUSTE la cantidad lleva signo y la app la calcula como conteo − stock) y `borrarHelados(token, lote)` (no borra INI/HIST). Solo en línea, sin cola.
 - Indicadores: vendido, por semana (desde `HELADOS_DESDE_` = 5-oct), «Alcanza» = stock ÷ ritmo semanal, semáforo por % de venta (verde ≥5 %, amarillo ≥2 %, rojo), ranking y aviso «se acaban pronto» (≤3 semanas, no rojos). Probado el servidor con mocks (stock, salida, error por exceso, ajuste, borrado); frontend solo sintaxis.
 - Diferencia menor: la planilla da 1.255 cajas vendidas y la app 1.273 porque la planilla resta las NC de la venta y aquí quedan como salida neta del stock.
+
+## v216 — Helados: solo stock (solo frontend: app.js, sw.js)
+- Pedido del dueño: nada de ventas, ritmo, semáforo ni ranking. `vHelados` muestra solo el stock por producto (cajas), con filtro por categoría, buscador, los 3 botones (Entró / Salió / Contar stock) y los movimientos anotados. El servidor (`getHelados`) sigue devolviendo vendido, semáforo, etc. sin uso.
