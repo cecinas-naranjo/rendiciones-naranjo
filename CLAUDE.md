@@ -909,3 +909,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v210 — Pack de venta en la empanada de queso 3X3
 - Empanada queso 3X3 (EMP MED LUNA QUESO GRANEL 3X3 9KG, pack de 3 un): pasa de PACK_ANOTA a PACK_VENTA: el bodeguero anota UNIDADES y al lado se ve «= N pack» (Despacho ya tenía la columna Packs; Inventario ahora muestra «= N pack» en vivo bajo cada campo y «(N packs)» en los totales). Requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js. Solo sintaxis verificada.
+
+## v211 — Cámara sin decimales «,00» en Inventario (solo frontend: app.js, sw.js)
+- Los kilos de cámara se muestran sin ceros de más (92 en vez de 92,00; 92,5 si hay decimales reales). Solo sintaxis verificada.

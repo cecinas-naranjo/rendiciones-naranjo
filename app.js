@@ -2111,7 +2111,7 @@ async function vInventario(m) {
     return { t, final, ajuste: e.conteo === '' ? 0 : final - t };
   };
   const nombreSec = id => (inv.secciones.find(x => x.id === id) || {}).nombre || id;
-  const fqU = f => v => f.unidad !== 'UN' ? kg(v) : (f.modo === 'PACK_ANOTA' || f.modo === 'PACK_VENTA') && f.pack ? `${nk(v)} <small class="pkq">(${nk(Math.round(v / f.pack * 100) / 100)} packs)</small>` : nk(v);
+  const fqU = f => v => f.unidad !== 'UN' ? (f.seccion === 'CAMARA' ? (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('es-CL', { maximumFractionDigits: 2 }) : kg(v)) : (f.modo === 'PACK_ANOTA' || f.modo === 'PACK_VENTA') && f.pack ? `${nk(v)} <small class="pkq">(${nk(Math.round(v / f.pack * 100) / 100)} packs)</small>` : nk(v);
   render(m, `<div class="row"><div class="grow"><h2>Inventario de bodega</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
       ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost sm" id="edp">Editar planilla</button>'}<button class="btn ghost sm" id="plan">Planilla del día</button></div>
     <p class="muted" id="invh"></p>
