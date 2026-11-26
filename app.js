@@ -3372,13 +3372,16 @@ async function cobrarDesdeLista(box, alTerminar) {
     ${vendsC.length > 1 ? `<select class="in" id="cvf" style="margin-top:10px"><option value="">Todos los vendedores</option>${vendsC.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select>` : ''}
     <input class="in" id="cq" placeholder="Nombre, RUT o folio" autocomplete="off" inputmode="search" style="margin-top:10px"><div id="cres" style="margin-top:8px"></div><div id="cpan"></div></div>`;
   const res = $('#cres', box), pan = $('#cpan', box);
+  let verTodos = false;     // v208: por defecto los 8 con más deuda; «Ver todos» muestra la lista completa
   const lista = q => {
     const n = normBus(q), fq = String(q || '').replace(/\D/g, '');         // si lo escrito son números, también se busca entre los folios de cada cliente
     const porFolio = c => fq.length >= 2 ? c.facturas.filter(f => String(f.folio).indexOf(fq) >= 0) : [];
-    const xs = (n ? clientes.filter(c => normBus(c.cliente).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0 || porFolio(c).length) : clientes.slice().sort((a, b) => b.deuda - a.deuda)).slice(0, 8);
+    let xs = (n ? clientes.filter(c => normBus(c.cliente).indexOf(n) >= 0 || normBus(c.rut).indexOf(n) >= 0 || porFolio(c).length) : clientes.slice().sort((a, b) => b.deuda - a.deuda));
+    const total = xs.length, lim = verTodos ? total : 8; xs = xs.slice(0, lim);
     res.innerHTML = xs.length ? xs.map(c => { const pf = porFolio(c);
       return `<button type="button" class="cli" data-k="${esc(c.clave)}"><span class="grow"><b>${esc(c.cliente)}</b><small>${c.facturas.length} factura${c.facturas.length > 1 ? 's' : ''}${pf.length ? ' · <b style="color:var(--cu-2)">Folio ' + pf.map(f => esc(f.folio)).slice(0, 3).join(', ') + '</b>' : ''}</small></span><b>${clp(c.deuda)}</b><span class="bt">Elegir</span></button>`; }).join('')
       : '<div class="muted">Ningún cliente con deuda coincide.</div>';
+    if (total > lim) res.innerHTML += `<button type="button" class="btn ghost" data-vt="1" style="width:100%;margin-top:6px">Ver todos los clientes (${total})</button>`;
   };
   lista('');
   $('#cq', box).oninput = e => { pan.innerHTML = ''; lista(e.target.value); };
@@ -3387,7 +3390,8 @@ async function cobrarDesdeLista(box, alTerminar) {
       clientes = !v ? todos : todos.map(c => { const fs = c.facturas.filter(f => f.vendedor === v); return fs.length ? Object.assign({}, c, { facturas: fs, deuda: fs.reduce((a, f) => a + f.saldo, 0) }) : null; }).filter(Boolean);
       const tt = $('.row .muted', box); if (tt) tt.textContent = clientes.length + ' con deuda · ' + clp(clientes.reduce((a, c) => a + c.deuda, 0));
       pan.innerHTML = ''; lista($('#cq', box).value); }; }
-  res.onclick = e => { const b = e.target.closest('.cli'); if (!b || res.dataset.ocupado) return; res.dataset.ocupado = '1';
+  res.onclick = e => { if (e.target.closest('[data-vt]')) { verTodos = true; lista($('#cq', box).value); return; }
+    const b = e.target.closest('.cli'); if (!b || res.dataset.ocupado) return; res.dataset.ocupado = '1';
     const c = clientes.find(x => x.clave === b.dataset.k), fq = String($('#cq', box).value || '').replace(/\D/g, '');
     $$('.cli', res).forEach(x => x.classList.add(x === b ? 'sel' : 'apag'));          // el elegido queda marcado y los demás se desvanecen
     setTimeout(() => { delete res.dataset.ocupado; abrirCliente(c, fq); }, 220); };
