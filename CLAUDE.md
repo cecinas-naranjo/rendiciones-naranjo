@@ -918,3 +918,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v213 — Empanada queso 3X3 sin conversión de pack (requiere pegar APPS_SCRIPT.js COMPLETO)
 - Se quitó `EMPANADA QUESO 3X3` de `CFG.UNIDADES` (v210): el bodeguero cuenta cajas y lo que escribe es lo que queda (3 → 3, no 9). Vuelve a ser un producto UN normal, una sola columna Unidades, sin «pack de 3 un». Solo sintaxis verificada.
+
+## v214 — Pestaña «Helados» en Bodega (solo frontend: app.js, sw.js)
+- Pestaña provisoria `helados` (`vHelados`) en la barra de BODEGA con el texto «Inventario helados»; el listado de productos lo entregará el dueño. Solo sintaxis verificada.

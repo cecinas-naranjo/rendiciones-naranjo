@@ -634,7 +634,7 @@ try { S.sess = JSON.parse(localStorage.getItem('rn_sess') || 'null'); } catch (e
 
 const TABS = {
   VENDEDOR: [['hoy', 'Hoy', 'home'], ['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
-  BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack']],
+  BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'], ['helados', 'Helados', 'stack']],
   RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
     ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
     ['super', 'Supermercados', 'store'], ['distrib', 'Distribuidores', 'users'], ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'],
@@ -975,7 +975,7 @@ function ir(t, silencioso) {
   let m = main.firstElementChild;          // cada carga tiene su propio contenedor: si llega tarde, no pisa la pantalla nueva
   const nuevo = !silencioso || !m || !m.classList.contains('vm');
   const salir = nuevo && m && m.classList.contains('vm') && m._tab !== t && !m.querySelector('.sk');
-  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, super: m => vCanal(m, 'SUPERMERCADOS'), distrib: m => vCanal(m, 'DISTRIBUIDORES'), cajachica: vCajaChica, pozo: vPozo, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
+  const v = { hoy: vHoy, folios: vFolios, despacho: vDespacho, resumen: vResumen, importar: vImportar, depositos: vDepositos, inventario: vInventario, saldos: vSaldos, cheques: vCheques, notascred: vNotasCredito, super: m => vCanal(m, 'SUPERMERCADOS'), distrib: m => vCanal(m, 'DISTRIBUIDORES'), cajachica: vCajaChica, pozo: vPozo, usuarios: vUsuarios, datos: vDatos, devoluciones: vDevoluciones, helados: vHelados, efectivo: vEfectivo, historial: vHistorial, descuentos: vDescuentos }[t] || vMov;
   const arrancar = () => {
     if (id !== S.vistaId) return;           // la persona ya fue a otra parte durante la salida
     if (nuevo) { m = document.createElement('div'); m.className = 'vm'; main.replaceChildren(m); m.innerHTML = skeleton(4); if (!silencioso) window.scrollTo({ top: 0, behavior: 'instant' }); }
@@ -1679,6 +1679,9 @@ function marcarVarios(docs, alGuardar) {
 
 /* ============ DEVOLUCIONES (mermas y reprocesos) ============ */
 const MOTIVOS_DEV = ['Producto vencido', 'Mal estado / en mal olor', 'Empaque dañado', 'Error de pedido', 'Reclamo de calidad', 'Otro'];
+function vHelados(m) {
+  render(m, `<h2>Inventario helados</h2><div class="card"><p class="lead" style="margin:0">Próximamente: aquí se llevará el inventario de helados. Falta el listado de productos.</p></div>`);
+}
 async function vDevoluciones(m) {
   const rows = await api('listarDevoluciones', S.sess.token, S.fecha);
   const cats = {}; S.cat.productos.forEach(p => (cats[p.categoria || 'REVISAR'] = cats[p.categoria || 'REVISAR'] || []).push(p));
