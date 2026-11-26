@@ -663,7 +663,7 @@ const SESION_DIAS = 30; // la sesión dura 30 días en el celular: nadie tiene q
    Cada persona entra con su RUT (o correo) y su clave personal; el rol lo asigna la administración. La clave se guarda con sal y
    SHA-256 repetido (nunca en texto). Una clave nueva o restablecida es temporal: la persona debe cambiarla al entrar.
    5 intentos fallidos bloquean la cuenta 15 minutos. */
-const CLAVE_MIN = 4, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR','GERENCIA','REEMPLAZO'];
+const CLAVE_MIN = 4, MAX_INTENTOS = 5, BLOQUEO_MIN = 15, ROLES_VALIDOS = ['ADMIN','SUPERVISOR','RENDICION','BODEGA','VENDEDOR','GERENCIA','REEMPLAZO','STOCK'];
 function hashClave_(clave, sal) {
   const D = Utilities.DigestAlgorithm.SHA_256;
   let h = Utilities.computeDigest(D, String(sal) + '|' + String(clave), Utilities.Charset.UTF_8);
@@ -791,6 +791,7 @@ function sesionDe_(u, fecha) {
     const f = fecha || hoy_(), cat = catalogo(token);
     const primera = u.rol === 'VENDEDOR' ? ['misDocumentos', [token, f, '']]
       : u.rol === 'BODEGA' ? ['getDespacho', [token, f, (cat.vendedores[0] || {}).usuario || '']]
+      : u.rol === 'STOCK' ? ['getInventario', [token, f]]
       : ['getResumen', [token, f]];
     const lote = [['catalogo', [token]], u.rol === 'REEMPLAZO' ? null : primera].filter(Boolean).map(l => ({ fn: l[0], args: l[1], data: API[l[0]].apply(null, l[1]) }));
     sesion.lote = lote;
@@ -2157,8 +2158,12 @@ function inventarioDia_(fecha) {
 }
 
 function getInventario(token, fecha) {
-  auth_(token, ['BODEGA','RENDICION','SUPERVISOR','GERENCIA']);
-  const r = conCache_('inv|' + fecha + '|' + invSello_(), ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(fecha));
+  const u = auth_(token, ['BODEGA','RENDICION','SUPERVISOR','GERENCIA','STOCK']);
+  let r = conCache_('inv|' + fecha + '|' + invSello_(), ['INVENTARIO_MOV', 'DESPACHO', 'PRODUCTOS', 'USUARIOS'], () => inventarioDia_(fecha));
+  if (u.rol === 'STOCK') {          // v217: consulta de stock, solo producto terminado y cámara de carnes
+    const ok = { TERMINADOS: 1, CAMARA: 1 };
+    r = Object.assign({}, r, { secciones: r.secciones.filter(x => ok[x.id]), filas: r.filas.filter(f => ok[f.seccion]) });
+  }
   return Object.assign({}, r, { nominaPendiente: PropertiesService.getScriptProperties().getProperty('NOMINA_INV') !== NOMINA_INV_ });
 }
 

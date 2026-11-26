@@ -931,3 +931,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v216 — Helados: solo stock (solo frontend: app.js, sw.js)
 - Pedido del dueño: nada de ventas, ritmo, semáforo ni ranking. `vHelados` muestra solo el stock por producto (cajas), con filtro por categoría, buscador, los 3 botones (Entró / Salió / Contar stock) y los movimientos anotados. El servidor (`getHelados`) sigue devolviendo vendido, semáforo, etc. sin uso.
+
+## v217 — Rol STOCK: consulta de stock de producto terminado y cámara de carnes (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Rol `STOCK` («Consulta de stock», se crea en Usuarios; en `ROLES_VALIDOS`). Solo lectura: ve únicamente la pantalla Inventario en «Ver stock» y solo las secciones TERMINADOS y CAMARA (`getInventario` filtra `secciones` y `filas` en el servidor; las demás funciones lo rechazan). Sin «Editar planilla», sin «Planilla del día», sin migración de nómina; usa `body.solo-leer`. `login` le precarga `getInventario`. Helper `LEE_INV()` (GERENCIA o STOCK). Solo sintaxis verificada.

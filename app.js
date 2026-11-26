@@ -54,7 +54,7 @@ const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate
 const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const FL = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', DEP_EFECTIVO: 'Depósito en efectivo', CHEQUE: 'Cheque', CREDITO: 'Crédito', NOTA_CREDITO: 'Nota de crédito' };
 const CATS = { PROPIOS: 'Productos propios', CARNICOS: 'Cárnicos', CONGELADOS: 'Congelados', LACTEOS: 'Lácteos', LAMINADOS: 'Laminados, quesos y verduras', REVISAR: 'Por clasificar' };
-const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor', GERENCIA: 'Gerencia', REEMPLAZO: 'Reemplazo' };
+const ROL = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Rendición', BODEGA: 'Bodega', VENDEDOR: 'Vendedor', GERENCIA: 'Gerencia', REEMPLAZO: 'Reemplazo', STOCK: 'Consulta de stock' };
 
 /** Pestañas del rol (todos los vendedores tienen Depósito, por si hace falta). */
 const tabsRol = () => TABS[S.sess.rol] || [];
@@ -643,6 +643,7 @@ const TABS = {
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
 
+TABS.STOCK = [['inventario', 'Stock', 'box']];
 TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['super', 'Supermercados', 'store'], ['distrib', 'Distribuidores', 'users'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'], ['inventario', 'Inventario', 'stack'], ['helados', 'Inventario helados', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios', 'super', 'distrib'], 'upload'],
@@ -653,7 +654,7 @@ const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 /* ===== VER COMO (solo ADMIN): saltar entre usuarios para ver cómo ven la app los demás ===== */
 try { S_ADMIN = JSON.parse(localStorage.getItem('rn_admin') || 'null'); } catch (e) { S_ADMIN = null; }
 var S_ADMIN;
-const ROL_TXT = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Encargada de rendición', GERENCIA: 'Gerencia', VENDEDOR: 'Vendedores', BODEGA: 'Bodega', REEMPLAZO: 'Mi usuario' };
+const ROL_TXT = { ADMIN: 'Administración', SUPERVISOR: 'Supervisión', RENDICION: 'Encargada de rendición', GERENCIA: 'Gerencia', VENDEDOR: 'Vendedores', BODEGA: 'Bodega', REEMPLAZO: 'Mi usuario', STOCK: 'Consulta de stock' };
 function montarProbar() {
   const v = $('#probar'); if (v) v.remove();
   if (!S.sess || !(S_ADMIN || S.sess.rol === 'ADMIN')) return;
@@ -672,7 +673,7 @@ async function abrirProbar() {
   document.body.appendChild(ov);
   $('#pcx', ov).onclick = () => cerrarHoja(ov); ov.onclick = e => { if (e.target === ov) cerrarHoja(ov); };
   let us; try { us = reemp ? (await api('vendedoresReemplazo', adm.token)).map(v => Object.assign({ activo: true, rol: 'VENDEDOR' }, v)).concat([{ usuario: adm.usuario, nombre: adm.nombre + ' (yo)', rol: 'REEMPLAZO', activo: true }]) : await api('listarUsuariosAdmin', adm.token); } catch (e) { cerrarHoja(ov); return; }
-  const orden = reemp ? ['VENDEDOR', 'REEMPLAZO'] : ['ADMIN', 'SUPERVISOR', 'RENDICION', 'GERENCIA', 'VENDEDOR', 'BODEGA'];
+  const orden = reemp ? ['VENDEDOR', 'REEMPLAZO'] : ['ADMIN', 'SUPERVISOR', 'RENDICION', 'GERENCIA', 'STOCK', 'VENDEDOR', 'BODEGA'];
   us = us.filter(u => u.activo).sort((x, y) => orden.indexOf(x.rol) - orden.indexOf(y.rol) || x.nombre.localeCompare(y.nombre));
   $('#pul', ov).innerHTML = orden.map(r => { const g = us.filter(u => u.rol === r); return g.length ? `<div class="sg" style="margin:10px 0 4px;color:var(--ink-2)">${ROL_TXT[r]}</div>` +
     g.map(u => `<button class="urow ${S.sess.usuario === u.usuario ? 'on' : ''}" data-u="${esc(u.usuario)}"><span class="grow"><b>${esc(u.nombre)}</b><small>${esc(u.usuario)}${u.terminales ? ' · ' + esc(u.terminales) : ''}</small></span>${S.sess.usuario === u.usuario ? '<span class="chip ok">Actual</span>' : '<span class="go">›</span>'}</button>`).join('') : ''; }).join('');
@@ -862,7 +863,7 @@ async function iniciar() {
   const abajo = !unica && (S.sess.rol === 'VENDEDOR' || S.sess.rol === 'BODEGA' || tabs.length <= 4);
   const grupos = !unica && !abajo ? GRUPOS.map(g => [g[0], g[1], g[2].filter(t => tabs.some(x => x[0] === t)), g[3]]).filter(g => g[2].length) : null;
   S.grupos = grupos; S.ultimoDeGrupo = S.ultimoDeGrupo || {};
-  document.body.classList.toggle('solo-leer', S.sess.rol === 'GERENCIA');
+  document.body.classList.toggle('solo-leer', S.sess.rol === 'GERENCIA' || S.sess.rol === 'STOCK');
   document.body.classList.toggle('has-bottom', abajo || !!grupos);
   document.body.classList.toggle('oficina', !!grupos);
   const txtDia = f => f === hoyCL() ? 'Hoy' : new Date(f + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[,.]/g, '');
@@ -2140,9 +2141,10 @@ function abrirDevolucionesVendedor(alCerrar) {
 }
 
 /* ============ INVENTARIO DE BODEGA ============ */
+const LEE_INV = () => S.sess.rol === 'GERENCIA' || S.sess.rol === 'STOCK';
 async function vInventario(m) {
   let inv = await api('getInventario', S.sess.token, S.fecha);
-  if (inv.nominaPendiente && S.sess.rol !== 'GERENCIA') {      // v149: la primera vez deja los productos como la nómina del bodeguero
+  if (inv.nominaPendiente && S.sess.rol !== 'GERENCIA' && S.sess.rol !== 'STOCK') {      // v149: la primera vez deja los productos como la nómina del bodeguero
     try { await api('aplicarNominaInventario', S.sess.token); olvidarCache(true); inv = await api('getInventario', S.sess.token, S.fecha); } catch (e) { /* si falla, se sigue con lo que hay */ }
   }
   S.secInv = S.secInv || 'TODOS';            // v154: por defecto se ven todos los productos juntos
@@ -2164,7 +2166,7 @@ async function vInventario(m) {
   const nombreSec = id => (inv.secciones.find(x => x.id === id) || {}).nombre || id;
   const fqU = f => v => f.unidad !== 'UN' ? (f.seccion === 'CAMARA' ? (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('es-CL', { maximumFractionDigits: 2 }) : kg(v)) : (f.modo === 'PACK_ANOTA' || f.modo === 'PACK_VENTA') && f.pack ? `${nk(v)} <small class="pkq">(${nk(Math.round(v / f.pack * 100) / 100)} packs)</small>` : nk(v);
   render(m, `<div class="row"><div class="grow"><h2>Inventario de bodega</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
-      ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost sm" id="edp">Editar planilla</button>'}<button class="btn ghost sm" id="plan">Planilla del día</button></div>
+      ${LEE_INV() ? '' : '<button class="btn ghost sm" id="edp">Editar planilla</button>'}${S.sess.rol === 'STOCK' ? '' : '<button class="btn ghost sm" id="plan">Planilla del día</button>'}</div>
     <p class="muted" id="invh"></p>
     <div class="invtop"><div class="seg secs" id="sec"><button data-s="TODOS">Todos</button>${inv.secciones.map(x => `<button data-s="${x.id}">${x.nombre}</button>`).join('')}</div>
       <div class="seg" id="invm"><button type="button" data-m="ver">Ver stock</button><button type="button" data-m="contar">Contar y anotar</button></div></div>
@@ -2185,7 +2187,7 @@ async function vInventario(m) {
     $$('#invm button').forEach(x => x.classList.toggle('on', x.dataset.m === S.invM));
     $('#npc').hidden = !contar; $('#invfoot').hidden = !contar;
     $('#invh').textContent = contar ? 'Lo de los vendedores llega solo desde Despacho. Aquí anota lo que entra de fábrica, lo que sale a otros lados y lo que cuentas.' : 'Cuánto había al empezar el día, qué se movió y cuánto queda de cada producto.';
-    if (S.sess.rol === 'GERENCIA') { $('#invm').hidden = true; S.invM = 'ver'; }
+    if (LEE_INV()) { $('#invm').hidden = true; S.invM = 'ver'; }
     const conMov = f => { const e = est[f.codigo]; return e.cambio || sum(f.salVend) + sum(f.retVend) + sum(e.desp) + sum(e.otras) > 0 || dec(e.ingreso) > 0 || e.conteo !== ''; };
     const conDif = f => { const c = calc(est[f.codigo]); return (est[f.codigo].conteo !== '' && Math.abs(c.ajuste) > 0.001) || c.final < -0.001; };
     const todos = S.secInv === 'TODOS';
@@ -2285,7 +2287,7 @@ async function vInventario(m) {
       pintar();
     } finally { b.disabled = false; }
   };
-  $('#plan').onclick = async () => {
+  if ($('#plan')) $('#plan').onclick = async () => {
     if (Object.values(est).some(e => e.cambio) && !confirm('Hay cambios sin guardar que no saldrán en la planilla. ¿Generarla igual?')) return;
     const r = await api('generarPlanillaInventario', S.sess.token, S.fecha);
     $('#lnkInv').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -2350,7 +2352,7 @@ async function vUsuarios(m) {
     const ov = document.createElement('div'); ov.className = 'ov'; const nuevo = !u; u = u || { nombre: '', rol: 'VENDEDOR', rut: '', correo: '', terminales: '', activo: true, usuario: '' };
     ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grip"></div><div class="body"><div style="font-weight:700;font-size:19px">${nuevo ? 'Nuevo usuario' : 'Editar a ' + esc(u.nombre)}</div>
       <label class="f" for="u1">Nombre</label><input class="in" id="u1" value="${esc(u.nombre)}" autocomplete="off">
-      <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'REEMPLAZO', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'GERENCIA', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
+      <label class="f" for="u2" style="margin-top:10px">Rol</label><select class="in" id="u2">${['VENDEDOR', 'REEMPLAZO', 'BODEGA', 'RENDICION', 'SUPERVISOR', 'GERENCIA', 'STOCK', 'ADMIN'].map(r => `<option value="${r}" ${u.rol === r ? 'selected' : ''}>${ROL[r] || r}</option>`).join('')}</select>
       <label class="f" for="u3" style="margin-top:10px">RUT</label><input class="in" id="u3" value="${esc(u.rut)}" placeholder="12.345.678-5" autocomplete="off">
       <label class="f" for="u4" style="margin-top:10px">Correo (opcional)</label><input class="in" id="u4" value="${esc(u.correo)}" autocapitalize="none" autocomplete="off">
       <div id="u5w"><label class="f" for="u5" style="margin-top:10px">Terminales de Mi DTE (separados por coma)</label><input class="in" id="u5" value="${esc(u.terminales)}" autocomplete="off">
