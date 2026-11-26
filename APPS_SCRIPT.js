@@ -1970,7 +1970,7 @@ function borrarAdjunto(token, tabla, id, fileId) {
 //   SALDO_INICIAL (stock al comenzar el día), INGRESO, SALIDA (destino), CONTEO (stock físico al cierre del día)
 // Salidas y retornos de vendedores se leen de DESPACHO (no se ingresan dos veces).
 
-const SECCIONES_INV = [['TERMINADOS', 'Productos terminados', 'KG'], ['CAMARA', 'Cámara de carnes', 'UN'],
+const SECCIONES_INV = [['TERMINADOS', 'Productos terminados', 'KG'], ['CAMARA', 'Cámara de carnes', 'KG'],
   ['CONGELADOS', 'Congelados y cárnicos', 'UN'], ['LAMINADOS', 'Laminados, quesos y verduras', 'UN']];
 
 // nombre en la planilla de inventario → [sección, nombre del producto de venta (si ya existe)]
@@ -2023,6 +2023,7 @@ function prepararProductosInventario_() {
 /** Unidad en que el inventario lleva el producto (como la planilla): terminados en unidades salvo longanizas, paté y costillar (kilos). */
 function unidadInv_(p) {
   if (p.seccion === 'TERMINADOS') return CFG.INV_EN_KILOS.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre)) ? 'KG' : 'UN';
+  if (p.seccion === 'CAMARA') return 'UN';   // v212: la cámara se lleva en unidades SOLO en el inventario (el producto sigue en KG)
   return (SECCIONES_INV.find(x => x[0] === p.seccion) || [])[2] || p.unidad || 'UN';
 }
 function asegurarColsProductos_() {

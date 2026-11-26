@@ -914,4 +914,4 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Los kilos de cámara se muestran sin ceros de más (92 en vez de 92,00; 92,5 si hay decimales reales). Solo sintaxis verificada.
 
 ## v212 — Cámara de carnes en unidades (requiere pegar APPS_SCRIPT.js COMPLETO y subir sw.js)
-- Pedido del dueño: cambiar kg por unidad en la cámara. `SECCIONES_INV` CAMARA pasa de KG a UN (rótulo «un.» en Inventario). Cámara no sale en Despacho, así que no hay conversión kg↔un; los valores ya guardados se leen igual. Solo sintaxis verificada.
+- Pedido del dueño: cambiar kg por unidad en la cámara. Solo `unidadInv_` devuelve UN para CAMARA (rótulo «un.» en Inventario); `SECCIONES_INV` y PRODUCTOS.unidad siguen en KG, así que nada fuera del inventario cambia. Cámara no sale en Despacho, así que no hay conversión kg↔un; los valores ya guardados se leen igual. Solo sintaxis verificada.
