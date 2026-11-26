@@ -102,7 +102,7 @@ const SCHEMA = {
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
   REEMPLAZOS:  ['id','fecha','reemplazo','vendedor','inicio'],
-  ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos'],
+  ADELANTOS:   ['id','fecha','vendedor','tipo','folio','folio_key','monto','forma','banco','estado','nota','registrado','resuelto','pagos','cliente','rut'],
   ANULACIONES: ['id','fecha','vendedor','tipo','folio','folio_key','cliente','modo','lineas','monto','motivo','reemplazo','vuelve','estado','nc_folio','nota','registrado_por','registrado','resuelto_por','resuelto']
 };
 
@@ -301,7 +301,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, getCanal, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, asignarClienteDoc, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -1097,7 +1097,7 @@ function asegurarAdelantos_() {
   const ex = ss.getSheetByName('ADELANTOS');
   if (ex) {   // hoja de v68 sin la columna `pagos`: se agrega al final
     const h = ex.getRange(1, 1, 1, Math.max(ex.getLastColumn(), 1)).getValues()[0];
-    if (h.indexOf('pagos') < 0) { ex.getRange(1, SCHEMA.ADELANTOS.indexOf('pagos') + 1).setValue('pagos').setFontWeight('bold'); MEMO_.ADELANTOS = null; }
+    ['pagos', 'cliente', 'rut'].forEach(c => { if (h.indexOf(c) < 0) { ex.getRange(1, SCHEMA.ADELANTOS.indexOf(c) + 1).setValue(c).setFontWeight('bold'); MEMO_.ADELANTOS = null; } });   // v207: cliente y rut de la boleta
     return;
   }
   const sh = ss.insertSheet('ADELANTOS'), head = SCHEMA.ADELANTOS;
@@ -1114,7 +1114,17 @@ function aplicarAdelanto_(a, d) {
   append_('PAGOS', lineasDe_(a).map(p => ({ id: uid_(), folio_key: d.folio_key, fecha: d.fecha, vendedor: d.vendedor, forma: p.forma, banco: p.banco || '',
     monto: num_(p.monto), referencia: p.referencia || '', registrado_por: a.vendedor, registrado: now_(),
     cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' })));
-  d.estado = 'DETALLADO'; updateRow_('DOCUMENTOS', d._row, d);
+  d.estado = 'DETALLADO'; ponerClienteBoleta_(a, d); updateRow_('DOCUMENTOS', d._row, d);
+}
+/** v207: las boletas de Mi DTE vienen genéricas («CLIENTE BOLETA»): si el vendedor anotó a quién correspondía, se deja ese cliente en el documento. */
+function ponerClienteBoleta_(a, d) {
+  if (!a || !String(a.cliente || '').trim() || !/bol/i.test(String(d.tipo)) || !esBoletaGenerica_(d)) return false;
+  d.cliente = String(a.cliente).trim().toUpperCase(); d.rut = String(a.rut || '').trim(); return true;
+}
+function limpiarClienteArg_(cliente, rut) {
+  const c = String(cliente || '').replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 80);
+  const r = String(rut || '').replace(/[^0-9kK-]/g, '').toUpperCase().slice(0, 12);
+  return { cliente: c, rut: c ? r : '' };
 }
 /** v181: escribe solo las columnas indicadas de varias filas ya leídas (objs con _row): una escritura por columna, no una por fila. */
 function escribirCols_(name, objs, cols) {
@@ -1137,8 +1147,8 @@ function aplicarAdelantos_(lista) {
     monto: num_(p.monto), referencia: p.referencia || '', registrado_por: a.vendedor, registrado: now_(),
     cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' })));
   append_('PAGOS', filas);
-  lista.forEach(x => x.d.estado = 'DETALLADO');
-  escribirCols_('DOCUMENTOS', lista.map(x => x.d), ['estado']);
+  lista.forEach(x => { x.d.estado = 'DETALLADO'; ponerClienteBoleta_(x.a, x.d); });
+  escribirCols_('DOCUMENTOS', lista.map(x => x.d), ['estado', 'cliente', 'rut']);
 }
 /** Compara los adelantos pendientes con los documentos ya importados y aplica los que calzan. Se llama dentro de un lock. */
 /** Clave del folio sin ceros a la izquierda ni ".0" (Excel a veces trae 00123 o 123.0): así el folio anotado y el de Mi DTE calzan igual. */
@@ -1209,8 +1219,10 @@ function reintentarAdelantos(token) {
   return withLock_(() => cruzarAdelantos_());
 }
 /** El vendedor (o la oficina a nombre de uno) anota un folio por adelantado. tipo: 'Factura' | 'Boleta'. */
-function validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, vend2) {
-  if (typeof pagos === 'string') { pagos = [{ forma: pagos, banco: vendedor || '' }]; vendedor = vend2; }     // formato de v68 (forma, banco, vendedor)
+function validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, vend2, rut2) {
+  let cli = { cliente: '', rut: '' };
+  if (typeof pagos === 'string') { pagos = [{ forma: pagos, banco: vendedor || '' }]; vendedor = vend2; }
+  else cli = limpiarClienteArg_(vend2, rut2);       // v207: cliente de la boleta (opcional)     // formato de v68 (forma, banco, vendedor)
   const v = u.rol === 'VENDEDOR' ? u.usuario : String(vendedor || '');
   if (!v) throw new Error('Indica el vendedor.');
   fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
@@ -1229,17 +1241,18 @@ function validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, vend2) 
   if (!ls.length) throw new Error('Indica cómo pagó.');
   if (ls.filter(x => x.forma === 'NOTA_CREDITO').length > 1) throw new Error('Solo puede haber una nota de crédito por folio.');
   if (ls.reduce((a, p) => a + p.monto, 0) !== m) throw new Error('Los pagos no suman el monto del folio ($' + m + ').');
-  return { v, fecha, t, f, m, ls, key: folioKey_(t, f) };
+  if (!/bol/i.test(String(tipo))) cli = { cliente: '', rut: '' };
+  return { v, fecha, t, f, m, ls, key: folioKey_(t, f), cliente: cli.cliente, rut: cli.rut };
 }
-function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, vend2) {
+function adelantarFolio(token, fecha, tipo, folio, monto, pagos, vendedor, cliente, rut) {
   const u = auth_(token);
-  const p = validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, vend2);
+  const p = validarAdelanto_(u, fecha, tipo, folio, monto, pagos, vendedor, cliente, rut);
   return withLock_(() => {
     asegurarAdelantos_();
     const prev = read_('ADELANTOS').filter(a => a.folio_key === p.key);
     if (prev.some(a => a.estado === 'APLICADO')) return { estado: 'APLICADO', nota: 'Ese folio ya estaba detallado.', id: prev[0].id };
     const reg = { id: uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: formaAdel_(p.ls).forma, banco: formaAdel_(p.ls).banco,
-      estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls) };
+      estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls), cliente: p.cliente, rut: p.rut };
     if (prev.length) { reg.id = prev[0].id; updateRow_('ADELANTOS', prev[0]._row, reg); } else append_('ADELANTOS', [reg]);
     cruzarAdelantos_();      // si el folio ya llegó de Mi DTE, se cruza al tiro
     const fin = read_('ADELANTOS').find(a => a.folio_key === p.key);
@@ -1254,7 +1267,7 @@ function adelantarVarios(token, items) {
   items = (items || []).slice(0, 200);
   const res = items.map(() => null), ok = [];
   items.forEach((it, i) => {
-    try { ok.push({ i, p: validarAdelanto_(u, it[0], it[1], it[2], it[3], it[4], it[5]) }); }
+    try { ok.push({ i, p: validarAdelanto_(u, it[0], it[1], it[2], it[3], it[4], it[5], it[6], it[7]) }); }
     catch (e) { res[i] = { ok: false, error: String(e.message || e) }; }
   });
   if (!ok.length) return { resultados: res };
@@ -1266,7 +1279,7 @@ function adelantarVarios(token, items) {
       const p = o.p, prev = existentes[p.key] || [];
       if (prev.some(a => a.estado === 'APLICADO')) { res[o.i] = { ok: true, estado: 'APLICADO', nota: 'Ese folio ya estaba detallado.' }; return; }
       const reg = { id: (nuevos[p.key] || prev[0] || {}).id || uid_(), fecha: p.fecha, vendedor: p.v, tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: formaAdel_(p.ls).forma, banco: formaAdel_(p.ls).banco,
-        estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls) };
+        estado: 'ESPERANDO', nota: '', registrado: now_(), resuelto: '', pagos: JSON.stringify(p.ls), cliente: p.cliente, rut: p.rut };
       ids[p.key] = reg.id;
       if (prev.length) updateRow_('ADELANTOS', prev[0]._row, reg); else nuevos[p.key] = reg;      // si el mismo folio viene dos veces, vale el último
       res[o.i] = { ok: true, key: p.key };
@@ -1310,8 +1323,25 @@ function listarAdelantos(token, fecha, vendedor) {
   return read_('ADELANTOS').filter(a => a.fecha === fecha && (!v || a.vendedor === v))
     .map(a => { const d = docs[keyNorm_(a.folio_key)];
       return { id: a.id, tipo: /bol/i.test(a.tipo) ? 'Boleta' : 'Factura', folio: a.folio, monto: num_(a.monto), forma: a.forma, banco: a.banco, estado: a.estado, nota: a.nota, vendedor: a.vendedor,
-        nc: lineasDe_(a).filter(x => x.forma === 'NOTA_CREDITO').reduce((t, x) => t + num_(x.monto), 0), anotado: a.registrado, resuelto: a.resuelto, llego: !!d, docCliente: d ? d.cliente : '', docTotal: d ? num_(d.total) : 0, docEstado: d ? d.estado : '' }; })
+        nc: lineasDe_(a).filter(x => x.forma === 'NOTA_CREDITO').reduce((t, x) => t + num_(x.monto), 0), cliente: a.cliente || '', anotado: a.registrado, resuelto: a.resuelto, llego: !!d, docCliente: d ? d.cliente : '', docTotal: d ? num_(d.total) : 0, docEstado: d ? d.estado : '' }; })
     .reverse();
+}
+/** v207: indica a qué cliente corresponde una boleta (Mi DTE las trae genéricas: «CLIENTE BOLETA»). Solo boletas; no cambia montos ni pagos.
+    El cliente/RUT queda en DOCUMENTOS, así Saldos, Cobranza, Resumen e impresión lo muestran. Día cerrado: no. Vendedor: solo las suyas. */
+function asignarClienteDoc(token, folio_key, cliente, rut) {
+  const u = auth_(token, ['VENDEDOR', 'RENDICION', 'SUPERVISOR', 'ADMIN']);
+  const c = limpiarClienteArg_(cliente, rut);
+  if (!c.cliente) throw new Error('Elige o escribe el cliente.');
+  return withLock_(() => {
+    const d = read_('DOCUMENTOS').find(x => x.folio_key === String(folio_key));
+    if (!d) throw new Error('Documento no encontrado.');
+    if (u.rol === 'VENDEDOR' && d.vendedor !== u.usuario) throw new Error('Este documento no es tuyo.');
+    if (!/bol/i.test(String(d.tipo))) throw new Error('Solo las boletas llevan este cliente; las facturas ya traen el suyo.');
+    assertAbierta_(d.fecha);
+    d.cliente = c.cliente; d.rut = c.rut;
+    updateRow_('DOCUMENTOS', d._row, d);
+    return { cliente: d.cliente, rut: d.rut };
+  });
 }
 function borrarAdelanto(token, id) {
   const u = auth_(token);

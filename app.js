@@ -1048,8 +1048,50 @@ const ICO_AD = {
   CHEQUE: _svg('<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 15h6M15 11l1.5 1.5L19 9.5"/>')
 };
 const FORMAS_AD = [['EFECTIVO', 'Efectivo'], ['TRANSFERENCIA', 'Transferencia'], ['CREDITO', 'Crédito'], ['CHEQUE', 'Cheque']];
+/* v207: elegir el cliente de una boleta (Mi DTE las trae genéricas). Hoja con buscador sobre la lista de clientes del DTE; también acepta un nombre que no esté. alElegir({nombre, rut}) */
+const esBoletaGen = d => /bol/i.test(String(d.tipo || '')) && (/^66666666/.test(String(d.rut || '').replace(/[^0-9kK]/g, '')) || /^\s*CLIENTE\s+BOLETA\s*$/i.test(String(d.cliente || '')));
+async function elegirClienteBoleta(alElegir) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Cliente de la boleta"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">¿A quién corresponde la boleta?</div>
+    <p class="muted" style="margin:2px 0 8px">Escribe el nombre o el RUT del cliente.</p>
+    <input class="in" id="cbq" autocomplete="off" placeholder="Buscar cliente…"><div id="cbr" style="margin-top:8px;max-height:46vh;overflow:auto"></div>
+    <div class="row" style="margin-top:10px"><button class="btn ghost" id="cbX" type="button">Cancelar</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => cerrarHoja(ov); $('#cbX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  let clientes = [];
+  const q = $('#cbq', ov), res = $('#cbr', ov);
+  const buscar = () => { const t = normBus(q.value); let xs = clientes;
+    if (t) xs = xs.filter(c => normBus(c.nombre).includes(t) || normBus(c.rut).includes(t)); xs = xs.slice(0, 30);
+    res.innerHTML = xs.map((c, i) => `<button type="button" class="cli" data-i="${i}" style="width:100%;text-align:left"><b>${esc(c.nombre)}</b>${c.rut ? `<small>${esc(c.rut)}</small>` : ''}</button>`).join('')
+      + (q.value.trim().length >= 3 ? `<button type="button" class="cli" data-libre="1" style="width:100%;text-align:left"><b>Usar «${esc(q.value.trim().toUpperCase())}»</b><small>cliente que no está en la lista</small></button>` : '')
+      || '<div class="muted">Escribe para buscar.</div>';
+    res._xs = xs; };
+  q.oninput = buscar; buscar(); q.focus();
+  res.onclick = e => { const b = e.target.closest('.cli'); if (!b) return;
+    const c = b.dataset.libre ? { nombre: q.value.trim().toUpperCase(), rut: '' } : res._xs[Number(b.dataset.i)];
+    cerrar(); alElegir(c); };
+  try { clientes = (await pedir('listarClientes', [S.sess.token], claveApi('listarClientes', [S.sess.token])) || []).slice(); } catch (e) { try { clientes = (await api('listarClientes', S.sess.token) || []).slice(); } catch (x) { clientes = []; } }
+  buscar();
+}
+/** Botón «Indicar cliente» del detalle de un folio que es boleta genérica. Devuelve el HTML; engancharClienteBoleta lo activa. */
+function htmlClienteBoleta(d) {
+  if (!esBoletaGen(d)) return '';
+  return `<div class="cbol" style="margin:6px 0 2px"><button type="button" class="btn ghost sm" id="cbB">+ Indicar a quién corresponde la boleta</button></div>`;
+}
+function engancharClienteBoleta(ov, d, cerrada) {
+  const b = $('#cbB', ov); if (!b) return;
+  if (cerrada) { b.hidden = true; return; }
+  b.onclick = () => elegirClienteBoleta(async c => {
+    try {
+      await api('asignarClienteDoc', S.sess.token, d.folio_key, c.nombre, c.rut);
+      d.cliente = c.nombre; d.rut = c.rut || ''; olvidarCache(false); purgarListas();
+      const t = $('.ctit', ov); if (t) t.textContent = d.cliente; b.remove(); toast('Cliente de la boleta: ' + c.nombre);
+    } catch (x) { toast(x.message || 'No se pudo indicar el cliente', true); }
+  });
+}
 function abrirAdelanto(vend, alCerrar) {
-  let tipo = '', ncOn = false, lineas = [{ forma: '', banco: '', monto: '', ch: {} }];     // v196: ni el tipo ni la forma de pago vienen elegidos: se elige cada vez
+  let tipo = '', ncOn = false, cli = null, lineas = [{ forma: '', banco: '', monto: '', ch: {} }];     // v196: ni el tipo ni la forma de pago vienen elegidos: se elige cada vez
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anotar folio"><div class="grip"></div><div class="body">
     <div style="font-weight:700;font-size:18px">Anotar un folio</div>
@@ -1059,6 +1101,7 @@ function abrirAdelanto(vend, alCerrar) {
     <div class="adp" id="adp2"><div class="adh"><i>2</i>Número y monto</div>
       <div class="grid g2"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off" placeholder="Ej: 57443"></label>
         <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off" placeholder="Total del documento"></label></div>
+      <div id="adCl" hidden style="margin-top:8px"><button type="button" class="adnc" id="adClB">+ Indicar a quién corresponde la boleta (opcional)</button><div id="adClN" class="muted" style="margin-top:4px"></div></div>
       <button type="button" class="adnc" id="adNcB">+ Lleva nota de crédito</button>
       <div id="adNcW" hidden style="margin-top:6px"><label class="f" style="margin:0">Monto de la nota de crédito $<input class="in n" id="adN" inputmode="numeric" autocomplete="off"></label><div class="muted" id="adNi" style="margin-top:4px"></div></div></div>
     <div class="adp" id="adp3"><div id="adPW"><div class="adh"><i>3</i>¿Cómo pagó el cliente?</div>
@@ -1111,7 +1154,10 @@ function abrirAdelanto(vend, alCerrar) {
   $('#adPg', ov).addEventListener('change', e => { const bx = e.target.closest('.adln'); if (bx && e.target.dataset.c) lineas[Number(bx.dataset.i)].ch[e.target.dataset.c] = e.target.value; });
   $('#adM', ov).addEventListener('input', pintarNC);
   $('#adMas', ov).onclick = () => { if (lineas.length === 1) { const t = aPagar(); if (t && !lineas[0].monto) lineas[0].monto = String(t); } lineas.push({ forma: '', banco: '', monto: '', ch: {} }); pintarPagos(); };
-  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); pasos(); } };
+  const pintarCli = () => { $('#adCl', ov).hidden = tipo !== 'Boleta'; $('#adClB', ov).textContent = cli ? '− Quitar el cliente' : '+ Indicar a quién corresponde la boleta (opcional)';
+    $('#adClN', ov).innerHTML = cli ? 'Cliente: <b>' + esc(cli.nombre) + '</b>' + (cli.rut ? ' · ' + esc(cli.rut) : '') : 'Mi DTE trae las boletas sin nombre; así queda el cliente en el folio.'; };
+  $('#adClB', ov).onclick = () => { if (cli) { cli = null; pintarCli(); } else elegirClienteBoleta(c => { cli = c; pintarCli(); }); };
+  $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; if (tipo !== 'Boleta') cli = null; pintarCli(); $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); pasos(); } };
   const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto', NOTA_CREDITO: 'Nota de crédito' };
   const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
   const hh = t => { const m = String(t || '').match(/(\d{2}:\d{2})/); return m ? m[1] : ''; };
@@ -1151,13 +1197,13 @@ function abrirAdelanto(vend, alCerrar) {
     if (pagos.reduce((a, p) => a + p.monto, 0) !== m) return toast('Los pagos no suman el monto del folio (' + clp(m) + ').', true);
     const b = $('#adS', ov); b.disabled = true;
     try {
-      const r = await api('adelantarFolio', S.sess.token, S.fecha, tipo, f, String(m), pagos, vend); cambios = true;
+      const r = await api('adelantarFolio', S.sess.token, S.fecha, tipo, f, String(m), pagos, vend, tipo === 'Boleta' && cli ? cli.nombre : '', tipo === 'Boleta' && cli ? cli.rut : ''); cambios = true;
       toast(r._pendiente ? 'Guardado en el teléfono. Se envía solo cuando vuelva internet.' : r.estado === 'APLICADO' ? 'Folio ' + f + ' detallado' : r.estado === 'REVISAR' ? r.nota : 'Anotado. Se detalla solo cuando llegue de Mi DTE.', r.estado === 'REVISAR');
-      $('#adF', ov).value = ''; $('#adM', ov).value = ''; $('#adN', ov).value = ''; ncOn = false; tipo = ''; $$('#adT button', ov).forEach(y => y.classList.remove('on'));
+      $('#adF', ov).value = ''; $('#adM', ov).value = ''; $('#adN', ov).value = ''; ncOn = false; tipo = ''; cli = null; pintarCli(); $$('#adT button', ov).forEach(y => y.classList.remove('on'));
       lineas = [{ forma: '', banco: '', monto: '', ch: {} }]; pintarNC(); pintarPagos(); await lista(); $('#adF', ov).focus();
     } finally { b.disabled = false; }
   };
-  pintarNC(); pintarPagos(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
+  pintarCli(); pintarNC(); pintarPagos(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
 }
 /* ============ ANULAR FOLIO / NOTA DE CRÉDITO (v72) ============ */
 const MOTIVOS_AN = ['Error en un producto', 'Cobré de más', 'El cliente devolvió producto', 'Documento mal emitido', 'Otro'];
@@ -1358,7 +1404,7 @@ function abrirDetalleCompleto(d, estadoDia, alGuardar) {
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Folio ${esc(d.folio)}"><div class="grip"></div><div class="body">
     <div class="muted">${esc(d.tipo)} ${esc(d.folio)} · Mi DTE: ${esc(d.condicion_dte)}</div>
-    <div style="font-weight:700;font-size:18px;line-height:1.25;margin:2px 0 4px">${esc(d.cliente)}</div>
+    <div class="ctit" style="font-weight:700;font-size:18px;line-height:1.25;margin:2px 0 4px">${esc(d.cliente)}</div>${htmlClienteBoleta(d)}
     <div class="big">${clp(d.total)}</div>
     ${cerrada ? '<div class="alert">La rendición de este día está cerrada. Solo lectura.</div>' : `<div class="quick" id="qk">
       <button class="btn ghost sm" data-q="EFECTIVO">Todo efectivo</button><button class="btn ghost sm" data-q="TRANSFERENCIA">Todo transferencia</button>
@@ -1373,7 +1419,7 @@ function abrirDetalleCompleto(d, estadoDia, alGuardar) {
       <div><label class="f" for="dmo">Motivo</label><input class="in" id="dmo" value="${esc(desc.motivo)}" placeholder="Ej: producto dañado"></div></div>
     <div id="sal"></div></div>
     <div class="foot"><button class="btn ghost grow" id="cx">${cerrada ? 'Cerrar' : 'Cancelar'}</button>${cerrada ? '' : '<button class="btn cu grow" id="ok">Guardar</button>'}</div></div>`;
-  document.body.appendChild(ov);
+  document.body.appendChild(ov); engancharClienteBoleta(ov, d, cerrada);
   const ls = $('#ls', ov);
   const descMonto = () => desc.on ? soloDigitos(desc.monto) : 0;
   function dibujar() {
@@ -1474,7 +1520,7 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
   const ov = ovPrevio || document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet rapido" role="dialog" aria-modal="true" aria-label="Folio ${esc(d.folio)}"><div class="grip"></div><div class="body">
     <div class="muted">${esc(d.tipo.replace(' Electrónica', ''))} ${esc(d.folio)}${esCreditoDTE(d) ? ' · <b style="color:var(--warn)">Mi DTE dice crédito</b>' : ''}</div>
-    <div style="font-weight:700;font-size:18px;line-height:1.25;margin:2px 0 2px">${esc(d.cliente)}</div>
+    <div class="ctit" style="font-weight:700;font-size:18px;line-height:1.25;margin:2px 0 2px">${esc(d.cliente)}</div>${htmlClienteBoleta(d)}
     <div class="big">${clp(monto)}</div>${aprob ? `<div class="muted">Total ${clp(d.total)} − descuento autorizado ${clp(aprob)}</div>` : ''}
     <div class="pregunta">¿Cómo te pagó?</div>
     <div class="formas" id="fz">${FORMAS_RAPIDAS.map(f => `<button type="button" data-f="${f[0]}" class="${f[0] === sugerida ? 'sug' : ''}">${icon(f[2])}<span>${f[1]}</span>
@@ -1485,7 +1531,7 @@ function abrirDetalle(d, estadoDia, alGuardar, siguiente, ovPrevio) {
       <div class="bancos">${S.cat.bancos.map(b => `<button type="button" data-b="${esc(b)}" class="${b === ((d.pagos[0] || {}).banco || bancoPref) ? 'sug' : ''}">${esc(b)}</button>`).join('')}</div></div>
     <button type="button" class="link" id="mix">Pagó de dos formas, abonó una parte, hubo descuento o nota de crédito</button>
     </div><div class="foot"><span class="muted grow" id="qd"></span><button class="btn ghost" id="cx">Cerrar</button></div></div>`;
-  if (!ovPrevio) document.body.appendChild(ov);
+  if (!ovPrevio) document.body.appendChild(ov); engancharClienteBoleta(ov, d, cerrada);
   const quedan = siguiente ? siguiente.cuantos() : 0;
   $('#qd', ov).textContent = quedan ? (quedan === 1 && d.estado !== 'DETALLADO' ? 'Es el último por detallar' : `Quedan ${quedan} por detallar`) : '';
   let forma = null;
