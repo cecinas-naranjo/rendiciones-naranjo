@@ -636,17 +636,17 @@ const TABS = {
   VENDEDOR: [['hoy', 'Hoy', 'home'], ['folios', 'Mis folios', 'list'], ['COBRANZA', 'Cobranza', 'cash'], ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt']],
   BODEGA: [['despacho', 'Despacho', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'], ['helados', 'Helados', 'stack']],
   RENDICION: [['resumen', 'Resumen del día', 'home'], ['efectivo', 'Conteo de efectivo', 'cash'], ['importar', 'Importar Mi DTE', 'upload'], ['folios', 'Detallar ventas', 'list'],
-    ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'],
+    ['despacho', 'Despacho y kilos', 'box'], ['devoluciones', 'Devoluciones', 'undo'], ['inventario', 'Inventario', 'stack'], ['helados', 'Inventario helados', 'stack'],
     ['super', 'Supermercados', 'store'], ['distrib', 'Distribuidores', 'users'], ['COBRANZA', 'Cobrar a clientes', 'cash'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'],
     ['depositos', 'Depósitos', 'bank'], ['GASTOS', 'Gastos', 'receipt'], ['cajachica', 'Caja chica', 'cash'], ['pozo', 'Pozo de monedas', 'cash'], ['PROVEEDORES', 'Proveedores', 'store'], ['CONSUMO', 'Consumo', 'box'], ['historial', 'Historial', 'chart']]
 };
 TABS.SUPERVISOR = TABS.RENDICION.slice(0, 1).concat([['descuentos', 'Por autorizar', 'percent']], TABS.RENDICION.slice(1));
 TABS.ADMIN = TABS.SUPERVISOR.concat([['datos', 'Indicadores de gestión', 'chart'], ['usuarios', 'Usuarios', 'users']]);
 
-TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['super', 'Supermercados', 'store'], ['distrib', 'Distribuidores', 'users'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'], ['inventario', 'Inventario', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
+TABS.GERENCIA = [['datos', 'Indicadores de gestión', 'chart'], ['resumen', 'Resumen del día', 'home'], ['super', 'Supermercados', 'store'], ['distrib', 'Distribuidores', 'users'], ['saldos', 'Saldos de clientes', 'users'], ['cheques', 'Cheques en cartera', 'doc'], ['notascred', 'Notas de crédito', 'undo'], ['inventario', 'Inventario', 'stack'], ['helados', 'Inventario helados', 'stack'], ['historial', 'Historial', 'chart']];   // solo lectura
 // En oficina, las pantallas se agrupan por tarea (barra lateral en computador, barra inferior en el celular)
 const GRUPOS = [['g-hoy', 'Hoy', ['resumen', 'efectivo', 'descuentos'], 'home'], ['g-ventas', 'Ventas', ['importar', 'folios', 'super', 'distrib'], 'upload'],
-  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques', 'notascred'], 'cash'],
+  ['g-bodega', 'Bodega', ['despacho', 'devoluciones', 'inventario', 'helados'], 'box'], ['g-cobro', 'Cobranza', ['COBRANZA', 'saldos', 'cheques', 'notascred'], 'cash'],
   ['g-caja', 'Caja', ['depositos', 'GASTOS', 'cajachica', 'pozo', 'PROVEEDORES', 'CONSUMO'], 'bank'], ['g-mas', 'Más', ['datos', 'historial', 'usuarios'], 'dots']];
 const grupoDe = t => GRUPOS.find(g => g[2].indexOf(t) >= 0);
 
@@ -1679,8 +1679,62 @@ function marcarVarios(docs, alGuardar) {
 
 /* ============ DEVOLUCIONES (mermas y reprocesos) ============ */
 const MOTIVOS_DEV = ['Producto vencido', 'Mal estado / en mal olor', 'Empaque dañado', 'Error de pedido', 'Reclamo de calidad', 'Otro'];
-function vHelados(m) {
-  render(m, `<h2>Inventario helados</h2><div class="card"><p class="lead" style="margin:0">Próximamente: aquí se llevará el inventario de helados. Falta el listado de productos.</p></div>`);
+/* ===== INVENTARIO DE HELADOS (v215): entradas, salidas y conteo a mano, sin relación con el DTE ===== */
+const HEL_TIPOS = { INGRESO: ['Entró mercadería', 'N° de factura recibida', 'Cuántas cajas llegaron de cada producto.'], SALIDA: ['Salió mercadería', 'Guía, factura o a quién se vendió', 'Cuántas cajas salieron de cada producto. No se conecta con el DTE.'], AJUSTE: ['Conteo físico', 'Nota (opcional)', 'Escribe lo que contaste de cada producto; lo que dejes vacío no se toca. La diferencia se ajusta sola.'] };
+async function vHelados(m) {
+  const r = await api('getHelados', S.sess.token), puede = S.sess.rol !== 'GERENCIA';
+  const cats = Array.from(new Set(r.productos.map(p => p.categoria))); if (!S.helCat || (S.helCat !== 'TODAS' && cats.indexOf(S.helCat) < 0)) S.helCat = 'TODAS';
+  const pocos = r.productos.filter(p => p.alcanza != null && p.alcanza <= 3 && p.semaforo !== 'ROJO').sort((x, y) => x.alcanza - y.alcanza);
+  const colSem = { VERDE: '#1f7a46', AMARILLO: '#b7791f', ROJO: '#b42318' }, nsem = x => String(x).replace('.', ',');
+  const fila = p => `<tr><td>${esc(p.nombre)}<div class="muted">${esc(p.categoria)} · #${p.ranking}</div></td><td class="m"><b>${p.stock}</b></td><td class="m">${p.vendido}</td><td class="m">${nsem(p.porSemana)}</td>
+    <td class="m">${p.alcanza == null ? '—' : (p.alcanza <= 3 ? '<b style="color:#b42318">' : '<b>') + nsem(p.alcanza) + ' sem.</b>'}</td><td><span style="color:${colSem[p.semaforo]};font-weight:700">● ${Math.round(p.pct * 1000) / 10}%</span></td></tr>`;
+  const tabla = () => { const q = ($('#helQ', m) ? $('#helQ', m).value : '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const xs = r.productos.filter(p => (S.helCat === 'TODAS' || p.categoria === S.helCat) && (!q || (p.nombre + ' ' + p.codigo).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(q))).sort((x, y) => x.ranking - y.ranking);
+    $('#helT', m).innerHTML = xs.length ? `<table class="t"><thead><tr><th>Producto</th><th class="m">Stock</th><th class="m">Vendido</th><th class="m">Por semana</th><th class="m">Alcanza</th><th>% venta</th></tr></thead><tbody>${xs.map(fila).join('')}</tbody></table>` : '<div class="empty">No hay productos con ese filtro.</div>'; };
+  render(m, `<h2>Inventario helados</h2>
+    <p class="lead" style="margin:0 0 12px">Helados Kreems y Maca, en cajas. Todo se anota a mano; no depende del DTE.</p>
+    <div class="kpis"><div class="cash"><span>Cajas en stock</span><b>${r.stock}</b></div><div><span>Vendidas desde el ${fcorta(r.desde)}</span><b>${r.vendido}</b></div><div><span>Ventas por semana</span><b>${nsem(Math.round(r.vendido / r.semanas))}</b></div></div>
+    ${puede ? '<div class="row" style="margin:12px 0;gap:8px;flex-wrap:wrap"><button class="btn cu" type="button" data-t="INGRESO">+ Entró mercadería</button><button class="btn ghost" type="button" data-t="SALIDA">− Salió mercadería</button><button class="btn ghost" type="button" data-t="AJUSTE">Contar stock</button></div>' : ''}
+    ${pocos.length ? `<div class="card" style="border-left:4px solid #b42318"><b>Se acaban pronto (menos de 3 semanas al ritmo actual)</b><div class="muted" style="margin-top:4px">${pocos.map(p => `${esc(p.nombre)}: <b>${p.stock}</b> cajas (${nsem(p.alcanza)} sem.)`).join('<br>')}</div></div>` : ''}
+    <div class="row" style="gap:8px;margin:12px 0;flex-wrap:wrap"><div class="seg" id="helC">${['TODAS'].concat(cats).map(c => `<button type="button" data-c="${esc(c)}" class="${S.helCat === c ? 'on' : ''}">${c === 'TODAS' ? 'Todas' : esc(c)}</button>`).join('')}</div>
+      <input class="in grow" id="helQ" placeholder="Buscar producto…" autocomplete="off" style="min-width:150px"></div>
+    <div id="helT"></div>
+    <p class="muted" style="margin:6px 0 0">Alcanza = semanas que dura el stock al ritmo de venta promedio. % venta: verde 5 % o más, amarillo 2–5 %, rojo menos de 2 %. Las ventas de antes del 25-nov vienen de la planilla.</p>
+    <h3 style="margin-top:18px">Movimientos anotados</h3>
+    ${r.movimientos.length ? r.movimientos.map(x => `<div class="cfac"><div class="ccr"><span class="grow"><b>${esc(HEL_TIPOS[x.tipo][0])}</b> <span class="muted">· ${fcorta(x.fecha)}${x.documento ? ' · ' + esc(x.documento) : ''}</span>
+      <div class="muted">${x.items.map(i => esc(i.nombre) + ' <b>' + (x.tipo === 'AJUSTE' && i.cantidad > 0 ? '+' : '') + i.cantidad + '</b>').join(' · ')}</div><div class="muted">${esc(x.por)}${x.obs ? ' · ' + esc(x.obs) : ''}</div></span>
+      ${puede ? `<button class="x" type="button" data-l="${esc(x.lote)}" aria-label="Borrar">×</button>` : ''}</div></div>`).join('') : '<div class="empty">Todavía no hay movimientos anotados desde la planilla.</div>'}`);
+  tabla();
+  $('#helQ', m).oninput = tabla;
+  $('#helC', m).onclick = e => { const b = e.target.closest('[data-c]'); if (!b) return; S.helCat = b.dataset.c; $$('#helC button', m).forEach(x => x.classList.toggle('on', x === b)); tabla(); };
+  $$('[data-t]', m).forEach(b => b.onclick = () => formHelados(b.dataset.t, r));
+  $$('[data-l]', m).forEach(b => b.onclick = async () => { if (!confirm('¿Borrar este movimiento? El stock vuelve a como estaba antes.')) return; await api('borrarHelados', S.sess.token, b.dataset.l); toast('Movimiento borrado'); ir('helados', true); });
+}
+function formHelados(tipo, r) {
+  const [titulo, lblDoc, ayuda] = HEL_TIPOS[tipo], ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = `<div class="sheet ancha" role="dialog" aria-modal="true" aria-label="${esc(titulo)}"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">${esc(titulo)}</div><p class="muted" style="margin:4px 0 8px">${esc(ayuda)}</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><div class="grow"><label class="f" for="hlD">${esc(lblDoc)}</label><input class="in" id="hlD" autocomplete="off"></div><div><label class="f" for="hlF">Día</label><input class="in" id="hlF" type="date" max="${hoyCL()}" value="${hoyCL()}"></div></div>
+    <input class="in" id="hlB" placeholder="Buscar producto…" autocomplete="off" style="margin:10px 0 6px">
+    <div id="hlL">${r.productos.map(p => `<div class="edr" data-c="${esc(p.codigo)}" data-n="${esc((p.nombre + ' ' + p.categoria).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase())}"><span class="grow">${esc(p.nombre)}<div class="muted">En stock: ${p.stock}</div></span><input class="in" data-q inputmode="numeric" autocomplete="off" placeholder="${tipo === 'AJUSTE' ? 'Contado' : '0'}" style="width:88px;text-align:right"></div>`).join('')}</div></div>
+    <div class="foot"><button class="btn ghost" id="hlX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="hlOk" type="button">Guardar</button></div></div>`;
+  document.body.appendChild(ov);
+  $('#hlX', ov).onclick = () => cerrarHoja(ov);
+  $('#hlB', ov).oninput = e => { const q = e.target.value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); $$('#hlL [data-c]', ov).forEach(x => x.style.display = !q || x.dataset.n.includes(q) ? '' : 'none'); };
+  const inputs = () => $$('#hlL [data-q]', ov).filter(x => x.closest('[data-c]').style.display !== 'none');
+  $('#hlL', ov).onkeydown = e => { if (e.key !== 'Enter' || !e.target.matches('[data-q]')) return; e.preventDefault(); const xs = inputs(), i = xs.indexOf(e.target); if (xs[i + 1]) xs[i + 1].focus(); };
+  $('#hlOk', ov).onclick = async () => {
+    const items = [];
+    $$('#hlL [data-c]', ov).forEach(x => { const raw = $('[data-q]', x).value.replace(/\D/g, ''); if (raw === '') return; const n = Number(raw), p = r.productos.find(y => y.codigo === x.dataset.c);
+      const c = tipo === 'AJUSTE' ? n - p.stock : n; if (c !== 0) items.push({ codigo: p.codigo, cantidad: c }); });
+    const doc = $('#hlD', ov).value.trim();
+    if (!items.length) return toast(tipo === 'AJUSTE' ? 'No hay diferencias que ajustar.' : 'Anota la cantidad de al menos un producto.');
+    if (tipo !== 'AJUSTE' && !doc) { $('#hlD', ov).focus(); return toast('Falta: ' + lblDoc.toLowerCase() + '.'); }
+    if (tipo === 'AJUSTE' && !confirm('Se ajustarán ' + items.length + ' producto(s) al conteo escrito. ¿Guardar?')) return;
+    const b = $('#hlOk', ov), fin = botonOcupado(b, 'Guardando…');
+    try { await api('guardarHelados', S.sess.token, { tipo, fecha: $('#hlF', ov).value, documento: tipo === 'AJUSTE' ? '' : doc, obs: tipo === 'AJUSTE' ? doc : '', items }); cerrarHoja(ov); toast('Guardado'); ir('helados', true); }
+    catch (e) { fin(); toast(e.message || 'No se pudo guardar'); }
+  };
 }
 async function vDevoluciones(m) {
   const rows = await api('listarDevoluciones', S.sess.token, S.fecha);

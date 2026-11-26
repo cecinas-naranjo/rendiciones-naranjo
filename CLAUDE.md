@@ -921,3 +921,10 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v214 — Pestaña «Helados» en Bodega (solo frontend: app.js, sw.js)
 - Pestaña provisoria `helados` (`vHelados`) en la barra de BODEGA con el texto «Inventario helados»; el listado de productos lo entregará el dueño. Solo sintaxis verificada.
+
+## v215 — Inventario de helados (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Helados Kreems/Maca (27 productos, cajas) desde la planilla INVENTARIO_HELADOS.xlsx. **No tiene relación con el DTE ni con Despacho**: todo se anota a mano. Pestaña «Helados» (BODEGA) / «Inventario helados» (oficina, grupo Bodega; GERENCIA solo mira). `vHelados` + `formHelados` en app.js.
+- Hoja HELADOS_MOV (`id, lote, fecha, tipo INICIAL|INGRESO|SALIDA|AJUSTE, codigo, cantidad, documento, obs, registrado_por, registrado`; `asegurarHelados_` la crea sola y la siembra: stock inicial del 5-oct y un lote `HIST` con las ventas hasta el 25-nov, de modo que el stock queda igual al final de la planilla, 757 cajas). Catálogo fijo en `HELADOS_ITEMS_` (código, nombre, categoría, inicial, final): para agregar un producto hay que editarlo.
+- Stock = inicial + ingresos + ajustes − salidas. API `getHelados` (BODEGA/RENDICION/SUPERVISOR/GERENCIA), `guardarHelados(token,{tipo,fecha,documento,obs,items:[{codigo,cantidad}]})` (un lote = una factura recibida, guía/venta o conteo; la salida no puede superar el stock; en AJUSTE la cantidad lleva signo y la app la calcula como conteo − stock) y `borrarHelados(token, lote)` (no borra INI/HIST). Solo en línea, sin cola.
+- Indicadores: vendido, por semana (desde `HELADOS_DESDE_` = 5-oct), «Alcanza» = stock ÷ ritmo semanal, semáforo por % de venta (verde ≥5 %, amarillo ≥2 %, rojo), ranking y aviso «se acaban pronto» (≤3 semanas, no rojos). Probado el servidor con mocks (stock, salida, error por exceso, ajuste, borrado); frontend solo sintaxis.
+- Diferencia menor: la planilla da 1.255 cajas vendidas y la app 1.273 porque la planilla resta las NC de la venta y aquí quedan como salida neta del stock.

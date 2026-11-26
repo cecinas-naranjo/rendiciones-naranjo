@@ -99,6 +99,7 @@ const SCHEMA = {
   NC_EMITIDAS: ['clave','nc_folio','fecha','registrado_por','registrado'],
   CAJA_CHICA:  ['id','fecha','tipo','fecha_gasto','vendedor','monto','obs','registrado_por','registrado','b20000','b10000','b5000','b2000','b1000'],
   POZO_MONEDAS: ['id','fecha','tipo','monto','banco','operacion','obs','registrado_por','registrado'],
+  HELADOS_MOV: ['id','lote','fecha','tipo','codigo','cantidad','documento','obs','registrado_por','registrado'],
   RENDICIONES: ['fecha','estado','cerrado_por','cerrado','archivo_url','resumen_json'],
   SESIONES:    ['token','usuario','creado'],
   REEMPLAZOS:  ['id','fecha','reemplazo','vendedor','inicio'],
@@ -301,7 +302,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, getCanal, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, asignarClienteDoc, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, getHelados, guardarHelados, borrarHelados, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, asignarClienteDoc, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -3126,6 +3127,106 @@ function borrarDepositoMonedas(token, id) {
     asegurarPozo_();
     const x = read_('POZO_MONEDAS').find(y => String(y.id) === String(id)); if (!x) throw new Error('No se encontró el depósito.');
     deleteRows_('POZO_MONEDAS', [x._row]); return { ok: true };
+  });
+}
+
+
+/* ============ INVENTARIO DE HELADOS (v215) ============
+ * Helados Kreems / Maca (cajas). Independiente del DTE y de Despacho: todo se anota a mano.
+ * Hoja HELADOS_MOV: id, lote, fecha, tipo (INICIAL|INGRESO|SALIDA|AJUSTE), codigo, cantidad, documento, obs, registrado_por, registrado.
+ * Stock = INICIAL + INGRESO + AJUSTE (con signo) − SALIDA. Un «lote» = un documento (factura recibida, guía o conteo) con varios productos.
+ * Al crear la hoja se carga la planilla de Excel: stock inicial del 5-oct y una salida «Histórico» (hasta el 25-nov) que deja el stock final de la planilla. */
+const HELADOS_DESDE_ = '2026-10-05', HELADOS_HASTA_HIST_ = '2026-11-25';
+const HELADOS_ITEMS_ = [
+  ["CR-6x20", "COOKIES & CREAM 20 x125g", "Paleta Cremosa", 247, 59],
+  ["FR-1x20", "FRAMBUESA 20 x130g", "Paletas Frutales", 161, 34],
+  ["RE-4x20", "FRAMBUESA CON LECHE CONDENSADA 20 x135g", "Paleta Rellena", 161, 37],
+  ["CR-1x20", "CHOCOLATE BROWNIE 20 x125g", "Paleta Cremosa", 185, 66],
+  ["FR-2x20", "FRUTILLA 20 x135g", "Paletas Frutales", 124, 47],
+  ["RE-7x20", "MARACUYA CON LECHE CONDENSADA 20 x135g", "Paleta Rellena", 115, 38],
+  ["FR-4x20", "MARACUYA 20 x130g", "Paletas Frutales", 122, 49],
+  ["FR-5x20", "PINA 20 x135g", "Paletas Frutales", 67, 14],
+  ["CR-4x20", "MANJAR BROWNIE 20 x130g", "Paleta Cremosa", 95, 44],
+  ["CR-2x20", "CHOCOLATE CON ALMENDRAS 20 x125g", "Paleta Cremosa", 120, 75],
+  ["RE-3x20", "COCO CREMA DE AVELLANAS CACAO 20 x115g", "Paleta Rellena", 60, 18],
+  ["RE-8x20", "PLATANO CON MANJAR 20 x125g", "Paleta Rellena", 61, 21],
+  ["GNY-13", "GALLETA NY Chocolate Nutella 140x12g", "Galletas Rellenas", 60, 21],
+  ["GNY-4", "GALLETA NY Oreo Manjar 140x12g", "Galletas Rellenas", 54, 19],
+  ["GNY-11", "GALLETA NY Red Velvet 140x12g", "Galletas Rellenas", 53, 18],
+  ["CR-7x20", "YOGURT GRIEGO 20 x125g", "Paleta Cremosa", 45, 19],
+  ["CR-3x20", "FRUTILLA A LA CREMA 20 x110g", "Paleta Cremosa", 66, 41],
+  ["CR-10x20", "CHOCOLATE COOKIES CREAM 20 x125g", "Paleta Cremosa", 63, 40],
+  ["GNY-10", "GALLETA NY Chocolate Chip 110x12g", "Galletas Simples", 35, 15],
+  ["GNY-12", "GALLETA NY Pie de limón 140x12g", "Galletas Rellenas", 27, 16],
+  ["GNY-7", "GALLETA NY Chocolate Mantequilla de Mani Crunchy 140x12g", "Galletas Rellenas", 26, 15],
+  ["GNY-3", "GALLETA NY Chocolate Almendras Manjar 140x12g", "Galletas Rellenas", 31, 21],
+  ["GNY-2", "GALLETA NY Cheesecake de maracuya 140x12g", "Galletas Rellenas", 14, 4],
+  ["GNY-1", "GALLETA NY Frambuesa con Leche Condensada 140x12g", "Galletas Rellenas", 15, 8],
+  ["GNY-9", "GALLETA NY Cumpleanera Chips 110x12g", "Galletas Simples", 13, 9],
+  ["GNY-6", "GALLETA NY Coco Nutella 140x12g", "Galletas Rellenas", 7, 6],
+  ["GNY-5", "GALLETA NY Limon Glaseado 110x12g", "Galletas Simples", 3, 3]
+];
+function asegurarHelados_() {
+  if (MEMO_.__hel) return;
+  const ss = SpreadsheetApp.getActive();
+  if (!ss.getSheetByName('HELADOS_MOV')) {
+    const sh = ss.insertSheet('HELADOS_MOV'), head = SCHEMA.HELADOS_MOV;
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold'); sh.setFrozenRows(1);
+    MEMO_.HELADOS_MOV = null;
+    const filas = [], ahora = now_();
+    HELADOS_ITEMS_.forEach(x => {
+      filas.push({ id: uid_(), lote: 'INI', fecha: HELADOS_DESDE_, tipo: 'INICIAL', codigo: x[0], cantidad: x[3], documento: 'Stock inicial planilla', obs: '', registrado_por: 'SISTEMA', registrado: ahora });
+      if (x[3] - x[4] !== 0) filas.push({ id: uid_(), lote: 'HIST', fecha: HELADOS_HASTA_HIST_, tipo: x[3] - x[4] > 0 ? 'SALIDA' : 'INGRESO', codigo: x[0], cantidad: Math.abs(x[3] - x[4]), documento: 'HISTORICO', obs: 'Ventas y guías del 5-oct al 25-nov según la planilla', registrado_por: 'SISTEMA', registrado: ahora });
+    });
+    append_('HELADOS_MOV', filas);
+  }
+  MEMO_.__hel = true;
+}
+function heladosDatos_() {
+  asegurarHelados_();
+  const nom = {}; read_('USUARIOS').forEach(u => nom[u.usuario] = u.nombre || u.usuario);
+  const movs = read_('HELADOS_MOV'), info = {}; HELADOS_ITEMS_.forEach(x => info[x[0]] = x);
+  const ac = {}; HELADOS_ITEMS_.forEach(x => ac[x[0]] = { ini: 0, ing: 0, sal: 0, aju: 0 });
+  movs.forEach(m => { const a = ac[m.codigo]; if (!a) return; const c = num_(m.cantidad);
+    if (m.tipo === 'INICIAL') a.ini += c; else if (m.tipo === 'INGRESO') a.ing += c; else if (m.tipo === 'SALIDA') a.sal += c; else if (m.tipo === 'AJUSTE') a.aju += c; });
+  const semanas = Math.max(1, diasEntre_(HELADOS_DESDE_, hoy_()) / 7);
+  const totVend = HELADOS_ITEMS_.reduce((s, x) => s + ac[x[0]].sal, 0);
+  const prods = HELADOS_ITEMS_.map(x => { const a = ac[x[0]], stock = a.ini + a.ing + a.aju - a.sal, porSemana = a.sal / semanas;
+    const pct = totVend > 0 ? a.sal / totVend : 0;
+    return { codigo: x[0], nombre: x[1], categoria: x[2], inicial: a.ini, ingresos: a.ing, salidas: a.sal, ajustes: a.aju, stock, vendido: a.sal, porSemana: Math.round(porSemana * 10) / 10, pct,
+      alcanza: porSemana > 0 ? Math.round(stock / porSemana * 10) / 10 : null, semaforo: pct >= 0.05 ? 'VERDE' : pct >= 0.02 ? 'AMARILLO' : 'ROJO' }; });
+  const orden = prods.slice().sort((p, q) => q.vendido - p.vendido); orden.forEach((p, i) => p.ranking = (i && orden[i - 1].vendido === p.vendido) ? orden[i - 1].ranking : i + 1);
+  const lotes = {};
+  movs.filter(m => m.lote !== 'INI' && m.lote !== 'HIST').forEach(m => { const k = String(m.lote), l = lotes[k] || (lotes[k] = { lote: k, fecha: normFecha_(m.fecha), tipo: m.tipo, documento: m.documento || '', obs: m.obs || '', por: nom[m.registrado_por] || m.registrado_por || '', registrado: m.registrado || '', items: [] });
+    l.items.push({ codigo: m.codigo, nombre: info[m.codigo] ? info[m.codigo][1] : m.codigo, cantidad: num_(m.cantidad) }); });
+  const hist = Object.keys(lotes).map(k => lotes[k]).sort((a, b) => String(b.registrado).localeCompare(String(a.registrado))).slice(0, 80);
+  return { productos: prods, semanas: Math.round(semanas * 10) / 10, desde: HELADOS_DESDE_, stock: prods.reduce((s, p) => s + p.stock, 0), vendido: totVend, ingresos: prods.reduce((s, p) => s + p.ingresos, 0), movimientos: hist };
+}
+function getHelados(token) { auth_(token, ['BODEGA', 'RENDICION', 'SUPERVISOR', 'GERENCIA']); return heladosDatos_(); }
+/** datos: {fecha, tipo: INGRESO|SALIDA|AJUSTE, documento, obs, items:[{codigo, cantidad}]}. En AJUSTE la cantidad lleva signo (conteo − stock). */
+function guardarHelados(token, datos) {
+  const u = auth_(token, ['BODEGA', 'RENDICION', 'SUPERVISOR']); datos = datos || {};
+  const tipo = String(datos.tipo || '').toUpperCase(); if (['INGRESO', 'SALIDA', 'AJUSTE'].indexOf(tipo) < 0) throw new Error('Tipo de movimiento no válido.');
+  const items = (datos.items || []).map(i => ({ codigo: String(i.codigo || ''), cantidad: Math.round(num_(i.cantidad)) })).filter(i => i.codigo && i.cantidad !== 0);
+  if (!items.length) throw new Error('Anota la cantidad de al menos un producto.');
+  if (tipo !== 'AJUSTE' && items.some(i => i.cantidad < 0)) throw new Error('Las cantidades deben ser positivas.');
+  const documento = String(datos.documento || '').trim(); if (tipo !== 'AJUSTE' && !documento) throw new Error(tipo === 'INGRESO' ? 'Escribe el N° de la factura recibida.' : 'Escribe el N° de la guía, factura o a quién se vendió.');
+  return withLock_(() => {
+    const d = heladosDatos_(), st = {}; d.productos.forEach(p => st[p.codigo] = p);
+    items.forEach(i => { if (!st[i.codigo]) throw new Error('Producto desconocido: ' + i.codigo);
+      if (tipo === 'SALIDA' && i.cantidad > st[i.codigo].stock) throw new Error(st[i.codigo].nombre + ': solo hay ' + st[i.codigo].stock + ' en stock.');
+      if (tipo === 'AJUSTE' && st[i.codigo].stock + i.cantidad < 0) throw new Error(st[i.codigo].nombre + ': el stock no puede quedar negativo.'); });
+    const lote = uid_(), f = normFecha_(datos.fecha) || hoy_(), ahora = now_();
+    append_('HELADOS_MOV', items.map(i => ({ id: uid_(), lote, fecha: f, tipo, codigo: i.codigo, cantidad: i.cantidad, documento: tipo === 'AJUSTE' ? (documento || 'Conteo físico') : documento, obs: String(datos.obs || '').trim(), registrado_por: u.usuario, registrado: ahora })));
+    return { ok: true, lote };
+  });
+}
+function borrarHelados(token, lote) {
+  auth_(token, ['BODEGA', 'RENDICION', 'SUPERVISOR']);
+  return withLock_(() => {
+    asegurarHelados_(); if (lote === 'INI' || lote === 'HIST') throw new Error('Ese registro viene de la planilla y no se borra.');
+    const xs = read_('HELADOS_MOV').filter(m => String(m.lote) === String(lote)); if (!xs.length) throw new Error('No se encontró el registro.');
+    deleteRows_('HELADOS_MOV', xs.map(x => x._row)); return { ok: true };
   });
 }
 
