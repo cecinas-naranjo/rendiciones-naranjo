@@ -2111,7 +2111,7 @@ async function vInventario(m) {
     return { t, final, ajuste: e.conteo === '' ? 0 : final - t };
   };
   const nombreSec = id => (inv.secciones.find(x => x.id === id) || {}).nombre || id;
-  const fqU = f => v => f.unidad !== 'UN' ? kg(v) : f.modo === 'PACK_ANOTA' && f.pack ? `${nk(v)} <small class="pkq">(${nk(Math.round(v / f.pack * 100) / 100)} packs)</small>` : nk(v);
+  const fqU = f => v => f.unidad !== 'UN' ? kg(v) : (f.modo === 'PACK_ANOTA' || f.modo === 'PACK_VENTA') && f.pack ? `${nk(v)} <small class="pkq">(${nk(Math.round(v / f.pack * 100) / 100)} packs)</small>` : nk(v);
   render(m, `<div class="row"><div class="grow"><h2>Inventario de bodega</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
       ${S.sess.rol === 'GERENCIA' ? '' : '<button class="btn ghost sm" id="edp">Editar planilla</button>'}<button class="btn ghost sm" id="plan">Planilla del día</button></div>
     <p class="muted" id="invh"></p>
@@ -2142,9 +2142,9 @@ async function vInventario(m) {
     const negativos = inv.filas.filter(f => calc(est[f.codigo]).final < -0.001);
     $('#alertInv').innerHTML = negativos.length ? `<div class="alert"><b>${negativos.length} producto(s) con stock negativo:</b> ${negativos.slice(0, 6).map(f => esc(f.nombre)).join(', ')}${negativos.length > 6 ? '…' : ''}. Revisa ingresos o registra un conteo.</div>` : '';
     const difH = (e, c, fq) => e.conteo === '' ? '' : Math.abs(c.ajuste) < 0.001 ? '<span class="chip okc">calza</span>' : c.ajuste < 0 ? `<span class="chip difc">faltan ${fq(-c.ajuste)}</span>` : `<span class="chip difc">sobran ${fq(c.ajuste)}</span>`;
-    const inpt = (k, ph, v, pk) => `<input class="in n" data-k="${k}"${pk ? ` data-pk="${pk}"` : ''} inputmode="decimal" enterkeyhint="next" placeholder="${ph}" value="${pk && v !== '' && v != null ? Math.round(dec(v) / pk * 1000) / 1000 : v}">`;   // v164: en packs se ve el número de packs; el estado sigue en unidades
+    const inpt = (k, ph, v, pk, pv) => `<input class="in n" data-k="${k}"${pk ? ` data-pk="${pk}"` : ''} inputmode="decimal" enterkeyhint="next" placeholder="${ph}" value="${pk && v !== '' && v != null ? Math.round(dec(v) / pk * 1000) / 1000 : v}">${pv ? `<small class="pkq pkv" data-pv="${pv}">${v !== '' && v != null && dec(v) ? '= ' + Math.round(dec(v) / pv * 100) / 100 + ' pack' : ''}</small>` : ''}`;   // v164: en packs se ve el número de packs; el estado sigue en unidades
     const fila = f => {
-      const e = est[f.codigo], c = calc(e), un = f.unidad === 'UN', u = !un ? 'kg' : f.modo === 'CAJA' ? 'cajas' : f.modo === 'PACK_ANOTA' ? `un · se anota en packs de ${f.pack}` : 'un', fq = fqU(f), pk = f.modo === 'PACK_ANOTA' ? f.pack : 0, ip = (k, ph, v) => inpt(k, ph, v, pk);
+      const e = est[f.codigo], c = calc(e), un = f.unidad === 'UN', u = !un ? 'kg' : f.modo === 'CAJA' ? 'cajas' : f.modo === 'PACK_ANOTA' ? `un · se anota en packs de ${f.pack}` : 'un', fq = fqU(f), pk = f.modo === 'PACK_ANOTA' ? f.pack : 0, pv = f.modo === 'PACK_VENTA' ? f.pack : 0, ip = (k, ph, v) => inpt(k, ph, v, pk, pv);
       const nom = `<td class="nm" data-col="Producto">${esc(f.nombre)} <span class="lab">${u}</span></td>`;
       const sal = sum(f.salVend), ret = sum(f.retVend), otr = sum(e.desp) + sum(e.otras);
       const nOtras = Object.keys(e.otras).filter(k => e.otras[k]).length;
@@ -2176,6 +2176,7 @@ async function vInventario(m) {
     const box = e.target.closest('tr[data-c]'); const k = e.target.dataset.k; if (!box || !k) return;
     const st = est[box.dataset.c], f = st.f, fq = fqU(f);
     const pk = Number(e.target.dataset.pk) || 0, vv = pk && e.target.value !== '' ? String(Math.round(dec(e.target.value) * pk * 1000) / 1000) : e.target.value;
+    const pq = e.target.nextElementSibling; if (pq && pq.dataset && pq.dataset.pv) pq.textContent = e.target.value !== '' && dec(e.target.value) ? '= ' + Math.round(dec(e.target.value) / Number(pq.dataset.pv) * 100) / 100 + ' pack' : '';
     if (k.startsWith('o:')) st.otras[k.slice(2)] = vv; else st[k] = vv;
     st.cambio = true; box.classList.add('mod');
     const c = calc(st), dh = $('.dh', box), df = $('.df', box);

@@ -906,3 +906,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - «Cobrar a un cliente» mostraba solo los 8 con más deuda (el resto solo salía buscando). Ahora, bajo esos 8, el botón «Ver todos los clientes (N)» muestra la lista completa (ordenada por deuda); respeta el filtro por vendedor y la búsqueda. Solo sintaxis verificada.
 
 ## v209 — «Indicar a quién corresponde la boleta» ya no dice «(opcional)» (solo frontend: app.js, sw.js)
+
+## v210 — Pack de venta en la empanada de queso 3X3
+- Empanada queso 3X3 (EMP MED LUNA QUESO GRANEL 3X3 9KG, pack de 3 un): pasa de PACK_ANOTA a PACK_VENTA: el bodeguero anota UNIDADES y al lado se ve «= N pack» (Despacho ya tenía la columna Packs; Inventario ahora muestra «= N pack» en vivo bajo cada campo y «(N packs)» en los totales). Requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js. Solo sintaxis verificada.

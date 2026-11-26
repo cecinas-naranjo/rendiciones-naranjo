@@ -49,7 +49,7 @@ const CFG = {
     'ARROLLADO C/AJI': { kgUn: 3 }, 'ARROLLADO SIN CUERO': { kgUn: 3 }, 'Q. CABEZA': { kgUn: 3 }, 'S. CERVEZA': { kgUn: 1.5 },
     'M. LISA': { kgUn: 2.8 }, 'M. JAMONADA': { kgUn: 2.8 }, 'JAMON SANDWICH': { kgUn: 3 }, 'JAMON ACARAMELADO': { kgUn: 2.5 }, 'JAMON AHUMADO': { kgUn: 2.5 },
     'EMPANADA QUESO 16X600': { modo: 'PACK_ANOTA', pack: 8 }, 'EMPANADA PINO 16X600': { modo: 'PACK_ANOTA', pack: 8 }, 'EMPANADA QUESO CAMARON': { modo: 'PACK_ANOTA', pack: 8 },
-    'SOPAIPILLA 20X12': { modo: 'PACK_ANOTA', pack: 5 }, 'SOPAIPILLA 20X48': { modo: 'PACK_ANOTA', pack: 5 }, 'EMPANADA QUESO 3X3': { modo: 'PACK_ANOTA', pack: 3 },
+    'SOPAIPILLA 20X12': { modo: 'PACK_ANOTA', pack: 5 }, 'SOPAIPILLA 20X48': { modo: 'PACK_ANOTA', pack: 5 }, 'EMPANADA QUESO 3X3': { modo: 'PACK_VENTA', pack: 3 },
     'PAPAS FRITAS': { modo: 'CAJA', pack: 4 },
     'P.LAM-JAMONADA 150G': { modo: 'CAJA', pack: 10 }, 'P.LAM-LISA 150G': { modo: 'CAJA', pack: 10 }, 'P.LAM-ARROLLADO CON AJI 150G': { modo: 'CAJA', pack: 10 },
     'P.LAM-ARROLLADO 150G': { modo: 'CAJA', pack: 10 }, 'P.LAM-QUESO CABEZA 150G': { modo: 'CAJA', pack: 10 },
