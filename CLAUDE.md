@@ -892,3 +892,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v205 — La limpieza conserva también CLIENTES (requiere pegar APPS_SCRIPT.js COMPLETO)
 - Pedido del dueño: los clientes («la conciencia de la app») no se borran. `LIMPIEZA_CONSERVAR` = USUARIOS, PRODUCTOS y CLIENTES (razón social por RUT y alias). `limpiarPruebas` sigue vaciando todo lo demás, incluido CREDITOS_CARGA (el control de créditos se vuelve a subir). Solo servidor; sintaxis verificada.
+
+## v206 — Aviso «Listo» de Importar se veía flotando encima de la pantalla (solo frontend: app.js, style.css, sw.js)
+- Bug: el aviso verde del panel de importación (v117) usaba la clase `.listo`, que desde v172 es la píldora flotante «Guardado ✓» (`position:fixed`), y quedaba montado sobre la tabla de terminales. Ahora el del panel es `.implisto`. Otra vez el mismo error de nombre de clase repetido: antes de crear una clase, `grep` en style.css.

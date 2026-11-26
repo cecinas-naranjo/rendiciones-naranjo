@@ -2973,8 +2973,8 @@ async function vImportar(m) {
       { const conErr = !!pp.querySelector('li.err');
         $('#impt', pp).textContent = conErr ? 'Terminó con errores' : 'Importación terminada';
         pp.insertAdjacentHTML('beforeend', conErr
-          ? '<div class="listo mal"><b>Terminó, pero hubo errores.</b> Revisa el detalle de abajo antes de seguir.</div>'
-          : '<div class="listo"><span class="okdot">✓</span><div><b>Listo: ya puedes cambiar de pantalla y seguir trabajando.</b><div class="muted">Los datos ya están guardados. Los Excel ordenados se siguen subiendo al Drive aquí abajo; no es necesario esperarlos.</div></div></div>');
+          ? '<div class="implisto mal"><b>Terminó, pero hubo errores.</b> Revisa el detalle de abajo antes de seguir.</div>'
+          : '<div class="implisto"><span class="okdot">✓</span><div><b>Listo: ya puedes cambiar de pantalla y seguir trabajando.</b><div class="muted">Los datos ya están guardados. Los Excel ordenados se siguen subiendo al Drive aquí abajo; no es necesario esperarlos.</div></div></div>');
         toast(conErr ? 'La importación terminó con errores' : 'Importación lista. Ya puedes seguir trabajando.', conErr); }
       const f = [...new Set(fechas)];
       { const d = resumen.filter(x => x.t === 'dte'), k = resumen.filter(x => x.t === 'det'), sum = (a, c) => a.reduce((z, x) => z + x[c], 0);
