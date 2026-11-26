@@ -1101,7 +1101,7 @@ function abrirAdelanto(vend, alCerrar) {
     <div class="adp" id="adp2"><div class="adh"><i>2</i>Número y monto</div>
       <div class="grid g2"><label class="f" style="margin:0">N° de folio<input class="in n" id="adF" inputmode="numeric" autocomplete="off" placeholder="Ej: 57443"></label>
         <label class="f" style="margin:0">Monto total $<input class="in n" id="adM" inputmode="numeric" autocomplete="off" placeholder="Total del documento"></label></div>
-      <div id="adCl" hidden style="margin-top:8px"><button type="button" class="adnc" id="adClB">+ Indicar a quién corresponde la boleta (opcional)</button><div id="adClN" class="muted" style="margin-top:4px"></div></div>
+      <div id="adCl" hidden style="margin-top:8px"><button type="button" class="adnc" id="adClB">+ Indicar a quién corresponde la boleta</button><div id="adClN" class="muted" style="margin-top:4px"></div></div>
       <button type="button" class="adnc" id="adNcB">+ Lleva nota de crédito</button>
       <div id="adNcW" hidden style="margin-top:6px"><label class="f" style="margin:0">Monto de la nota de crédito $<input class="in n" id="adN" inputmode="numeric" autocomplete="off"></label><div class="muted" id="adNi" style="margin-top:4px"></div></div></div>
     <div class="adp" id="adp3"><div id="adPW"><div class="adh"><i>3</i>¿Cómo pagó el cliente?</div>
@@ -1154,7 +1154,7 @@ function abrirAdelanto(vend, alCerrar) {
   $('#adPg', ov).addEventListener('change', e => { const bx = e.target.closest('.adln'); if (bx && e.target.dataset.c) lineas[Number(bx.dataset.i)].ch[e.target.dataset.c] = e.target.value; });
   $('#adM', ov).addEventListener('input', pintarNC);
   $('#adMas', ov).onclick = () => { if (lineas.length === 1) { const t = aPagar(); if (t && !lineas[0].monto) lineas[0].monto = String(t); } lineas.push({ forma: '', banco: '', monto: '', ch: {} }); pintarPagos(); };
-  const pintarCli = () => { $('#adCl', ov).hidden = tipo !== 'Boleta'; $('#adClB', ov).textContent = cli ? '− Quitar el cliente' : '+ Indicar a quién corresponde la boleta (opcional)';
+  const pintarCli = () => { $('#adCl', ov).hidden = tipo !== 'Boleta'; $('#adClB', ov).textContent = cli ? '− Quitar el cliente' : '+ Indicar a quién corresponde la boleta';
     $('#adClN', ov).innerHTML = cli ? 'Cliente: <b>' + esc(cli.nombre) + '</b>' + (cli.rut ? ' · ' + esc(cli.rut) : '') : 'Mi DTE trae las boletas sin nombre; así queda el cliente en el folio.'; };
   $('#adClB', ov).onclick = () => { if (cli) { cli = null; pintarCli(); } else elegirClienteBoleta(c => { cli = c; pintarCli(); }); };
   $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; if (tipo !== 'Boleta') cli = null; pintarCli(); $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); pasos(); } };

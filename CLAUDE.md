@@ -904,3 +904,5 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v208 — Cobranza: ver todos los clientes (solo frontend: app.js, sw.js)
 - «Cobrar a un cliente» mostraba solo los 8 con más deuda (el resto solo salía buscando). Ahora, bajo esos 8, el botón «Ver todos los clientes (N)» muestra la lista completa (ordenada por deuda); respeta el filtro por vendedor y la búsqueda. Solo sintaxis verificada.
+
+## v209 — «Indicar a quién corresponde la boleta» ya no dice «(opcional)» (solo frontend: app.js, sw.js)
