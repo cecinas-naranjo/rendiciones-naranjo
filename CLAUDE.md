@@ -946,3 +946,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v220 — Segunda casilla «Entrada de fábrica» en el Inventario (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Pedido del dueño: otra casilla «Entrada de fábrica» aparte de «Entra de fábrica» en Contar y anotar (la v219 de helados fue un malentendido). Se guarda como INGRESO en INVENTARIO_MOV con `destino = 'FAB2'` (clave distinta). `inventarioDia_` devuelve `ingreso2` y lo suma al teórico/final; `guardarInventario` acepta `ingreso2`. «Ver stock» y la planilla Excel muestran «Entró» = ingreso + ingreso2. Solo sintaxis verificada.
+
+## v221 — Botón «Ver borrador» arriba en Rendición (solo frontend: app.js, sw.js)
+- Si ya existe la planilla del día, el aviso con el botón «Ver borrador» (o «Abrir archivo» si está cerrada) sale arriba, bajo el título, en vez de al final de la pantalla. Solo sintaxis verificada.

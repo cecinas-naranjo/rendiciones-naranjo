@@ -3225,6 +3225,7 @@ async function vResumen(m) {
   const actual = pasos.findIndex(p => !p[2]);
   render(m, `<div class="row"><div class="grow"><h2>Rendición</h2><p class="lead" style="margin:0">${fechaLarga(S.fecha)}</p></div>
       <span class="chip ${cerrada ? 'ok' : 'cu'}">${cerrada ? 'Cerrada' : 'Abierta'}</span></div>
+    <div id="lnk"></div>
     <ol class="pasos">${pasos.map((p, i) => `<li class="${p[2] ? 'ok' : i === actual ? 'now' : ''}"><button type="button" data-paso="${p[3]}">
       <i>${p[2] ? '✓' : i + 1}</i><b>${p[0]}</b><small>${esc(p[1])}</small></button></li>`).join('')}</ol>
     <div class="kpis" style="margin-top:14px"><div><span>Venta neta</span><b>${clp(t.venta)}</b>${t.nc ? `<small>${clp(t.venta + t.nc)} − ${clp(t.nc)} en notas de crédito</small>` : ''}</div><div><span>Venta contado</span><b>${clp(t.contado)}</b></div><div><span>Crédito total</span><b>${clp(t.credito)}</b><small>${clp(t.creditoVenta)} a crédito · ${clp(t.creditoCheque)} en cheques</small></div>
@@ -3246,7 +3247,7 @@ async function vResumen(m) {
     <div class="row" style="margin-top:18px;justify-content:flex-end">
       ${cerrada ? (S.sess.rol === 'ADMIN' ? '<button class="btn ghost" id="re">Reabrir rendición</button>' : '')
         : '<button class="btn ghost" id="pv">Actualizar borrador</button><button class="btn cu" id="cl">Cerrar y generar archivo de rendición</button>'}</div>
-    <div id="lnk"></div>`);
+    `);
   // v181: «Documentos sin vendedor» cuyo terminal ya tiene dueño (p. ej. se editó a mano en la planilla): se asignan solos y se recarga
   if (r.sinAsignar.length && !S.reasig) { S.reasig = true; api('reasignarSinVendedor', S.sess.token).then(x => { if (x && x.asignados) { olvidarCache(false); toast('Se asignaron ' + x.asignados + ' documentos a su vendedor'); ir('resumen', true); } }).catch(() => {}).finally(() => setTimeout(() => { S.reasig = false; }, 60000)); }
   // Avance de vendedores (v78): detallado, adelantos y última vez que el servidor recibió algo de cada uno
@@ -3277,11 +3278,11 @@ async function vResumen(m) {
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
   });
   const enlace = (url, txt, quieto) => { $('#lnk').innerHTML = `<div class="alert ok fcard" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <span class="grow">${txt}</span><a class="btn cu sm" href="${esc(url)}" target="_blank" rel="noopener">Abrir archivo</a></div>`;
+      <span class="grow">${txt}</span><a class="btn cu" href="${esc(url)}" target="_blank" rel="noopener">${txt.indexOf('borrador') >= 0 ? 'Ver borrador' : 'Abrir archivo'}</a></div>`;
     if (!quieto) $('#lnk').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
   // v180: si la planilla del día ya existe, botón para abrirla sin regenerar
   api('archivoRendicion', S.sess.token, S.fecha).then(a => { if (a && a.url && document.body.contains(m) && !$('#lnk a', m))
-    enlace(a.url, a.cerrada ? 'La rendición de este día ya está cerrada.' : 'Ya hay un borrador de este día. Ábrelo sin cambiar nada, o toca «Actualizar borrador» para ponerlo al día.', true); }).catch(() => {});
+    enlace(a.url, a.cerrada ? 'La rendición de este día ya está cerrada.' : 'Ya hay un borrador de este día.', true); }).catch(() => {});
   const pv = $('#pv'); if (pv) pv.onclick = async () => {
     pv.disabled = true;
     try { const r2 = await api('vistaPreviaRendicion', S.sess.token, S.fecha);
