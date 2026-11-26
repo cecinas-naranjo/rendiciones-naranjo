@@ -1970,7 +1970,7 @@ function borrarAdjunto(token, tabla, id, fileId) {
 //   SALDO_INICIAL (stock al comenzar el día), INGRESO, SALIDA (destino), CONTEO (stock físico al cierre del día)
 // Salidas y retornos de vendedores se leen de DESPACHO (no se ingresan dos veces).
 
-const SECCIONES_INV = [['TERMINADOS', 'Productos terminados', 'KG'], ['CAMARA', 'Cámara de carnes', 'KG'],
+const SECCIONES_INV = [['TERMINADOS', 'Productos terminados', 'KG'], ['CAMARA', 'Cámara de carnes', 'UN'],
   ['CONGELADOS', 'Congelados y cárnicos', 'UN'], ['LAMINADOS', 'Laminados, quesos y verduras', 'UN']];
 
 // nombre en la planilla de inventario → [sección, nombre del producto de venta (si ya existe)]
