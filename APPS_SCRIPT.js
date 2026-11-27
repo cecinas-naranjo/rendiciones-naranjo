@@ -19,6 +19,7 @@ const CFG = {
   APP_NAME: 'Rendiciones Naranjo',
   // Diferencia de kilos (vendido según bodega vs facturado) desde la cual se alerta, por vendedor
   TOLERANCIA_KG: 1,
+  TOLERANCIA_ADELANTO: 500,      // v222: diferencia (en $) entre el monto anotado y el de Mi DTE que se acepta sola; sobre eso queda REVISAR con alerta
   // Sugerencia de carga: peso aproximado de una unidad de cecina (kg). Se aplica a los productos PROPIOS por kilo; excepciones por código de Mi DTE.
   KG_POR_UNIDAD: { porDefecto: 3, porCodigo: { '7': 1.8 } },   // 7 = salchichón cervecero
   // Se sugieren por kilo, no por unidad (patés y longanizas)
@@ -302,7 +303,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, getCanal, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, getHelados, guardarHelados, borrarHelados, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, asignarClienteDoc, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, getHelados, guardarHelados, borrarHelados, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, asignarClienteDoc, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, editarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -1155,6 +1156,18 @@ function aplicarAdelantos_(lista) {
 /** Compara los adelantos pendientes con los documentos ya importados y aplica los que calzan. Se llama dentro de un lock. */
 /** Clave del folio sin ceros a la izquierda ni ".0" (Excel a veces trae 00123 o 123.0): así el folio anotado y el de Mi DTE calzan igual. */
 function keyNorm_(k) { const m = String(k || '').match(/^([A-Z]*)-(.*)$/); if (!m) return String(k || ''); return m[1] + '-' + m[2].trim().replace(/\.0+$/, '').replace(/^0+(?=\d)/, ''); }
+/** v222: busca el documento de Mi DTE de un adelanto. Se rige por el N° de folio: si el tipo anotado (Boleta/Factura) no coincide pero el folio existe, vale igual.
+    Prefiere el mismo tipo, luego el mismo vendedor. Las notas de crédito y guías no cuentan. */
+function docDeAdelanto_(a, docs, porFolio) {
+  const exacto = docs[keyNorm_(a.folio_key)]; if (exacto) return exacto;
+  const c = (porFolio[String(a.folio).replace(/\.0+$/, '').replace(/^0+(?=\d)/, '')] || []).filter(x => !/nota de cr/i.test(x.tipo) && !esGuia_(x.tipo));
+  return c.find(x => x.vendedor === a.vendedor) || c[0] || null;
+}
+function indiceDocs_() {
+  const docs = {}, porFolio = {};
+  read_('DOCUMENTOS').forEach(d => { docs[keyNorm_(d.folio_key)] = d; const n = keyNorm_(d.folio_key).split('-').slice(1).join('-'); (porFolio[n] = porFolio[n] || []).push(d); });
+  return { docs, porFolio };
+}
 /** Cruza los folios adelantados con los documentos de Mi DTE. Cada adelanto queda con un estado y un motivo claro:
     APLICADO (el folio quedó detallado), REVISAR (llegó pero algo no calza, o ya hay importación de ese día y no apareció), ESPERANDO (aún no hay Mi DTE de ese día). */
 function cruzarAdelantos_() {
@@ -1168,25 +1181,37 @@ function cruzarAdelantos_() {
   const aAplicar = [], cambiados = [];
   let aplicados = 0, revisar = 0, sinLlegar = 0;
   pend.forEach(a => {
-    let d = docs[keyNorm_(a.folio_key)];
+    let d = docDeAdelanto_(a, docs, porFolio);
     let estado, nota = '';
     if (!d) {
-      const otro = (porFolio[String(a.folio).replace(/^0+(?=\d)/, '')] || []).find(x => x.vendedor === a.vendedor && Math.round(num_(x.total)) === Math.round(num_(a.monto)));
-      if (otro) { estado = 'REVISAR'; nota = 'En Mi DTE ese folio es ' + (/bol/i.test(otro.tipo) ? 'una Boleta' : 'una Factura') + ' y tú anotaste ' + (/bol/i.test(a.tipo) ? 'Boleta' : 'Factura') + '. Quítalo y anótalo con el tipo correcto.'; }
-      else if (fechasConDocs[a.fecha] && String(a.registrado || '') <= fechasConDocs[a.fecha]) { estado = 'REVISAR'; nota = 'Se importó Mi DTE después de que lo anotaste y el folio ' + a.folio + ' no aparece. Revisa el número o espera la próxima carga.'; sinLlegar++; }
+      if (fechasConDocs[a.fecha] && String(a.registrado || '') <= fechasConDocs[a.fecha]) { estado = 'REVISAR'; nota = 'Se importó Mi DTE después de que lo anotaste y el folio ' + a.folio + ' no aparece. Revisa el número o espera la próxima carga.'; sinLlegar++; }
       else { estado = 'ESPERANDO'; nota = ''; }
     }
     else if (d.estado === 'DETALLADO') { estado = 'APLICADO'; nota = 'El folio ya estaba detallado.'; }
     else if (d.vendedor !== a.vendedor) { estado = 'REVISAR'; nota = 'Mi DTE lo asignó a otro terminal/vendedor.'; }
-    else if (Math.round(num_(d.total)) !== Math.round(num_(a.monto))) { estado = 'REVISAR'; nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + '.' + (num_(d.total) > num_(a.monto) ? ' Si la diferencia es una nota de crédito por hacer, tócalo y queda como nota de crédito.' : ''); }
+    else if (Math.abs(Math.round(num_(d.total)) - Math.round(num_(a.monto))) > CFG.TOLERANCIA_ADELANTO) { estado = 'REVISAR';
+      const dif = Math.round(num_(d.total)) - Math.round(num_(a.monto));
+      nota = 'Anotaste $' + Math.round(num_(a.monto)) + ' y en Mi DTE el folio es de $' + Math.round(num_(d.total)) + (dif < 0 ? ' (anotaste $' + (-dif) + ' de más: revisa si se cobró de más)' : '') + '.' + (dif > 0 ? ' Si la diferencia es una nota de crédito por hacer, tócalo y queda como nota de crédito.' : ''); }
     else if (descKey[d.folio_key]) { estado = 'REVISAR'; nota = 'Tiene un descuento: detállalo normal.'; }
     else if (tieneAnul(d)) { estado = 'REVISAR'; nota = 'Tiene una anulación o nota de crédito: detállalo normal.'; }
-    else { aAplicar.push({ a, d }); d.estado = 'DETALLADO'; estado = 'APLICADO'; aplicados++; }
+    else {
+      // v222: se rige por el folio. Si el tipo anotado era otro, o hay una diferencia chica de monto (hasta CFG.TOLERANCIA_ADELANTO), se aplica igual:
+      // el monto del documento manda y la diferencia se ajusta en el pago más grande.
+      const dif = Math.round(num_(d.total)) - Math.round(num_(a.monto)), avisos = [];
+      if (keyNorm_(d.folio_key) !== keyNorm_(a.folio_key)) { avisos.push('Mi DTE lo trae como ' + (/bol/i.test(d.tipo) ? 'Boleta' : 'Factura') + ' (anotaste ' + (/bol/i.test(a.tipo) ? 'Boleta' : 'Factura') + '): se detalló igual por el N° de folio.'); a.tipo = d.tipo; a.folio_key = d.folio_key; }
+      if (dif !== 0) {
+        const ls = lineasDe_(a).map(x => Object.assign({}, x)); let k = -1;
+        ls.forEach((x, i) => { if (x.forma !== 'NOTA_CREDITO' && (k < 0 || num_(x.monto) > num_(ls[k].monto))) k = i; });
+        if (k >= 0 && num_(ls[k].monto) + dif > 0) { ls[k].monto = num_(ls[k].monto) + dif; a.pagos = JSON.stringify(ls); }
+        avisos.push('Diferencia de $' + Math.abs(dif) + ' con Mi DTE (anotaste $' + Math.round(num_(a.monto)) + ', el folio es de $' + Math.round(num_(d.total)) + '): se usó el monto de Mi DTE.'); a.monto = Math.round(num_(d.total));
+      }
+      nota = avisos.join(' '); a._ajust = true;
+      aAplicar.push({ a, d }); d.estado = 'DETALLADO'; estado = 'APLICADO'; aplicados++; }
     if (estado === 'REVISAR') revisar++;
-    if (a.estado !== estado || a.nota !== nota) { a.estado = estado; a.nota = nota; a.resuelto = now_(); cambiados.push(a); }
+    if (a.estado !== estado || a.nota !== nota || a._ajust) { a.estado = estado; a.nota = nota; a.resuelto = now_(); cambiados.push(a); }
   });
   aplicarAdelantos_(aAplicar);          // v181: una sola escritura de pagos y de estados, no una por folio
-  escribirCols_('ADELANTOS', cambiados, ['estado', 'nota', 'resuelto']);
+  escribirCols_('ADELANTOS', cambiados, ['estado', 'nota', 'resuelto', 'pagos', 'monto', 'tipo', 'folio_key']);
   return { aplicados, revisar, sinLlegar };
 }
 /** v128: el vendedor anotó un monto menor al de Mi DTE porque había una nota de crédito por hacer. Aplica el adelanto y deja la diferencia
@@ -1199,7 +1224,7 @@ function aplicarAdelantoConNC(token, id) {
     if (!a) throw new Error('No encontré ese folio anotado.');
     if (u.rol === 'VENDEDOR' && a.vendedor !== u.usuario) throw new Error('Este folio no es tuyo.');
     if (a.estado === 'APLICADO') return { estado: 'APLICADO', diferencia: 0 };
-    const d = read_('DOCUMENTOS').find(x => keyNorm_(x.folio_key) === keyNorm_(a.folio_key));
+    const ix = indiceDocs_(), d = docDeAdelanto_(a, ix.docs, ix.porFolio);
     if (!d) throw new Error('Ese folio aún no llega de Mi DTE.');
     if (d.vendedor !== a.vendedor) throw new Error('Mi DTE lo asignó a otro vendedor.');
     assertAbierta_(d.fecha);
@@ -1321,10 +1346,10 @@ function listarAdelantos(token, fecha, vendedor) {
   fecha = /^\d{4}-\d{2}-\d{2}$/.test(String(fecha || '')) ? String(fecha) : hoy_();
   asegurarAdelantos_();
   const v = u.rol === 'VENDEDOR' ? u.usuario : String(vendedor || '');
-  const docs = {}; read_('DOCUMENTOS').forEach(d => docs[keyNorm_(d.folio_key)] = d);
+  const ix = indiceDocs_();
   return read_('ADELANTOS').filter(a => a.fecha === fecha && (!v || a.vendedor === v))
-    .map(a => { const d = docs[keyNorm_(a.folio_key)];
-      return { id: a.id, tipo: /bol/i.test(a.tipo) ? 'Boleta' : 'Factura', folio: a.folio, monto: num_(a.monto), forma: a.forma, banco: a.banco, estado: a.estado, nota: a.nota, vendedor: a.vendedor,
+    .map(a => { const d = docDeAdelanto_(a, ix.docs, ix.porFolio);
+      return { id: a.id, pagos: lineasDe_(a), rut: a.rut || '', tipo: /bol/i.test(a.tipo) ? 'Boleta' : 'Factura', folio: a.folio, monto: num_(a.monto), forma: a.forma, banco: a.banco, estado: a.estado, nota: a.nota, vendedor: a.vendedor,
         nc: lineasDe_(a).filter(x => x.forma === 'NOTA_CREDITO').reduce((t, x) => t + num_(x.monto), 0), cliente: a.cliente || '', anotado: a.registrado, resuelto: a.resuelto, llego: !!d, docCliente: d ? d.cliente : '', docTotal: d ? num_(d.total) : 0, docEstado: d ? d.estado : '' }; })
     .reverse();
 }
@@ -1343,6 +1368,25 @@ function asignarClienteDoc(token, folio_key, cliente, rut) {
     d.cliente = c.cliente; d.rut = c.rut;
     updateRow_('DOCUMENTOS', d._row, d);
     return { cliente: d.cliente, rut: d.rut };
+  });
+}
+/** v222: corrige un folio anotado (tipo, N°, monto o pagos) mientras no esté APLICADO. Conserva id, fecha y vendedor; vuelve a cruzar con Mi DTE. */
+function editarAdelanto(token, id, tipo, folio, monto, pagos, cliente, rut) {
+  const u = auth_(token);
+  return withLock_(() => {
+    asegurarAdelantos_();
+    const a = read_('ADELANTOS').find(x => x.id === String(id));
+    if (!a) throw new Error('No se encontró el folio anotado.');
+    if (u.rol === 'VENDEDOR' && a.vendedor !== u.usuario) throw new Error('Este folio no es tuyo.');
+    if (a.estado === 'APLICADO') throw new Error('Ese folio ya quedó detallado; corrígelo desde Mis folios.');
+    const p = validarAdelanto_(u, a.fecha, tipo, folio, monto, pagos, a.vendedor, cliente, rut);
+    if (read_('ADELANTOS').some(x => x.id !== a.id && x.folio_key === p.key)) throw new Error('Ese folio ya está anotado.');
+    const reg = Object.assign({}, a, { tipo: p.t, folio: p.f, folio_key: p.key, monto: p.m, forma: formaAdel_(p.ls).forma, banco: formaAdel_(p.ls).banco,
+      estado: 'ESPERANDO', nota: '', resuelto: '', pagos: JSON.stringify(p.ls), cliente: p.cliente, rut: p.rut });
+    updateRow_('ADELANTOS', a._row, reg);
+    cruzarAdelantos_();
+    const fin = read_('ADELANTOS').find(x => x.id === a.id);
+    return { estado: fin.estado, nota: fin.nota, id: fin.id };
   });
 }
 function borrarAdelanto(token, id) {

@@ -1357,3 +1357,6 @@ details.dpl .dfolio{padding:6px 0}
 .adp .adnc{font-size:15.5px;padding:9px}
 .adp .in{font-size:17px}
 .adp label,.adp .lbl{font-size:14px}
+/* v222: resumen de anotados dentro de la hoja de anotar */
+.adres{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;background:#fff}
+.adres .bad{color:var(--bad);font-weight:700}

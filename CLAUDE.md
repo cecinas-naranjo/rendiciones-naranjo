@@ -949,3 +949,10 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v221 — Botón «Ver borrador» arriba en Rendición (solo frontend: app.js, sw.js)
 - Si ya existe la planilla del día, el aviso con el botón «Ver borrador» (o «Abrir archivo» si está cerrada) sale arriba, bajo el título, en vez de al final de la pantalla. Solo sintaxis verificada.
+
+## v222 — Folios anotados: vista aparte, edición, cruce por N° de folio y margen de $500 (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, style.css, sw.js)
+- La lista de anotados salió de la hoja «Anotar un folio» (ahora solo muestra un resumen y «Ver anotados ›»): pantalla `abrirAnotados` (Hoy → «Anotados», Mis folios → «Ver anotados»), con filtro (todos / para revisar / esperando / detallados), «Volver a cruzar con Mi DTE», Editar, Quitar y «Registrar $X como nota de crédito».
+- **Editar** un anotado (no APLICADO): `abrirAdelanto(vend, alCerrar, edit)` precarga tipo, folio, monto, NC, pagos y cliente; guarda con API `editarAdelanto(token, id, tipo, folio, monto, pagos, cliente, rut)` (conserva id/fecha/vendedor, vuelve a ESPERANDO y recruza). Solo en línea.
+- **El cruce se rige por el N° de folio**: `docDeAdelanto_` busca primero tipo+folio y si no, el mismo folio con otro tipo (prefiere el mismo vendedor; ignora NC y guías). Si el tipo difiere se detalla igual y el adelanto toma el tipo de Mi DTE (nota informativa). `listarAdelantos` y `aplicarAdelantoConNC` usan lo mismo; `listarAdelantos` devuelve también `pagos` y `rut`.
+- **Margen de monto** `CFG.TOLERANCIA_ADELANTO` = 500: hasta $500 de diferencia se aplica sola con el monto de Mi DTE (la diferencia se ajusta en el pago más grande que no sea NC). Sobre $500 queda REVISAR; si lo anotado es MAYOR que Mi DTE la nota avisa «revisa si se cobró de más».
+- Solo sintaxis verificada; nada probado en Apps Script ni en el teléfono.

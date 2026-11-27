@@ -203,7 +203,7 @@ const claveApi = (fn, args) => fn + '|' + JSON.stringify(args);
 /* v135: tras guardar o borrar algo, las listas que muestran ese dato se piden de nuevo al servidor (no se usa la copia guardada, que aún no lo trae:
    por eso antes «Cobrado hoy»/«Gastos» no mostraban lo recién registrado y al agregar otro aparecía el anterior). */
 const LISTAS_TRAS_ESCRIBIR = /^(getCajaChica|getPozoMonedas|listarMov|porCobrar|efectivoParaDepositar|listarDevoluciones|getConteoEfectivo|listarAdelantos|listarAnulaciones|anulacionesPendientes)\|/;
-const ESCRITURAS_DE_LISTA = new Set(['guardarCajaChica', 'borrarCajaChica', 'guardarDepositoMonedas', 'borrarDepositoMonedas', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
+const ESCRITURAS_DE_LISTA = new Set(['guardarCajaChica', 'borrarCajaChica', 'guardarDepositoMonedas', 'borrarDepositoMonedas', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'editarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
 function purgarListas() { Array.from(CACHE.keys()).forEach(k => { if (LISTAS_TRAS_ESCRIBIR.test(k)) CACHE.delete(k); }); guardarCache(); }
 const FRESCURA = 20e3;      // si lo guardado tiene menos de 20 s no se vuelve a pedir al servidor
 
@@ -1008,7 +1008,7 @@ const opcVend = (sel, todos) => (todos ? '<option value="">Todos los vendedores<
 async function vHoy(m) {
   const tok = S.sess.token, F = S.fecha, pri = (S.sess.nombre || '').split(' ')[0];
   const [r, cob, gas, ads, devs] = await Promise.all([api('misDocumentos', tok, F, S.vend), api('listarMov', tok, 'COBRANZA', F), api('listarMov', tok, 'GASTOS', F), api('listarAdelantos', tok, F, S.sess.usuario).catch(() => []), api('listarDevoluciones', tok, F).catch(() => [])]);
-  const nAd = ads.length, aplAd = ads.filter(x => x.estado === 'APLICADO').length;
+  const adRev = ads.filter(x => x.estado === 'REVISAR').length, nAd = ads.length, aplAd = ads.filter(x => x.estado === 'APLICADO').length;
   const docs = r.docs, cerrada = r.estadoDia === 'CERRADA', hechos = docs.filter(d => d.estado === 'DETALLADO'), pend = docs.length - hechos.length;
   const por = fs => hechos.reduce((a, d) => a + d.pagos.filter(p => fs.indexOf(p.forma) >= 0).reduce((b, p) => b + p.monto, 0), 0);
   const tot = docs.reduce((a, d) => a + d.total, 0), ef = por(['EFECTIVO']), tr = por(['TRANSFERENCIA', 'DEP_EFECTIVO']), ch = por(['CHEQUE']), cr = por(['CREDITO']);
@@ -1020,6 +1020,7 @@ async function vHoy(m) {
     ['folios', 'receipt', 'Mis folios', !docs.length ? '' : pend ? `<span class="bd">${pend}</span>` : '<span class="bd ok">Listo</span>'],
     ['COBRANZA', 'cash', 'Cobranza', gb(cob.length, 'ok')],
     ['GASTOS', 'fuel', 'Gastos', gb(gas.length, 'ok')]];
+  if (nAd) tiles.push(['anotados', 'receipt', 'Anotados', adRev ? `<span class="bd">${adRev} por revisar</span>` : `<span class="bd ok">${nAd}</span>`]);
   if (dep) tiles.push(['depositos', 'bank', 'Depósito', '']);
   const devSin = devs.filter(x => !x.cliente).length;
   if (devs.length) tiles.push(['devs', 'box', 'Devoluciones', devSin ? `<span class="bd">${devSin} sin cliente</span>` : '<span class="bd ok">Listo</span>']);
@@ -1032,7 +1033,8 @@ async function vHoy(m) {
       <div><span>Transferencias</span><b>${clp(tr)}</b></div>${ch ? `<div><span>Cheques</span><b>${clp(ch)}</b></div>` : ''}<div><span>A crédito</span><b>${clp(cr)}</b></div></div></details>` : ''}`);
   m.onclick = e => {
     if (e.target.closest('#hanota')) return abrirAdelanto(S.sess.usuario, () => { olvidarCache(false); ir(S.tab, true); });
-    const b = e.target.closest('.htile'); if (b && b.dataset.t === 'devs') return abrirDevolucionesVendedor(() => { olvidarCache(false); ir(S.tab, true); });
+    const b = e.target.closest('.htile'); if (b && b.dataset.t === 'anotados') return abrirAnotados(S.sess.usuario, () => { olvidarCache(false); ir(S.tab, true); });
+    if (b && b.dataset.t === 'devs') return abrirDevolucionesVendedor(() => { olvidarCache(false); ir(S.tab, true); });
     if (b) ir(b.dataset.t);
   };
 }
@@ -1091,12 +1093,12 @@ function engancharClienteBoleta(ov, d, cerrada) {
     } catch (x) { toast(x.message || 'No se pudo indicar el cliente', true); }
   });
 }
-function abrirAdelanto(vend, alCerrar) {
+function abrirAdelanto(vend, alCerrar, edit) {
   let tipo = '', ncOn = false, cli = null, lineas = [{ forma: '', banco: '', monto: '', ch: {} }];     // v196: ni el tipo ni la forma de pago vienen elegidos: se elige cada vez
   const ov = document.createElement('div'); ov.className = 'ov';
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Anotar folio"><div class="grip"></div><div class="body">
-    <div style="font-weight:700;font-size:18px">Anotar un folio</div>
-    <p class="muted" style="margin:0 0 8px;font-size:13px">Se detalla solo cuando llegue de Mi DTE.</p>
+    <div style="font-weight:700;font-size:18px">${edit ? 'Corregir folio anotado' : 'Anotar un folio'}</div>
+    <p class="muted" style="margin:0 0 8px;font-size:13px">${edit ? 'Cambia lo que esté mal y guarda: se vuelve a cruzar con Mi DTE.' : 'Se detalla solo cuando llegue de Mi DTE.'}</p>
     <div class="adp" id="adp1"><div class="adh"><i>1</i>¿Qué documento emitiste?</div>
       <div class="adt" id="adT"><button type="button" data-t="Boleta">${ICO_AD.Boleta}<span>Boleta</span></button><button type="button" data-t="Factura">${ICO_AD.Factura}<span>Factura</span></button></div></div>
     <div class="adp" id="adp2"><div class="adh"><i>2</i>Número y monto</div>
@@ -1110,7 +1112,7 @@ function abrirAdelanto(vend, alCerrar) {
       <button type="button" class="adnc" id="adMas">+ Pagó con más de una forma (pago mixto)</button></div>
       <div class="muted" id="adSinPago" hidden>La nota de crédito cubre todo el folio: no hay pago que anotar.</div></div>
     <div id="adL" style="margin-top:12px"></div></div>
-    <div class="foot"><button class="btn ghost" id="adX" type="button">Listo</button><span class="grow"></span><button class="btn cu" id="adS" type="button">Guardar y anotar otro</button></div></div>`;
+    <div class="foot"><button class="btn ghost" id="adX" type="button">${edit ? 'Cancelar' : 'Listo'}</button><span class="grow"></span><button class="btn cu" id="adS" type="button">${edit ? 'Guardar cambios' : 'Guardar y anotar otro'}</button></div></div>`;
   document.body.appendChild(ov);
   let cambios = false;
   const cerrar = () => { cerrarHoja(ov); if (cambios && alCerrar) alCerrar(); };
@@ -1159,25 +1161,14 @@ function abrirAdelanto(vend, alCerrar) {
     $('#adClN', ov).innerHTML = cli ? 'Cliente: <b>' + esc(cli.nombre) + '</b>' + (cli.rut ? ' · ' + esc(cli.rut) : '') : 'Mi DTE trae las boletas sin nombre; así queda el cliente en el folio.'; };
   $('#adClB', ov).onclick = () => { if (cli) { cli = null; pintarCli(); } else elegirClienteBoleta(c => { cli = c; pintarCli(); }); };
   $('#adT', ov).onclick = e => { const b = e.target.closest('button'); if (b) { tipo = b.dataset.t; if (tipo !== 'Boleta') cli = null; pintarCli(); $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo)); pasos(); } };
-  const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto', NOTA_CREDITO: 'Nota de crédito' };
-  const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
-  const hh = t => { const m = String(t || '').match(/(\d{2}:\d{2})/); return m ? m[1] : ''; };
   async function lista() {
+    if (edit) return;
     let ls = []; try { ls = await api('listarAdelantos', S.sess.token, S.fecha, vend); } catch (e) {}
     const n = { A: 0, E: 0, R: 0 }; ls.forEach(x => { if (!x.sinEnviar) n[x.estado === 'APLICADO' ? 'A' : x.estado === 'REVISAR' ? 'R' : 'E']++; });
-    const sinE = ls.filter(x => x.sinEnviar).length;
-    const cab = ls.length ? `<div class="muted" style="font-weight:700;margin-bottom:4px">Anotados hoy: ${ls.length} · <span class="ok">${n.A} detallados</span>${n.E ? ' · ' + n.E + ' esperando Mi DTE' : ''}${n.R ? ' · <span class="bad">' + n.R + ' para revisar</span>' : ''}${sinE ? ' · ' + sinE + ' sin enviar' : ''}</div>
-      ${n.E || n.R ? '<button class="btn ghost sm" id="adRe" type="button" style="margin-bottom:6px">Volver a cruzar con Mi DTE</button>' : ''}` : '';
-    $('#adL', ov).innerHTML = cab + ls.map(x => { const [t, c] = x.sinEnviar ? ['Guardado en el teléfono · se envía al volver internet', 'b'] : (ESTADO[x.estado] || [x.estado, '']);
-      const pasos = x.sinEnviar ? '' : `<div class="muted" style="font-size:.85em">① Anotado${hh(x.anotado) ? ' ' + hh(x.anotado) : ''} · ${x.llego ? '② Llegó en Mi DTE' + (x.docCliente ? ' (' + esc(x.docCliente) + ', ' + clp(x.docTotal) + ')' : '') : '② Aún no llega de Mi DTE'} · ${x.estado === 'APLICADO' ? '③ Detallado ✓' + (hh(x.resuelto) ? ' ' + hh(x.resuelto) : '') : x.estado === 'REVISAR' ? '③ No se pudo detallar' : '③ Pendiente'}</div>`;
-      return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
-      <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)}${x.nc ? ' · <span class="bad">con nota de crédito ' + clp(x.nc) + '</span>' : ''} · ${esc(x.forma === 'NOTA_CREDITO' ? 'sin pago' : FTXT[x.forma] || x.forma)}${x.forma === 'TRANSFERENCIA' && x.banco ? ' ' + esc(x.banco) : ''}
-      <div class="dvst ${c}">${t}</div>${pasos}${x.nota ? `<div class="muted">${esc(x.nota)}</div>` : ''}${x.estado === 'REVISAR' && x.llego && x.docTotal > x.monto && x.docEstado !== 'DETALLADO' && /^Anotaste/.test(x.nota || '') ? `<button class="btn sm" data-nc type="button" style="margin-top:6px">Registrar ${clp(x.docTotal - x.monto)} como nota de crédito</button>` : ''}</span>${x.estado === 'APLICADO' ? '' : '<button class="btn ghost sm" data-del type="button">Quitar</button>'}</div>`; }).join('');
+    $('#adL', ov).innerHTML = ls.length ? `<div class="adres"><div class="grow"><b>Anotados hoy: ${ls.length}</b><div class="muted">${n.A} detallados${n.E ? ' · ' + n.E + ' esperando Mi DTE' : ''}${n.R ? ' · <span class="bad">' + n.R + ' para revisar</span>' : ''}</div></div>
+      <button class="btn ghost sm" id="adVer" type="button">Ver anotados ›</button></div>` : '';
+    const v = $('#adVer', ov); if (v) v.onclick = () => abrirAnotados(vend, () => { cambios = true; lista(); });
   }
-  $('#adL', ov).onclick = async e => { const re = e.target.closest('#adRe'); if (re) { re.disabled = true; try { const r = await api('reintentarAdelantos', S.sess.token); cambios = true; toast(r.aplicados ? r.aplicados + ' folio' + (r.aplicados > 1 ? 's' : '') + ' detallado' + (r.aplicados > 1 ? 's' : '') : 'Nada nuevo para cruzar.'); await lista(); } catch (x) { toast(x.message || 'No se pudo', true); } finally { re.disabled = false; } return; }
-    const nc = e.target.closest('[data-nc]'); if (nc) { nc.disabled = true; try { const r = await api('aplicarAdelantoConNC', S.sess.token, nc.closest('.dfila').dataset.id); cambios = true; toast('Listo: ' + clp(r.diferencia) + ' quedó como nota de crédito por emitir.'); await lista(); } catch (x) { toast(x.message || 'No se pudo', true); nc.disabled = false; } return; }
-    const b = e.target.closest('[data-del]'); if (!b) return; const id = b.closest('.dfila').dataset.id; b.disabled = true;
-    try { await api('borrarAdelanto', S.sess.token, id); cambios = true; await lista(); } finally { b.disabled = false; } };
   $('#adS', ov).onclick = async () => {
     const f = $('#adF', ov).value.trim(), m = total(), nc = ncM(), ap = m - nc;
     if (!tipo) return toast('Elige si es Boleta o Factura.', true);
@@ -1197,6 +1188,12 @@ function abrirAdelanto(vend, alCerrar) {
     if (nc) pagos.push({ forma: 'NOTA_CREDITO', banco: '', monto: nc });
     if (pagos.reduce((a, p) => a + p.monto, 0) !== m) return toast('Los pagos no suman el monto del folio (' + clp(m) + ').', true);
     const b = $('#adS', ov); b.disabled = true;
+    if (edit) {
+      try { const r = await api('editarAdelanto', S.sess.token, edit.id, tipo, f, String(m), pagos, tipo === 'Boleta' && cli ? cli.nombre : '', tipo === 'Boleta' && cli ? cli.rut : '');
+        cambios = true; toast(r.estado === 'APLICADO' ? 'Folio ' + f + ' corregido y detallado' : r.estado === 'REVISAR' ? r.nota : 'Folio corregido. Se detalla solo cuando llegue de Mi DTE.', r.estado === 'REVISAR'); cerrar();
+      } catch (x) { toast(x.message || 'No se pudo corregir', true); } finally { b.disabled = false; }
+      return;
+    }
     try {
       const r = await api('adelantarFolio', S.sess.token, S.fecha, tipo, f, String(m), pagos, vend, tipo === 'Boleta' && cli ? cli.nombre : '', tipo === 'Boleta' && cli ? cli.rut : ''); cambios = true;
       toast(r._pendiente ? 'Guardado en el teléfono. Se envía solo cuando vuelva internet.' : r.estado === 'APLICADO' ? 'Folio ' + f + ' detallado' : r.estado === 'REVISAR' ? r.nota : 'Anotado. Se detalla solo cuando llegue de Mi DTE.', r.estado === 'REVISAR');
@@ -1204,8 +1201,60 @@ function abrirAdelanto(vend, alCerrar) {
       lineas = [{ forma: '', banco: '', monto: '', ch: {} }]; pintarNC(); pintarPagos(); await lista(); $('#adF', ov).focus();
     } finally { b.disabled = false; }
   };
+  if (edit) {
+    tipo = edit.tipo; $('#adF', ov).value = edit.folio; $('#adM', ov).value = String(edit.monto);
+    $$('#adT button', ov).forEach(y => y.classList.toggle('on', y.dataset.t === tipo));
+    const pg = edit.pagos || [], nc0 = pg.filter(p => p.forma === 'NOTA_CREDITO').reduce((a, p) => a + (Number(p.monto) || 0), 0), pp = pg.filter(p => p.forma !== 'NOTA_CREDITO');
+    if (nc0) { ncOn = true; $('#adN', ov).value = String(nc0); }
+    if (pp.length) lineas = pp.map(p => ({ forma: p.forma, banco: p.forma === 'TRANSFERENCIA' ? (p.banco || '') : '', monto: pp.length > 1 ? String(p.monto) : '',
+      ch: p.forma === 'CHEQUE' ? { banco: p.banco || '', cheque_numero: p.cheque_numero || '', cheque_fecha: p.cheque_fecha || '', cheque_titular: p.cheque_titular || '' } : {} }));
+    if (tipo === 'Boleta' && edit.cliente) cli = { nombre: edit.cliente, rut: edit.rut || '' };
+  }
   pintarCli(); pintarNC(); pintarPagos(); lista(); setTimeout(() => $('#adF', ov).focus(), 250);
 }
+/* ============ ANOTADOS (v222): la lista de folios adelantados, aparte de la hoja de anotar ============ */
+function abrirAnotados(vend, alCerrar) {
+  const ov = document.createElement('div'); ov.className = 'ov'; let cambios = false, filtro = '', datos = [];
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Folios anotados"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:18px">Folios anotados</div><div id="anC" class="muted" style="margin:2px 0 8px"></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><select class="in" id="anF" style="width:auto"><option value="">Todos</option><option value="R">Para revisar</option><option value="E">Esperando Mi DTE</option><option value="A">Detallados</option></select>
+      <button class="btn ghost sm" id="anRe" type="button" hidden>Volver a cruzar con Mi DTE</button></div>
+    <div id="anL"></div></div>
+    <div class="foot"><button class="btn ghost" id="anX" type="button">Cerrar</button><span class="grow"></span><button class="btn cu" id="anN" type="button">+ Anotar folio</button></div></div>`;
+  document.body.appendChild(ov);
+  const cerrar = () => { cerrarHoja(ov); if (cambios && alCerrar) alCerrar(); };
+  $('#anX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  const FTXT = { EFECTIVO: 'Efectivo', TRANSFERENCIA: 'Transferencia', CREDITO: 'Crédito', CHEQUE: 'Cheque', MIXTO: 'Pago mixto', NOTA_CREDITO: 'Nota de crédito' };
+  const ESTADO = { ESPERANDO: ['Esperando Mi DTE', 'a'], APLICADO: ['Detallado ✓', 'ok'], REVISAR: ['Revisar', 'bad'] };
+  const hh = t => { const m = String(t || '').match(/(\d{2}:\d{2})/); return m ? m[1] : ''; };
+  const orden = x => x.sinEnviar ? 0 : x.estado === 'REVISAR' ? 1 : x.estado === 'ESPERANDO' ? 2 : 3;
+  const cl = x => x.sinEnviar ? '' : x.estado === 'APLICADO' ? 'A' : x.estado === 'REVISAR' ? 'R' : 'E';
+  function pintar() {
+    const n = { A: 0, E: 0, R: 0 }; datos.forEach(x => { if (cl(x)) n[cl(x)]++; });
+    $('#anC', ov).innerHTML = datos.length ? `${datos.length} anotados · <span class="ok">${n.A} detallados</span>${n.E ? ' · ' + n.E + ' esperando Mi DTE' : ''}${n.R ? ' · <span class="bad">' + n.R + ' para revisar</span>' : ''}` : 'Aún no hay folios anotados este día.';
+    $('#anRe', ov).hidden = !(n.E || n.R);
+    const ls = datos.filter(x => !filtro || cl(x) === filtro).sort((a, b) => orden(a) - orden(b));
+    $('#anL', ov).innerHTML = ls.length ? ls.map(x => { const [t, c] = x.sinEnviar ? ['Guardado en el teléfono · se envía al volver internet', 'b'] : (ESTADO[x.estado] || [x.estado, '']);
+      const pasos = x.sinEnviar ? '' : `<div class="muted" style="font-size:.85em">① Anotado${hh(x.anotado) ? ' ' + hh(x.anotado) : ''} · ${x.llego ? '② Llegó en Mi DTE' + (x.docCliente ? ' (' + esc(x.docCliente) + ', ' + clp(x.docTotal) + ')' : '') : '② Aún no llega de Mi DTE'} · ${x.estado === 'APLICADO' ? '③ Detallado ✓' + (hh(x.resuelto) ? ' ' + hh(x.resuelto) : '') : x.estado === 'REVISAR' ? '③ No se pudo detallar' : '③ Pendiente'}</div>`;
+      const ncb = x.estado === 'REVISAR' && x.llego && x.docTotal > x.monto && x.docEstado !== 'DETALLADO' && /^Anotaste/.test(x.nota || '');
+      return `<div class="dfila" style="align-items:center;flex-wrap:wrap" data-id="${esc(x.id)}">
+      <span class="grow"><b>${esc(x.tipo)} ${esc(x.folio)}</b> · ${clp(x.monto)}${x.nc ? ' · <span class="bad">con nota de crédito ' + clp(x.nc) + '</span>' : ''} · ${esc(x.forma === 'NOTA_CREDITO' ? 'sin pago' : FTXT[x.forma] || x.forma)}${x.forma === 'TRANSFERENCIA' && x.banco ? ' ' + esc(x.banco) : ''}
+      <div class="dvst ${c}">${t}</div>${pasos}${x.nota ? `<div class="${x.estado === 'REVISAR' ? 'bad' : 'muted'}" style="font-size:13px">${esc(x.nota)}</div>` : ''}${ncb ? `<button class="btn sm" data-nc type="button" style="margin-top:6px">Registrar ${clp(x.docTotal - x.monto)} como nota de crédito</button>` : ''}</span>
+      ${x.estado === 'APLICADO' || x.sinEnviar ? '' : '<button class="btn ghost sm" data-ed type="button">Editar</button><button class="btn ghost sm" data-del type="button">Quitar</button>'}</div>`; }).join('') : '<div class="muted">Nada en esta vista.</div>';
+  }
+  async function cargar() { try { datos = await api('listarAdelantos', S.sess.token, S.fecha, vend); } catch (e) { datos = []; } pintar(); }
+  $('#anF', ov).onchange = e => { filtro = e.target.value; pintar(); };
+  $('#anN', ov).onclick = () => abrirAdelanto(vend, () => { cambios = true; cargar(); });
+  $('#anRe', ov).onclick = async e => { const b = e.currentTarget; b.disabled = true; try { const r = await api('reintentarAdelantos', S.sess.token); cambios = true; toast(r.aplicados ? r.aplicados + ' folio' + (r.aplicados > 1 ? 's' : '') + ' detallado' + (r.aplicados > 1 ? 's' : '') : 'Nada nuevo para cruzar.'); await cargar(); } catch (x) { toast(x.message || 'No se pudo', true); } finally { b.disabled = false; } };
+  $('#anL', ov).onclick = async e => {
+    const f = e.target.closest('.dfila'); if (!f) return; const id = f.dataset.id;
+    if (e.target.closest('[data-ed]')) { const it = datos.find(x => String(x.id) === String(id)); if (it) abrirAdelanto(vend, () => { cambios = true; cargar(); }, it); return; }
+    const nc = e.target.closest('[data-nc]'); if (nc) { nc.disabled = true; try { const r = await api('aplicarAdelantoConNC', S.sess.token, id); cambios = true; toast('Listo: ' + clp(r.diferencia) + ' quedó como nota de crédito por emitir.'); await cargar(); } catch (x) { toast(x.message || 'No se pudo', true); nc.disabled = false; } return; }
+    const b = e.target.closest('[data-del]'); if (!b) return; b.disabled = true;
+    try { await api('borrarAdelanto', S.sess.token, id); cambios = true; await cargar(); } catch (x) { toast(x.message || 'No se pudo', true); b.disabled = false; } };
+  cargar();
+}
+
 /* ============ ANULAR FOLIO / NOTA DE CRÉDITO (v72) ============ */
 const MOTIVOS_AN = ['Error en un producto', 'Cobré de más', 'El cliente devolvió producto', 'Documento mal emitido', 'Otro'];
 function abrirAnulacion(vend, docs, alCerrar) {
@@ -1317,8 +1366,9 @@ async function vFolios(m) {
     if (!document.body.contains(m)) return;
     const esp = ls.filter(x => x.estado === 'ESPERANDO').length, rev = ls.filter(x => x.estado === 'REVISAR').length, apl = ls.filter(x => x.estado === 'APLICADO').length;
     $('#adl', m).innerHTML = `<div class="card adl"><span class="ic">${icon('receipt')}</span><div class="grow"><b>Anotar folios por adelantado</b><div class="muted">${esp || rev || apl ? [ls.length + ' anotados', apl ? apl + ' detallados' : '', esp ? esp + ' esperando Mi DTE' : '', rev ? '<span class="bad">' + rev + ' para revisar</span>' : ''].filter(Boolean).join(' · ') : 'Anota el folio, el monto y cómo te pagó; se detalla solo cuando llegue de Mi DTE.'}</div></div>
-      <button class="btn ${esp || rev ? 'ghost' : 'cu'} sm" id="adlb" type="button">Anotar folio</button></div>`;
+      ${ls.length ? '<button class="btn ghost sm" id="adlv" type="button">Ver anotados</button>' : ''}<button class="btn ${esp || rev ? 'ghost' : 'cu'} sm" id="adlb" type="button">Anotar folio</button></div>`;
     $('#adlb', m).onclick = () => abrirAdelanto(vAdl, () => { olvidarCache(false); ir('folios', true); });
+    const av = $('#adlv', m); if (av) av.onclick = () => abrirAnotados(vAdl, () => { olvidarCache(false); ir('folios', true); });
   }
   pintarAdl();
   async function pintarAnl() {
