@@ -39,13 +39,13 @@ const CFG = {
   // v169: orden de Despacho = el de las planillas de papel del bodeguero (3 bloques). Nombres como en la nómina del inventario; lo que no esté aquí va al final de su bloque.
   DESPACHO_PLANILLA: [
     ['Productos terminados', ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'ARROLLADO C/AJI', 'ARROLLADO SIN CUERO', 'Q. CABEZA', 'S. CERVEZA', 'M. LISA', 'M. JAMONADA', 'JAMON SANDWICH', 'JAMON ACARAMELADO', 'JAMON AHUMADO']],
-    ['Cárnicos', ['CHULETA AHUMADA', 'COSTILLAR', 'CAZUELA', 'CAZUELA AHUMADA', 'TAPABARRIGA', 'MECHADA CAMPESTRE', 'MECHADA CERDO BBQ', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5']],
+    ['Cárnicos', ['CHULETA AHUMADA', 'COSTILLAR', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', 'CAZUELA', 'CAZUELA AHUMADA', 'TAPABARRIGA', 'MECHADA CAMPESTRE', 'MECHADA CERDO BBQ', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5']],
     ['Congelados y verduras', ['CHOCLO M.V', 'ARVEJA M.V', 'PRIMAVERA M.V', 'POROTO VERDE M.V', 'SOFRITO M.V', 'CHOCLO TROZITO', 'EMPANADA QUESO 16X600', 'EMPANADA PINO 16X600', 'EMPANADA QUESO CAMARON', 'SOPAIPILLA 20X12', 'SOPAIPILLA 20X48', 'PASTA CHOCLO 15X1', 'EMPANADA QUESO 3X3']],
     ['Quesos y otros', ['PAPAS FRITAS', 'GAUDA LAM. RIG. 24X500G HUILCO', 'QUESO CREMA TONADITA CHEDDAR 200GR', 'MANTEQUILLA TONADITA 125GR 24X1', 'UNTABLE TONADITA', 'QUESO CREMA TONADITA 100GR 20X1', 'MANTEQUILLA TONADITA 250GR 12X1']]
   ],
   RENOMBRAR: { 'CHULETA AHUMADA': 'CHULETA' },
   // v167: cortes de carne que deben salir en «Cárnicos» (en la hoja PRODUCTOS algunos quedaron en Productos propios o Congelados). Nombre del inventario.
-  CARNICOS: ['TAPABARRIGA', 'CHULETA AHUMADA', 'CAZUELA', 'COSTILLAR', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5', 'MECHADA CAMPESTRE', 'MECHADA CERDO BBQ'],
+  CARNICOS: ['TAPABARRIGA', 'CHULETA AHUMADA', 'CAZUELA', 'COSTILLAR', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', 'CARNE MOLIDA 10', 'CARNE MOLIDA 5', 'MECHADA CAMPESTRE', 'MECHADA CERDO BBQ'],
   UNIDADES: {
     'ARROLLADO C/AJI': { kgUn: 3 }, 'ARROLLADO SIN CUERO': { kgUn: 3 }, 'Q. CABEZA': { kgUn: 3 }, 'S. CERVEZA': { kgUn: 1.5 },
     'M. LISA': { kgUn: 2.8 }, 'M. JAMONADA': { kgUn: 2.8 }, 'JAMON SANDWICH': { kgUn: 3 }, 'JAMON ACARAMELADO': { kgUn: 2.5 }, 'JAMON AHUMADO': { kgUn: 2.5 },
@@ -58,7 +58,7 @@ const CFG = {
     'MANTEQUILLA TONADITA 250GR 12X1': { modo: 'PACK_VENTA', pack: 6 }, 'QUESO CREMA TONADITA 100GR 20X1': { modo: 'PACK_VENTA', pack: 10 }, 'MANTEQUILLA TONADITA 125GR 24X1': { modo: 'PACK_VENTA', pack: 12 },
     'CHOCLO M.V': { modo: 'CAJA' }, 'ARVEJA M.V': { modo: 'CAJA' }, 'PRIMAVERA M.V': { modo: 'CAJA' }, 'POROTO VERDE M.V': { modo: 'CAJA' }, 'SOFRITO M.V': { modo: 'CAJA' }, 'CHOCLO TROZITO': { modo: 'CAJA' }
   },
-  INV_EN_KILOS: ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'COSTILLAR', 'LONGANIZA', 'PATE DE CERDO', 'COSTILLAR DE CERDO AHUMADO ENV.', 'TAPABARRIGA', 'CHULETA AHUMADA', 'CAZUELA', 'CAZUELA AHUMADA'],   // nombre en la planilla de inventario o nombre de venta   // productos terminados que el inventario lleva en kilos; el resto de terminados va en unidades
+  INV_EN_KILOS: ['LONGANIZA CORTA', 'LONGANIZA LARGA', 'PATE CERDO', 'COSTILLAR', 'LONGANIZA', 'PATE DE CERDO', 'COSTILLAR DE CERDO AHUMADO ENV.', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', 'TAPABARRIGA', 'CHULETA AHUMADA', 'CAZUELA', 'CAZUELA AHUMADA'],   // nombre en la planilla de inventario o nombre de venta   // productos terminados que el inventario lleva en kilos; el resto de terminados va en unidades
   // Informes de Mi DTE ya ordenados (Ventas Diarias e Informe de ventas): vacío = "Informes Mi DTE" junto a la carpeta de rendiciones, con subcarpetas año/mes
   INFORMES_FOLDER_ID: '',
   // Inventario: carpeta donde se guardan las planillas mensuales (vacío = "Inventario" junto a la de rendiciones)
@@ -2027,6 +2027,7 @@ const INV_ITEMS = [
   ['TERMINADOS', 'M. JAMONADA', 'MORTADELA JAMONADA'], ['TERMINADOS', 'JAMON SANDWICH', 'JAMON SANDWICH'], ['TERMINADOS', 'TAPABARRIGA', ''],
   ['TERMINADOS', 'CHULETA AHUMADA', ''], ['TERMINADOS', 'JAMON ACARAMELADO', ''], ['TERMINADOS', 'JAMON AHUMADO', ''],
   ['TERMINADOS', 'CAZUELA', 'CAZUELA AHUMADA'],
+  ['TERMINADOS', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', ''],
   ['CAMARA', 'PECHUGA SADIA POLLO'], ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'FORRO FRICASA'], ['CAMARA', 'PULPA ESTRELLA'], ['CAMARA', 'TOCINO FRIVAR'],
   ['CAMARA', 'TRUTRO ENTERO POLLO'], ['CAMARA', 'PANA AGROSUPER'], ['CAMARA', 'CUERO'], ['CAMARA', 'GORDURA CHICA'], ['CAMARA', 'CHULETA VETADA'],
   ['CAMARA', 'FILETILLO SADIA POLLO'], ['CAMARA', 'PULPA PAMPLONA'],
@@ -2100,7 +2101,7 @@ function invDestinos_() {
 }
 const invSello_ = () => String(PropertiesService.getScriptProperties().getProperty('INV_DEST_V') || '0');
 const ROLES_INV_ = ['BODEGA', 'RENDICION', 'SUPERVISOR'];
-const NOMINA_INV_ = 'v1';
+const NOMINA_INV_ = 'v2';
 /** Deja los productos como la nómina del bodeguero (INV_ITEMS): crea los que faltan, ordena y oculta (sin borrar) los que ya no están. Se corre sola una vez. */
 function aplicarNominaInventario(token) {
   auth_(token, ROLES_INV_);

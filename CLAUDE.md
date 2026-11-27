@@ -965,3 +965,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v225 — Avance de vendedores: también se ve la cobranza, gastos y depósitos (solo frontend: app.js, sw.js)
 - La hoja «Folios anotados» (`abrirAnotados`), que abre la tarjeta del vendedor en Avance, ahora muestra debajo de los folios la cobranza (cliente, RUT, folio, forma de pago, monto), los gastos y los depósitos de efectivo del día de ese vendedor, con su total (`getInspeccion`, sin cambios en el servidor). Solo sintaxis verificada.
+
+## v226 — Costillar de cerdo ahumado env. sin hueso en Cárnicos (requiere pegar APPS_SCRIPT.js COMPLETO y subir sw.js)
+- Producto nuevo «COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO»: en `INV_ITEMS` (TERMINADOS), `CFG.CARNICOS`, bloque Cárnicos de `DESPACHO_PLANILLA` e `INV_EN_KILOS` (en kilos). `NOMINA_INV_` sube a 'v2' para que la migración lo cree (código `?…`) la próxima vez que se abra Inventario. Si Mi DTE lo factura con otro nombre, agregar un par a `ALIAS_PRODUCTOS`. Solo sintaxis verificada.
