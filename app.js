@@ -2273,12 +2273,13 @@ async function vInventario(m) {
         <td data-col="Empezó">${e.inicialEditable ? ip('inicial', '0', e.inicial) : fq(f.inicial)}</td><td class="q dh" data-col="Debería haber">${fq(c.t)}</td>
         <td data-col="${cam ? 'Entra producto' : 'Entra de fábrica'}">${ip('ingreso', '0', e.ingreso)}</td>
         <td data-col="Entrada de fábrica">${ip('ingreso2', '0', e.ingreso2)}</td>
+        ${cam ? '' : `<td data-col="Laminados">${ip('o:LAMINADO', '0', e.otras.LAMINADO || '')}</td><td data-col="Reproceso">${ip('o:REPROCESO', '0', e.otras.REPROCESO || '')}</td>`}
         ${cam ? `<td data-col="Sale a fábrica">${ip('o:FABRICA', '0', e.otras.FABRICA || '')}</td><td data-col="Sale a vendedores">${ip('o:VENDEDORES', '0', e.otras.VENDEDORES || '')}</td>` : ''}
         <td data-col="Conteo físico">${ip('conteo', '—', e.conteo)}</td><td class="df" data-col="Diferencia">${difH(e, c, fq)}</td>
         ${cam ? '' : `<td class="lk" data-col=""><button type="button" class="ghostlink" data-otras="1">${nOtras ? `Otras salidas ${fq(sum(e.otras))} ›` : 'Otras salidas ›'}</button></td>`}</tr>`;
     };
     const cabF = () => contar
-      ? `<tr><th>Producto</th><th>Empezó</th><th>Debería haber</th><th>${cam ? 'Entra producto' : 'Entra de fábrica'}</th><th>Entrada de fábrica</th>${cam ? '<th>Sale a fábrica</th><th>Sale a vendedores</th>' : ''}<th>Conteo físico</th><th>Diferencia</th>${cam ? '' : '<th></th>'}</tr>`
+      ? `<tr><th>Producto</th><th>Empezó</th><th>Debería haber</th><th>${cam ? 'Entra producto' : 'Entra de fábrica'}</th><th>Entrada de fábrica</th>${cam ? '' : '<th>Laminados</th><th>Reproceso</th>'}${cam ? '<th>Sale a fábrica</th><th>Sale a vendedores</th>' : ''}<th>Conteo físico</th><th>Diferencia</th>${cam ? '' : '<th></th>'}</tr>`
       : `<tr><th>Producto</th><th>Empezó</th><th>Entró</th><th>Salió${cam ? '' : ' (vendedores)'}</th>${cam ? '' : '<th>Volvió</th><th>Otras salidas</th>'}<th>Quedan</th><th>Estado</th></tr>`;
     const tabla = sec => { cam = sec === 'CAMARA'; const fs = filtrar(sec); return fs.length ? `<div class="invt"><table>${cabF()}${fs.map(fila).join('')}</table></div>` : ''; };
     const secs = todos ? inv.secciones.map(x => x.id) : [S.secInv];

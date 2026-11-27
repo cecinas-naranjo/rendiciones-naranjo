@@ -974,3 +974,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v228 — Filetillo y pechuga de pollo en Cárnicos (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
 - Productos nuevos «FILETILLO DE POLLO» y «PECHUGA DE POLLO» (caja de 12 un = 3 packs de 4): en `INV_ITEMS` (CONGELADOS, «Congelados y cárnicos»), `CFG.CARNICOS` y el bloque Cárnicos de `DESPACHO_PLANILLA`. `CFG.UNIDADES`: `PACK_VENTA`, pack 4 (el bodeguero cuenta unidades; Despacho muestra también packs). Supuesto: Mi DTE los vende por pack; si se vende por caja, cambiar a pack: 12. `NOMINA_INV_` = 'v4'. No confundir con FILETILLO/PECHUGA SADIA de CAMARA (materia prima). Solo sintaxis verificada.
+
+## v229 — Inventario: columnas «Laminados» y «Reproceso» en Contar y anotar (solo frontend: app.js, sw.js)
+- Pedido del dueño: dos celdas a la vista junto a «Entrada de fábrica» (no en cámara). Son las salidas LAMINADO y REPROCESO de «Otras salidas» (`o:LAMINADO`, `o:REPROCESO` en `est.otras`), así que se guardan igual que antes y siguen apareciendo en la hoja «Otras salidas». Sin cambios en el servidor. Solo sintaxis verificada.
