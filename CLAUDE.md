@@ -959,3 +959,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v223 — Avance de vendedores: la tarjeta se toca y abre la ficha (solo frontend: app.js, style.css, sw.js)
 - En el Resumen, cada tarjeta de «Avance de vendedores» abre `abrirVendedor(usuario)` (folios detallados/por detallar, formas de pago, quién detalló, cobranza, gastos). Solo sintaxis verificada.
+
+## v224 — Avance de vendedores: la tarjeta abre los folios anotados (solo frontend: app.js, sw.js)
+- Corrige v223: al tocar la tarjeta de un vendedor en «Avance de vendedores» se abre `abrirAnotados(usuario)` (los folios que adelantó ese día: estado, Mi DTE, editar/quitar), no la ficha de rendición. Solo sintaxis verificada.
