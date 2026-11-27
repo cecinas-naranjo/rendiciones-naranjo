@@ -985,3 +985,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Caso: vendedor en ruta, sin internet, quedó fuera de la app (el servidor respondió «SESION» —p. ej. tras limpiar sesiones— y el cliente cerraba y no podía volver a entrar sin conexión). Ahora un error `SESION` (salvo «Usuario desactivado») NO llama a `salir`: `sesionVencida()` deja la app abierta con lo guardado en el teléfono, las lecturas salen de la caché (de cualquier edad), lo que se anota va a la cola (`rn_cola`) y la barra roja «Tu sesión venció · toca aquí para ingresar de nuevo» abre `abrirReingreso` (RUT/correo + clave, debe ser la misma persona); al entrar cambia el token, se envía la cola y se refresca. Pantalla de arranque con «Ingresar de nuevo con mi clave». Solo Salir (o usuario desactivado) cierra la sesión.
 - Servidor: `SESION_DIAS` 30 → 365.
 - Limitación: ingresar de nuevo sí necesita internet; pegar el script y limpiar sesiones aún invalida los tokens, pero ya no deja a nadie fuera. Solo sintaxis verificada.
+
+## v232 — Se sacan PECHUGA SADIA POLLO y FILETILLO SADIA POLLO de la cámara (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
+- Salen de `INV_ITEMS` (CAMARA); `NOMINA_INV_` = 'v5': al abrir Inventario la migración los OCULTA (no borra; se pueden mostrar desde «Editar planilla»). Solo sintaxis verificada.

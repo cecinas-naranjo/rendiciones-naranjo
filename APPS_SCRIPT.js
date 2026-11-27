@@ -2028,9 +2028,9 @@ const INV_ITEMS = [
   ['TERMINADOS', 'M. JAMONADA', 'MORTADELA JAMONADA'], ['TERMINADOS', 'JAMON SANDWICH', 'JAMON SANDWICH'], ['TERMINADOS', 'TAPABARRIGA', ''],
   ['TERMINADOS', 'CHULETA AHUMADA', ''], ['TERMINADOS', 'JAMON ACARAMELADO', ''], ['TERMINADOS', 'JAMON AHUMADO', ''],
   ['TERMINADOS', 'CAZUELA', 'CAZUELA AHUMADA'],
-  ['CAMARA', 'PECHUGA SADIA POLLO'], ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'FORRO FRICASA'], ['CAMARA', 'PULPA ESTRELLA'], ['CAMARA', 'TOCINO FRIVAR'],
+  ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'FORRO FRICASA'], ['CAMARA', 'PULPA ESTRELLA'], ['CAMARA', 'TOCINO FRIVAR'],
   ['CAMARA', 'TRUTRO ENTERO POLLO'], ['CAMARA', 'PANA AGROSUPER'], ['CAMARA', 'CUERO'], ['CAMARA', 'GORDURA CHICA'], ['CAMARA', 'CHULETA VETADA'],
-  ['CAMARA', 'FILETILLO SADIA POLLO'], ['CAMARA', 'PULPA PAMPLONA'],
+  ['CAMARA', 'PULPA PAMPLONA'],
   ['CONGELADOS', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', ''],
   ['CONGELADOS', 'FILETILLO DE POLLO', ''], ['CONGELADOS', 'PECHUGA DE POLLO', ''],
   ['CONGELADOS', 'EMPANADA QUESO 16X600', ''], ['CONGELADOS', 'EMPANADA PINO 16X600', ''], ['CONGELADOS', 'EMPANADA QUESO CAMARON', ''],
@@ -2104,7 +2104,7 @@ function invDestinos_() {
 }
 const invSello_ = () => String(PropertiesService.getScriptProperties().getProperty('INV_DEST_V') || '0');
 const ROLES_INV_ = ['BODEGA', 'RENDICION', 'SUPERVISOR'];
-const NOMINA_INV_ = 'v4';
+const NOMINA_INV_ = 'v5';
 /** Deja los productos como la nómina del bodeguero (INV_ITEMS): crea los que faltan, ordena y oculta (sin borrar) los que ya no están. Se corre sola una vez. */
 function aplicarNominaInventario(token) {
   auth_(token, ROLES_INV_);
