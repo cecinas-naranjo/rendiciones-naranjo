@@ -988,3 +988,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v232 — Se sacan PECHUGA SADIA POLLO y FILETILLO SADIA POLLO de la cámara (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
 - Salen de `INV_ITEMS` (CAMARA); `NOMINA_INV_` = 'v5': al abrir Inventario la migración los OCULTA (no borra; se pueden mostrar desde «Editar planilla»). Solo sintaxis verificada.
+
+## v233 — PULPA ECOFRIGO en la cámara de carnes (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
+- Agregado a `INV_ITEMS` (CAMARA, al final); `NOMINA_INV_` = 'v6': al abrir Inventario se crea (o se vuelve a mostrar si ya existía oculto desde v149). Solo sintaxis verificada.
