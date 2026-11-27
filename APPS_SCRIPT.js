@@ -304,7 +304,7 @@ function setup() {
 const API = {
   listarPrecios, guardarPrecios, getAvance, batch, ping, login, cambiarClaveInicial, cambiarMiClave, listarUsuariosAdmin, guardarUsuario, restablecerClave, logout, catalogo, getDespacho, saveDespacho, importarDTE, asignarVendedor,
   misDocumentos, guardarDetalle, guardarDetalleVarios, guardarVarios, reasignarSinVendedor, getCanal, importarDetalle, listarTerminales, asignarTerminal, descuentosPendientes, resolverDescuento, listarMov, guardarMov,
-  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, getHelados, guardarHelados, borrarHelados, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, asignarClienteDoc, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, editarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
+  aplicarNominaInventario, getConfigInventario, guardarConfigInventario, editarCobranza, getCajaChica, guardarCajaChica, efectivoCajaChica, borrarCajaChica, getPozoMonedas, guardarDepositoMonedas, borrarDepositoMonedas, getHelados, guardarHelados, borrarHelados, listarNotasCredito, marcarNotaEmitida, aplicarAdelantoConNC, asignarClienteDoc, listarClientes, listarDevoluciones, guardarDevolucion, borrarDevolucion, asignarDevolucionCliente, completarDevolucion, getConteoEfectivo, guardarConteoEfectivo, cargarCreditos, guardarInformeOrdenado, entrarComo, vendedoresReemplazo, reemplazarA, adelantarFolio, adelantarVarios, listarAdelantos, borrarAdelanto, editarAdelanto, reintentarAdelantos, solicitarAnulacion, listarAnulaciones, anulacionesPendientes, resolverAnulacion, borrarAnulacion, porCobrar, guardarCobro, vincularRut, reintentarRut, generarPlanillaPorCobrar, sincronizarPlanillaCreditos, listarCheques, marcarCheque, borrarMov, getInventario, guardarInventario, getSaldosClientes, agregarProductoInv, generarPlanillaInventario, subirAdjunto, borrarAdjunto, efectivoParaDepositar, guardarDeposito, borrarDeposito, getResumen, getInspeccion, cerrarRendicion, vistaPreviaRendicion, archivoRendicion, reabrirRendicion, historial, getKpis, getSugerido,
 };
 
 function doGet() { return json_({ ok: true, app: CFG.APP_NAME }); }
@@ -1911,6 +1911,30 @@ function guardarMov(token, tabla, fecha, obj) {
     if (tabla === 'COBRANZA' && u.rol === 'VENDEDOR') o.vendedor = u.usuario;
     if (tabla === 'GASTOS' && u.rol === 'VENDEDOR') o.responsable = u.usuario;
     append_(tabla, [o]); return o;
+  });
+}
+
+/** Corrige la forma de pago de una cobranza ya registrada (p. ej. dijo efectivo y fue transferencia). Solo cambia forma, banco y datos del cheque. */
+function editarCobranza(token, id, obj) {
+  const u = auth_(token, MOV_ROLES.COBRANZA);
+  obj = obj || {};
+  if (['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'].indexOf(obj.forma) < 0) throw new Error('Elige cómo pagó: efectivo, transferencia o cheque.');
+  return withLock_(() => {
+    const r = read_('COBRANZA').find(x => String(x.id) === String(id));
+    if (!r) throw new Error('No se encontró el pago. Recarga la pantalla.');
+    assertAbierta_(r.fecha);
+    if (u.rol === 'VENDEDOR' && r.registrado_por !== u.usuario) throw new Error('Solo puedes cambiar tus registros.');
+    const n = Object.assign({}, r);
+    n.forma = obj.forma; n.banco = ''; n.referencia = r.forma === 'CHEQUE' ? '' : (r.referencia || ''); n.cheque_numero = ''; n.cheque_fecha = ''; n.cheque_titular = '';
+    if (obj.forma === 'TRANSFERENCIA') {
+      if (BANCOS.indexOf(obj.banco) < 0) throw new Error('Elige el banco de la transferencia.');
+      n.banco = obj.banco;
+    } else if (obj.forma === 'CHEQUE') {
+      Object.assign(n, datosCheque_(obj)); n.banco = obj.banco;
+    }
+    updateRow_('COBRANZA', r._row, n);
+    Logger.log('editarCobranza ' + id + ' ' + r.forma + ' → ' + n.forma + ' por ' + u.usuario);
+    return true;
   });
 }
 

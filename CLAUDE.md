@@ -991,3 +991,7 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v233 — PULPA ECOFRIGO en la cámara de carnes (requiere pegar APPS_SCRIPT.js COMPLETO; sw.js sube de versión)
 - Agregado a `INV_ITEMS` (CAMARA, al final); `NOMINA_INV_` = 'v6': al abrir Inventario se crea (o se vuelve a mostrar si ya existía oculto desde v149). Solo sintaxis verificada.
+
+## v234 — Editar la forma de pago de una cobranza (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Pedido del dueño: si se anotó efectivo y fue transferencia, poder corregirlo. Cada cobro de «Cobrado hoy» / tabla de Cobranza tiene el botón «Editar» (`editarCobranza(r, alGuardar)` en app.js): elegir Efectivo / Transferencia (banco) / Cheque (datos del cheque). Solo en línea; los pendientes `pend_` no se editan.
+- Servidor: API `editarCobranza(token, id, {forma, banco, cheque_*})`: cambia solo forma, banco y cheque de esa fila de COBRANZA (monto, cliente y folio no cambian); día cerrado no (ADMIN reabre); el vendedor solo edita lo suyo. Queda en el Logger. Solo sintaxis verificada.

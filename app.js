@@ -203,7 +203,7 @@ const claveApi = (fn, args) => fn + '|' + JSON.stringify(args);
 /* v135: tras guardar o borrar algo, las listas que muestran ese dato se piden de nuevo al servidor (no se usa la copia guardada, que aún no lo trae:
    por eso antes «Cobrado hoy»/«Gastos» no mostraban lo recién registrado y al agregar otro aparecía el anterior). */
 const LISTAS_TRAS_ESCRIBIR = /^(getCajaChica|getPozoMonedas|listarMov|porCobrar|efectivoParaDepositar|listarDevoluciones|getConteoEfectivo|listarAdelantos|listarAnulaciones|anulacionesPendientes)\|/;
-const ESCRITURAS_DE_LISTA = new Set(['guardarCajaChica', 'borrarCajaChica', 'guardarDepositoMonedas', 'borrarDepositoMonedas', 'guardarMov', 'borrarMov', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'editarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
+const ESCRITURAS_DE_LISTA = new Set(['guardarCajaChica', 'borrarCajaChica', 'guardarDepositoMonedas', 'borrarDepositoMonedas', 'guardarMov', 'borrarMov', 'editarCobranza', 'guardarCobro', 'guardarDeposito', 'guardarDevolucion', 'borrarDevolucion', 'adelantarFolio', 'borrarAdelanto', 'editarAdelanto', 'solicitarAnulacion', 'borrarAnulacion', 'guardarConteoEfectivo']);
 function purgarListas() { Array.from(CACHE.keys()).forEach(k => { if (LISTAS_TRAS_ESCRIBIR.test(k)) CACHE.delete(k); }); guardarCache(); }
 const FRESCURA = 20e3;      // si lo guardado tiene menos de 20 s no se vuelve a pedir al servidor
 
@@ -3674,11 +3674,14 @@ async function vMov(m, tabla) {
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     ${tabla === 'COBRANZA' ? '</details>' : ''}
     ${simple ? '' : '<div id="ml" style="margin-top:16px"></div>'}`);
+  const botEd = r => tabla === 'COBRANZA' && String(r.id).indexOf('pend_') !== 0 ? `<button class="x" style="min-height:34px;width:auto;padding:0 10px;font-size:13px" data-ed="${r.id}" aria-label="Cambiar forma de pago">Editar</button>` : '';
+  let filas = [];
   function lista(rows) {
+    filas = rows;
     if (simple) {
       $('#ml').innerHTML = rows.length ? `<div class="csec" style="margin-top:4px">Cobrado hoy · ${clp(rows.reduce((a, r) => a + r.monto, 0))}</div>` + rows.map(r =>
         `<div class="hrow"><span class="grow">${esc(r.cliente)}<small>Fact. ${esc(r.folio)} · ${FL[r.forma] || esc(r.forma)}${r._pendiente || String(r.id).indexOf('pend_') === 0 ? ' · en el teléfono' : ''}</small></span><b>${clp(r.monto)}</b>
-        <button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></div>`).join('') : '';
+        ${botEd(r)}<button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></div>`).join('') : '';
       return;
     }
     const cols = campos.map(c => c[0]);
@@ -3686,7 +3689,7 @@ async function vMov(m, tabla) {
       ${rows.map(r => `<tr>${cols.map(k => `<td class="${k === 'monto' ? 'r' : ''}">${k === 'monto' ? clp(r[k]) : k === 'forma' ? (FL[r[k]] || esc(r[k])) : esc(r[k])}</td>`).join('')}
         ${conAdj ? `<td>${chipsAdj(r.adjuntos, tabla, r.id, true)}</td>` : ''}
         <td class="muted">${esc(r.por || '')}</td>
-        <td><button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></td></tr>`).join('')}
+        <td>${botEd(r)}<button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></td></tr>`).join('')}
       </tbody><tfoot><tr>${cols.map(k => `<td class="r">${k === 'monto' ? clp(rows.reduce((a, r) => a + r.monto, 0)) : ''}</td>`).join('')}${conAdj ? '<td></td>' : ''}<td></td><td></td></tr></tfoot></table></div>`
       : '<div class="empty">Sin registros para este día.</div>';
   }
@@ -3713,7 +3716,10 @@ async function vMov(m, tabla) {
     cq.oninput = () => { elegir(null); pintar(); }; cq.onfocus = () => { pintar(); setTimeout(() => { try { cq.scrollIntoView({ block: 'start' }); } catch (e) {} }, 120); };
     cl.onclick = e => { const o = e.target.closest('[data-otro]'); if (o) return elegir({ nombre: cq.value.trim().toUpperCase(), rut: '' }); const b = e.target.closest('[data-i]'); if (b) elegir(cl._xs[+b.dataset.i]); };
   }
-  $('#ml').onclick = async e => { const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
+  $('#ml').onclick = async e => {
+    const ed = e.target.dataset.ed;
+    if (ed) { const r = filas.find(x => String(x.id) === String(ed)); if (r) editarCobranza(r, async () => { olvidarCache(true); purgarListas(); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); }); return; }
+    const id = e.target.dataset.id; if (!id || !confirm('¿Borrar este registro?')) return;
     await api('borrarMov', S.sess.token, tabla, id); lista(await api('listarMov', S.sess.token, tabla, S.fecha)); };
   // cobranza con cheque: se piden sus datos y el banco pasa a ser el del cheque
   const mf = $('#m_forma'), mch = $('#mch');
@@ -4088,6 +4094,31 @@ function sacarCajaChica(fecha0, alOk) {
   };
 }
 /** v171: hoja con campos para anotar un gasto de la caja chica o un depósito de monedas. campos: [{id, label, tipo, ph, valor, opciones}] */
+/** Cambiar cómo pagó un cobro ya registrado (efectivo / transferencia / cheque). */
+function editarCobranza(r, alGuardar) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  let forma = ['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'].indexOf(r.forma) >= 0 ? r.forma : 'EFECTIVO';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Cambiar forma de pago"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px;margin-bottom:4px">Cambiar cómo pagó</div>
+    <div class="muted" style="margin-bottom:10px">${esc(r.cliente)} · Fact. ${esc(r.folio)} · <b>${clp(r.monto)}</b><br>Ahora dice: ${FL[r.forma] || esc(r.forma)}${r.banco ? ' · ' + esc(nombreBanco(r.banco)) : ''}</div>
+    <div class="seg" id="ecF">${['EFECTIVO', 'TRANSFERENCIA', 'CHEQUE'].map(f => `<button type="button" data-f="${f}">${FL[f]}</button>`).join('')}</div>
+    <div id="ecB" style="margin-top:10px" hidden><label class="f" for="ecBs">¿A qué banco?</label><select class="in" id="ecBs">${S.cat.bancos.map(b => `<option value="${esc(b)}" ${b === r.banco ? 'selected' : ''}>${esc(nombreBanco(b))}</option>`).join('')}</select></div>
+    <div id="ecC" style="margin-top:10px" hidden>${camposCheque(r.forma === 'CHEQUE' ? r : null, 'edit')}</div>
+    <div class="row" style="margin-top:14px;gap:8px"><button class="btn ghost" id="ecX" type="button">Cancelar</button><span class="grow"></span><button class="btn cu" id="ecOk" type="button">Guardar cambio</button></div></div></div>`;
+  document.body.appendChild(ov);
+  const pintar = () => { $$('#ecF button', ov).forEach(b => b.classList.toggle('on', b.dataset.f === forma)); $('#ecB', ov).hidden = forma !== 'TRANSFERENCIA'; $('#ecC', ov).hidden = forma !== 'CHEQUE'; if (forma === 'CHEQUE') avisoTipoCheque($('.cheque', ov)); };
+  $('#ecF', ov).onclick = e => { const b = e.target.closest('[data-f]'); if (b) { forma = b.dataset.f; pintar(); } };
+  pintar();
+  const cerrar = () => cerrarHoja(ov); $('#ecX', ov).onclick = cerrar; ov.onclick = e => { if (e.target === ov) cerrar(); };
+  $('#ecOk', ov).onclick = async () => {
+    if (forma === (r.forma) && forma === 'EFECTIVO') return cerrar();
+    const o = { forma };
+    if (forma === 'TRANSFERENCIA') o.banco = $('#ecBs', ov).value;
+    if (forma === 'CHEQUE') { const c = leerCheque($('.cheque', ov)); if (c.error) return toast(c.error, true); Object.assign(o, c.datos); }
+    const b = $('#ecOk', ov), fin = botonOcupado(b, 'Guardando…');
+    try { await api('editarCobranza', S.sess.token, r.id, o); cerrar(); toast('Forma de pago cambiada ✓'); await alGuardar(); } catch (e) { fin(); toast(e.message || 'No se pudo cambiar.', true); }
+  };
+}
 function hojaForm(titulo, detalle, campos, textoOk, alOk) {
   const ov = document.createElement('div'); ov.className = 'ov';
   const campo = c => `<label class="f" for="hf_${c.id}" style="margin-top:10px">${c.label}</label>` + (c.opciones
