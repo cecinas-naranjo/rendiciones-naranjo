@@ -1219,7 +1219,7 @@ function abrirAnotados(vend, alCerrar) {
     <div style="font-weight:700;font-size:18px">Folios anotados</div><div id="anC" class="muted" style="margin:2px 0 8px"></div>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px"><select class="in" id="anF" style="width:auto"><option value="">Todos</option><option value="R">Para revisar</option><option value="E">Esperando Mi DTE</option><option value="A">Detallados</option></select>
       <button class="btn ghost sm" id="anRe" type="button" hidden>Volver a cruzar con Mi DTE</button></div>
-    <div id="anL"></div></div>
+    <div id="anL"></div><div id="anA"></div></div>
     <div class="foot"><button class="btn ghost" id="anX" type="button">Cerrar</button><span class="grow"></span><button class="btn cu" id="anN" type="button">+ Anotar folio</button></div></div>`;
   document.body.appendChild(ov);
   const cerrar = () => { cerrarHoja(ov); if (cambios && alCerrar) alCerrar(); };
@@ -1252,6 +1252,17 @@ function abrirAnotados(vend, alCerrar) {
     const nc = e.target.closest('[data-nc]'); if (nc) { nc.disabled = true; try { const r = await api('aplicarAdelantoConNC', S.sess.token, id); cambios = true; toast('Listo: ' + clp(r.diferencia) + ' quedó como nota de crédito por emitir.'); await cargar(); } catch (x) { toast(x.message || 'No se pudo', true); nc.disabled = false; } return; }
     const b = e.target.closest('[data-del]'); if (!b) return; b.disabled = true;
     try { await api('borrarAdelanto', S.sess.token, id); cambios = true; await cargar(); } catch (x) { toast(x.message || 'No se pudo', true); b.disabled = false; } };
+  // v225: cobranza, gastos y depósitos que registró ese día
+  (async () => {
+    let r; try { r = await api('getInspeccion', S.sess.token, S.fecha, vend); } catch (e) { return; }
+    const v = r && r.vendedores && r.vendedores[0]; if (!v) return;
+    const sec = (tit, ls, linea) => ls && ls.length ? `<div style="margin-top:14px"><div class="row" style="font-weight:700"><span class="grow">${tit} (${ls.length})</span><span>${clp(ls.reduce((a, x) => a + (x.monto || 0), 0))}</span></div>`
+      + ls.map(x => `<div class="dfila" style="align-items:center"><span class="grow">${linea(x)}</span><b>${clp(x.monto)}</b></div>`).join('') + '</div>' : '';
+    const h = sec('Cobranza', v.cobranza, x => `<b>${esc(x.cliente)}</b>${x.rut ? `<span class="rutl">RUT ${esc(x.rut)}</span>` : ''}<div class="muted" style="font-size:.85em">${esc((x.folio ? 'Folio ' + x.folio + ' · ' : '') + textoPago(x))}</div>`)
+      + sec('Gastos', v.gastos, x => `<b>${esc(x.concepto)}</b>${x.respaldo ? `<div class="muted" style="font-size:.85em">Boleta ${esc(x.respaldo)}</div>` : ''}`)
+      + sec('Depósitos de efectivo', v.depositos, x => `<b>${esc(x.banco)}</b>${x.referencia ? `<div class="muted" style="font-size:.85em">Op. ${esc(x.referencia)}</div>` : ''}`);
+    if (h) $('#anA', ov).innerHTML = h;
+  })();
   cargar();
 }
 

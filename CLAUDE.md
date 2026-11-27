@@ -962,3 +962,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v224 — Avance de vendedores: la tarjeta abre los folios anotados (solo frontend: app.js, sw.js)
 - Corrige v223: al tocar la tarjeta de un vendedor en «Avance de vendedores» se abre `abrirAnotados(usuario)` (los folios que adelantó ese día: estado, Mi DTE, editar/quitar), no la ficha de rendición. Solo sintaxis verificada.
+
+## v225 — Avance de vendedores: también se ve la cobranza, gastos y depósitos (solo frontend: app.js, sw.js)
+- La hoja «Folios anotados» (`abrirAnotados`), que abre la tarjeta del vendedor en Avance, ahora muestra debajo de los folios la cobranza (cliente, RUT, folio, forma de pago, monto), los gastos y los depósitos de efectivo del día de ese vendedor, con su total (`getInspeccion`, sin cambios en el servidor). Solo sintaxis verificada.
