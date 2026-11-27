@@ -997,4 +997,4 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - Servidor: API `editarCobranza(token, id, {forma, banco, cheque_*})`: cambia solo forma, banco y cheque de esa fila de COBRANZA (monto, cliente y folio no cambian); día cerrado no (ADMIN reabre); el vendedor solo edita lo suyo. Queda en el Logger. Solo sintaxis verificada.
 
 ## v235 — Botones Editar / borrar de Cobranza alineados (solo frontend: app.js, style.css, sw.js)
-- «Editar» y «×» quedaban de distinto tamaño y desalineados. Ahora van juntos en `.accx` (flex, 34 px de alto), «Editar» es `.edb` (botón blanco con borde) y «×» cuadrado del mismo alto. Solo sintaxis verificada.
+- «Editar» y «×» quedaban de distinto tamaño y desalineados. Ahora van juntos en `.accx` (flex, 34 px de alto), «Editar» es `.cedb` (botón blanco con borde) y «×» cuadrado del mismo alto. Solo sintaxis verificada.

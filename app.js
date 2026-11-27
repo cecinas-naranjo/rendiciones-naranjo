@@ -3674,7 +3674,7 @@ async function vMov(m, tabla) {
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     ${tabla === 'COBRANZA' ? '</details>' : ''}
     ${simple ? '' : '<div id="ml" style="margin-top:16px"></div>'}`);
-  const botEd = r => tabla === 'COBRANZA' && String(r.id).indexOf('pend_') !== 0 ? `<button class="edb" data-ed="${r.id}" aria-label="Cambiar forma de pago">Editar</button>` : '';
+  const botEd = r => tabla === 'COBRANZA' && String(r.id).indexOf('pend_') !== 0 ? `<button class="cedb" data-ed="${r.id}" aria-label="Cambiar forma de pago">Editar</button>` : '';
   let filas = [];
   function lista(rows) {
     filas = rows;
