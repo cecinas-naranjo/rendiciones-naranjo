@@ -980,3 +980,8 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v230 — «Recargar» sin internet ya no borra la copia guardada (solo frontend: app.js, sw.js)
 - Caso: vendedor en ruta sin internet apretó recargar y quedó con «No se pudo cargar»: `actualizarTodo` llamaba `olvidarCache(true)` ANTES de pedir el catálogo; sin red fallaba y las pantallas quedaban sin copia. Ahora pide primero el catálogo y solo si responde borra la caché. Pendiente: `ir()` muestra «Revisa tu conexión» ante cualquier error (también del servidor). Solo sintaxis verificada.
+
+## v231 — La sesión ya no se cierra sola (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
+- Caso: vendedor en ruta, sin internet, quedó fuera de la app (el servidor respondió «SESION» —p. ej. tras limpiar sesiones— y el cliente cerraba y no podía volver a entrar sin conexión). Ahora un error `SESION` (salvo «Usuario desactivado») NO llama a `salir`: `sesionVencida()` deja la app abierta con lo guardado en el teléfono, las lecturas salen de la caché (de cualquier edad), lo que se anota va a la cola (`rn_cola`) y la barra roja «Tu sesión venció · toca aquí para ingresar de nuevo» abre `abrirReingreso` (RUT/correo + clave, debe ser la misma persona); al entrar cambia el token, se envía la cola y se refresca. Pantalla de arranque con «Ingresar de nuevo con mi clave». Solo Salir (o usuario desactivado) cierra la sesión.
+- Servidor: `SESION_DIAS` 30 → 365.
+- Limitación: ingresar de nuevo sí necesita internet; pegar el script y limpiar sesiones aún invalida los tokens, pero ya no deja a nadie fuera. Solo sintaxis verificada.

@@ -659,7 +659,7 @@ function withLock_(fn) {
 
 /* ============================ SESIÓN ============================ */
 
-const SESION_DIAS = 30; // la sesión dura 30 días en el celular: nadie tiene que reingresar cada hora
+const SESION_DIAS = 365; // v231: la sesión dura un año en el celular (los vendedores en ruta no deben quedar fuera sin internet)
 
 /* ---------- claves ----------
    Cada persona entra con su RUT (o correo) y su clave personal; el rol lo asigna la administración. La clave se guarda con sal y

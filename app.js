@@ -285,9 +285,49 @@ async function pedirLote(items) {
   if (n) guardarCache();
   return n;
 }
+let VENCIDA = false;
+/** v231: el servidor ya no reconoce la sesión (p. ej. se limpiaron las sesiones). NO se cierra: lo ya visto sigue disponible, lo que se anota queda
+    en el teléfono y se envía al volver a ingresar con la clave (ver abrirReingreso). Así nadie queda fuera de la app en ruta. */
+function sesionVencida() {
+  if (!VENCIDA) { VENCIDA = true; pintarRed(); toast('Tu sesión venció. Sigue trabajando: lo que anotes se envía cuando vuelvas a ingresar.', true); }
+  else pintarRed();
+}
+function abrirReingreso() {
+  if ($('#reiov')) return;
+  let ult = ''; try { ult = localStorage.getItem('rn_ident') || ''; } catch (e) {}
+  const ov = document.createElement('div'); ov.className = 'ov'; ov.id = 'reiov';
+  ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Ingresar de nuevo"><div class="grip"></div><div class="body">
+    <div style="font-weight:700;font-size:19px">Ingresar de nuevo</div>
+    <p class="muted" style="margin:4px 0 10px">Tus cambios guardados en el teléfono no se pierden: se envían apenas ingreses.</p>
+    <label class="f" for="rid">RUT o correo</label><input id="rid" class="in" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(ult)}">
+    <label class="f" for="rpw" style="margin-top:10px">Clave</label><input id="rpw" class="in pw" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Tu clave"></div>
+    <div class="foot"><button class="btn ghost" id="rcx">Ahora no</button><span class="grow"></span><button class="btn cu" id="rgo">Ingresar</button></div></div>`;
+  document.body.appendChild(ov);
+  $('#rcx', ov).onclick = () => cerrarHoja(ov);
+  const go = async () => {
+    const id = $('#rid', ov).value.trim(), pw = $('#rpw', ov).value;
+    if (!id || !pw) return toast('Escribe tu RUT o correo y tu clave.', true);
+    const fin = botonOcupado($('#rgo', ov), 'Ingresando…');
+    try {
+      const n = await api('login', id, pw, hoyCL());
+      if (n.cambiarClave) { fin(); return toast('Tu clave es temporal: cierra sesión con Salir y entra para crear la tuya.', true); }
+      if (n.usuario !== S.sess.usuario) { fin(); return toast('Ese ingreso es de otra persona. Usa tu propio RUT y clave.', true); }
+      try { localStorage.setItem('rn_ident', id); } catch (e) {}
+      S.sess.token = n.token; try { localStorage.setItem('rn_sess', JSON.stringify(S.sess)); } catch (e) {}
+      VENCIDA = false; CACHE.forEach(e => { e.viejo = true; }); pintarRed(); cerrarHoja(ov); toast('Listo, sesión renovada');
+      setTimeout(sincronizar, 50);
+      if (!S.cat || $('#rei')) iniciar().catch(() => sinConexionInicio()); else ir(S.tab, true);
+    } catch (e) { fin(); }
+  };
+  $('#rgo', ov).onclick = go; $('#rpw', ov).onkeydown = e => { if (e.key === 'Enter') go(); };
+  setTimeout(() => $('#rpw', ov).focus(), 100);
+}
 function errorApi(e) {
   const m = String(e.message || e);
-  if (m.indexOf('SESION') >= 0) salir(true);
+  if (m.indexOf('SESION') >= 0) {
+    if (S.sess && !/desactivado/i.test(m)) return sesionVencida();       // v231: la sesión no se cierra: se sigue trabajando con lo guardado y se vuelve a ingresar con internet
+    return salir(true);
+  }
   toast(m.replace('SESION: ', ''), true);
 }
 
@@ -299,11 +339,12 @@ async function api(fn, ...args) {
   }
   const lectura = LECTURA.has(fn), key = claveApi(fn, args);
   if (lectura && S.leidas) S.leidas.set(key, [fn, args]);       // lo que usa la pantalla actual (para el refresco automático)
-  if (lectura && CACHE.has(key) && (Date.now() - CACHE.get(key).t < 12 * 3600e3 || !EN_LINEA)) {
+  if (lectura && CACHE.has(key) && (Date.now() - CACHE.get(key).t < 12 * 3600e3 || !EN_LINEA || VENCIDA)) {
     const e = CACHE.get(key);
-    if (EN_LINEA && (e.viejo || Date.now() - e.t > FRESCURA)) revalidar(fn, args, key);
+    if (EN_LINEA && !VENCIDA && (e.viejo || Date.now() - e.t > FRESCURA)) revalidar(fn, args, key);
     return superponer(fn, args, copia(e.d));
   }
+  if (VENCIDA && fn !== 'login') { const er = new Error('Tu sesión venció: toca el aviso de arriba para ingresar de nuevo.'); er.red = true; throw er; }
   if (!lectura) olvidarCache(false);
   const fin = trabajando(fn, !lectura);
   try { return superponer(fn, args, copia(await pedir(fn, args, key))); }
@@ -341,7 +382,7 @@ function escribir(fn, args) {
 }
 async function escribir1(fn, args) {
   const resto = args.slice(1), op = idOp(); let enviado = false;
-  if (EN_LINEA && !pendActivos().length) {
+  if (EN_LINEA && !VENCIDA && !pendActivos().length) {
     const key = claveApi(fn, args), fin = trabajando(fn, true);
     try { const r = copia(await pedir(fn, args, key, { op })); olvidarCache(false); if (ESCRITURAS_DE_LISTA.has(fn)) purgarListas(); listo('Guardado ✓ · ya puedes cambiar de pestaña'); return r; }
     catch (e) { if (!e.red) { errorApi(e); throw e; } enviado = true; }        // se cortó: puede haber llegado o no; el reenvío lo comprueba
@@ -349,13 +390,13 @@ async function escribir1(fn, args) {
   }
   PEND.push({ op, fn, args: resto, usuario: S.sess.usuario, t: Date.now(), enviado, error: '' });
   guardarPend(); olvidarCache(false);
-  listo(EN_LINEA ? 'Guardado ✓ · se envía solo, puedes seguir' : 'Guardado en el teléfono ✓ · se envía cuando haya internet');
-  if (EN_LINEA) setTimeout(sincronizar, 50);
+  listo(VENCIDA ? 'Guardado en el teléfono ✓ · se envía cuando vuelvas a ingresar' : EN_LINEA ? 'Guardado ✓ · se envía solo, puedes seguir' : 'Guardado en el teléfono ✓ · se envía cuando haya internet');
+  if (EN_LINEA && !VENCIDA) setTimeout(sincronizar, 50);
   return { _pendiente: true, id: 'pend_' + op };
 }
 let ADEL_UNO = false;
 async function sincronizar() {
-  if (sincronizando || !S.sess || !pendActivos().length) return;
+  if (sincronizando || VENCIDA || !S.sess || !pendActivos().length) return;
   sincronizando = true; pintarRed(); let enviados = 0, rechazados = 0;
   try {
     for (;;) {
@@ -373,7 +414,7 @@ async function sincronizar() {
           guardarPend();
         } catch (e) {
           if (e.red) { grupo.forEach(g => { g.enviado = true; }); guardarPend(); break; }
-          if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; return salir(true); }
+          if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; sesionVencida(); return; }
           if (/desconocid/i.test(String(e.message))) { ADEL_UNO = true; continue; }      // servidor antiguo: uno por uno, como antes
           grupo.forEach(g => { g.error = String(e.message || e).replace('SESION: ', ''); rechazados++; }); guardarPend();
         }
@@ -389,7 +430,7 @@ async function sincronizar() {
           guardarPend();
         } catch (e) {
           if (e.red) { gd.forEach(g => { g.enviado = true; }); guardarPend(); break; }
-          if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; return salir(true); }
+          if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; sesionVencida(); return; }
           if (/desconocid/i.test(String(e.message))) { COLA_UNO = true; continue; }
           gd.forEach(g => { g.error = String(e.message || e).replace('SESION: ', ''); rechazados++; }); guardarPend();
         }
@@ -398,7 +439,7 @@ async function sincronizar() {
       try { await llamar(x.fn, [S.sess.token].concat(x.args), { op: x.op, rep: !!x.enviado }); PEND = PEND.filter(p => p !== x); enviados++; guardarPend(); }
       catch (e) {
         if (e.red) { x.enviado = true; guardarPend(); break; }                      // sigue sin conexión: se intenta más tarde
-        if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; return salir(true); }
+        if (String(e.message).indexOf('SESION') >= 0) { guardarPend(); sincronizando = false; sesionVencida(); return; }
         x.error = String(e.message || e).replace('SESION: ', ''); rechazados++; guardarPend();    // el servidor lo rechazó (p. ej. el día ya se cerró): queda para que se revise
       }
     }
@@ -507,7 +548,8 @@ function pintarRed() {
   const el = $('#redbar'); if (!el) return;
   const n = pendActivos().length, err = pendDe().filter(p => p.error).length, plural = k => k + ' cambio' + (k > 1 ? 's' : '');
   let txt = '', cls = '';
-  if (!EN_LINEA) { txt = 'Sin conexión' + (n ? ' · ' + plural(n) + ' por enviar' : ' · puedes seguir trabajando'); cls = 'off'; }
+  if (VENCIDA && S.sess) { txt = 'Tu sesión venció · toca aquí para ingresar de nuevo' + (n ? ' (' + plural(n) + ' por enviar)' : ''); cls = 'err'; }
+  else if (!EN_LINEA) { txt = 'Sin conexión' + (n ? ' · ' + plural(n) + ' por enviar' : ' · puedes seguir trabajando'); cls = 'off'; }
   else if (sincronizando) { txt = 'Enviando ' + plural(n) + '…'; cls = 'sync'; }
   else if (n) { txt = plural(n) + ' por enviar'; cls = 'sync'; }
   else if (err) { txt = plural(err) + ' no se pudo enviar · tocar para revisar'; cls = 'err'; }
@@ -855,7 +897,8 @@ async function iniciar() {
   const app = $('#app');
   if (S.sess.rol === 'REEMPLAZO') return pantallaReemplazo();       // v203: primero elige a quién reemplaza
   app.innerHTML = `<main>${skeleton(4)}</main>`;
-  S.cat = await api('catalogo', S.sess.token);
+  try { S.cat = await api('catalogo', S.sess.token); }
+  catch (e) { const kc = claveApi('catalogo', [S.sess.token]); if (VENCIDA && CACHE.has(kc)) S.cat = copia(CACHE.get(kc).d); else throw e; }
   S.fecha = S.fecha || fechaGuardada() || hoyCL();
   const tabs = tabsRol();
   S.tab = S.tab && tabs.some(t => t[0] === S.tab) ? S.tab : tabs[0][0];
@@ -897,7 +940,7 @@ async function iniciar() {
   }
   $('#refr').onclick = () => actualizarTodo();
   $('#letra').onclick = cambiarLetra; aplicarLetra();
-  $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => abrirPendientes(); pintarRed();
+  $('#out').onclick = () => salir(); $('#mclv').onclick = abrirMiClave; $('#redbar').onclick = () => VENCIDA ? abrirReingreso() : abrirPendientes(); pintarRed();
   let tFecha = 0;
   const cambiarFecha = f => {       // la fecha y la pantalla cambian juntas: al instante se ve "cargando" y las respuestas del día anterior se descartan
     S.fecha = f; pintarDia();
@@ -3749,11 +3792,12 @@ async function vGastosV(m) {
 /* ---------- arranque ---------- */
 if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.indexOf('PEGA_AQUI') >= 0)
   $('#app').innerHTML = '<div class="login"><img class="logo" src="icon-192.png" alt=""><h1>Falta configurar</h1><p class="lead">Pega la URL de la implementación de Apps Script en <b>config.js</b>.</p></div>';
-else S.sess ? iniciar().catch(e => /SESION/.test(String((e && e.message) || e)) ? salir(true) : sinConexionInicio()) : pantallaLogin();
+else S.sess ? iniciar().catch(() => sinConexionInicio()) : pantallaLogin();
 function sinConexionInicio() {
   $('#app').innerHTML = `<div class="login"><img class="logo" src="icon-192.png" alt="" width="96" height="96"><h1>Sin conexión</h1><p class="lead">No se pudo abrir la app. Tus cambios guardados siguen en el teléfono. Revisa tu internet e intenta de nuevo.</p>
-    <button class="btn cu block" id="rei">Reintentar</button></div>`;
-  $('#rei').onclick = () => iniciar().catch(e => /SESION/.test(String((e && e.message) || e)) ? salir(true) : sinConexionInicio());
+    <button class="btn cu block" id="rei">Reintentar</button>${VENCIDA ? '<button class="btn ghost block" style="margin-top:8px" id="rin">Ingresar de nuevo con mi clave</button>' : ''}</div>`;
+  $('#rei').onclick = () => iniciar().catch(() => sinConexionInicio());
+  if ($('#rin')) $('#rin').onclick = abrirReingreso;
 }
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => {
