@@ -3674,14 +3674,14 @@ async function vMov(m, tabla) {
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn cu" id="ad">Agregar</button></div></div>
     ${tabla === 'COBRANZA' ? '</details>' : ''}
     ${simple ? '' : '<div id="ml" style="margin-top:16px"></div>'}`);
-  const botEd = r => tabla === 'COBRANZA' && String(r.id).indexOf('pend_') !== 0 ? `<button class="x" style="min-height:34px;width:auto;padding:0 10px;font-size:13px" data-ed="${r.id}" aria-label="Cambiar forma de pago">Editar</button>` : '';
+  const botEd = r => tabla === 'COBRANZA' && String(r.id).indexOf('pend_') !== 0 ? `<button class="edb" data-ed="${r.id}" aria-label="Cambiar forma de pago">Editar</button>` : '';
   let filas = [];
   function lista(rows) {
     filas = rows;
     if (simple) {
       $('#ml').innerHTML = rows.length ? `<div class="csec" style="margin-top:4px">Cobrado hoy · ${clp(rows.reduce((a, r) => a + r.monto, 0))}</div>` + rows.map(r =>
         `<div class="hrow"><span class="grow">${esc(r.cliente)}<small>Fact. ${esc(r.folio)} · ${FL[r.forma] || esc(r.forma)}${r._pendiente || String(r.id).indexOf('pend_') === 0 ? ' · en el teléfono' : ''}</small></span><b>${clp(r.monto)}</b>
-        ${botEd(r)}<button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></div>`).join('') : '';
+        <span class="accx">${botEd(r)}<button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></span></div>`).join('') : '';
       return;
     }
     const cols = campos.map(c => c[0]);
@@ -3689,7 +3689,7 @@ async function vMov(m, tabla) {
       ${rows.map(r => `<tr>${cols.map(k => `<td class="${k === 'monto' ? 'r' : ''}">${k === 'monto' ? clp(r[k]) : k === 'forma' ? (FL[r[k]] || esc(r[k])) : esc(r[k])}</td>`).join('')}
         ${conAdj ? `<td>${chipsAdj(r.adjuntos, tabla, r.id, true)}</td>` : ''}
         <td class="muted">${esc(r.por || '')}</td>
-        <td>${botEd(r)}<button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></td></tr>`).join('')}
+        <td><span class="accx">${botEd(r)}<button class="x" style="min-height:34px;width:34px" data-id="${r.id}" aria-label="Borrar">×</button></span></td></tr>`).join('')}
       </tbody><tfoot><tr>${cols.map(k => `<td class="r">${k === 'monto' ? clp(rows.reduce((a, r) => a + r.monto, 0)) : ''}</td>`).join('')}${conAdj ? '<td></td>' : ''}<td></td><td></td></tr></tfoot></table></div>`
       : '<div class="empty">Sin registros para este día.</div>';
   }

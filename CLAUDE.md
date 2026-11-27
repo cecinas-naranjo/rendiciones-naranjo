@@ -995,3 +995,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 ## v234 — Editar la forma de pago de una cobranza (requiere pegar APPS_SCRIPT.js COMPLETO y subir app.js, sw.js)
 - Pedido del dueño: si se anotó efectivo y fue transferencia, poder corregirlo. Cada cobro de «Cobrado hoy» / tabla de Cobranza tiene el botón «Editar» (`editarCobranza(r, alGuardar)` en app.js): elegir Efectivo / Transferencia (banco) / Cheque (datos del cheque). Solo en línea; los pendientes `pend_` no se editan.
 - Servidor: API `editarCobranza(token, id, {forma, banco, cheque_*})`: cambia solo forma, banco y cheque de esa fila de COBRANZA (monto, cliente y folio no cambian); día cerrado no (ADMIN reabre); el vendedor solo edita lo suyo. Queda en el Logger. Solo sintaxis verificada.
+
+## v235 — Botones Editar / borrar de Cobranza alineados (solo frontend: app.js, style.css, sw.js)
+- «Editar» y «×» quedaban de distinto tamaño y desalineados. Ahora van juntos en `.accx` (flex, 34 px de alto), «Editar» es `.edb` (botón blanco con borde) y «×» cuadrado del mismo alto. Solo sintaxis verificada.
