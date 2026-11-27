@@ -2017,7 +2017,6 @@ function borrarAdjunto(token, tabla, id, fileId) {
 // Salidas y retornos de vendedores se leen de DESPACHO (no se ingresan dos veces).
 
 const SECCIONES_INV = [['TERMINADOS', 'Productos terminados', 'KG'], ['CAMARA', 'Cámara de carnes', 'KG'],
-  ['CONGELADOS', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', ''],
   ['CONGELADOS', 'Congelados y cárnicos', 'UN'], ['LAMINADOS', 'Laminados, quesos y verduras', 'UN']];
 
 // nombre en la planilla de inventario → [sección, nombre del producto de venta (si ya existe)]
@@ -2031,6 +2030,7 @@ const INV_ITEMS = [
   ['CAMARA', 'PECHUGA SADIA POLLO'], ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'FORRO FRICASA'], ['CAMARA', 'PULPA ESTRELLA'], ['CAMARA', 'TOCINO FRIVAR'],
   ['CAMARA', 'TRUTRO ENTERO POLLO'], ['CAMARA', 'PANA AGROSUPER'], ['CAMARA', 'CUERO'], ['CAMARA', 'GORDURA CHICA'], ['CAMARA', 'CHULETA VETADA'],
   ['CAMARA', 'FILETILLO SADIA POLLO'], ['CAMARA', 'PULPA PAMPLONA'],
+  ['CONGELADOS', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', ''],
   ['CONGELADOS', 'EMPANADA QUESO 16X600', ''], ['CONGELADOS', 'EMPANADA PINO 16X600', ''], ['CONGELADOS', 'EMPANADA QUESO CAMARON', ''],
   ['CONGELADOS', 'SOPAIPILLA 20X12', 'SOPAIPILLA 20X12X420G'], ['CONGELADOS', 'SOPAIPILLA 20X48', 'SOPAIPILLA 20X48X500G'],
   ['CONGELADOS', 'PASTA CHOCLO 15X1', 'PASTA CHOCLO 1 KILO'], ['CONGELADOS', 'PAPAS FRITAS', 'PAPAS PRE FRITAS 4X2.5KG SUPER CAPITAN'],
