@@ -1360,3 +1360,5 @@ details.dpl .dfolio{padding:6px 0}
 /* v222: resumen de anotados dentro de la hoja de anotar */
 .adres{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;background:#fff}
 .adres .bad{color:var(--bad);font-weight:700}
+/* v223: tarjetas del avance de vendedores tocables */
+.avd .av[data-av]{cursor:pointer}.avd .av[data-av]:hover{border-color:var(--cu)}

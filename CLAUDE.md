@@ -956,3 +956,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 - **El cruce se rige por el N° de folio**: `docDeAdelanto_` busca primero tipo+folio y si no, el mismo folio con otro tipo (prefiere el mismo vendedor; ignora NC y guías). Si el tipo difiere se detalla igual y el adelanto toma el tipo de Mi DTE (nota informativa). `listarAdelantos` y `aplicarAdelantoConNC` usan lo mismo; `listarAdelantos` devuelve también `pagos` y `rut`.
 - **Margen de monto** `CFG.TOLERANCIA_ADELANTO` = 500: hasta $500 de diferencia se aplica sola con el monto de Mi DTE (la diferencia se ajusta en el pago más grande que no sea NC). Sobre $500 queda REVISAR; si lo anotado es MAYOR que Mi DTE la nota avisa «revisa si se cobró de más».
 - Solo sintaxis verificada; nada probado en Apps Script ni en el teléfono.
+
+## v223 — Avance de vendedores: la tarjeta se toca y abre la ficha (solo frontend: app.js, style.css, sw.js)
+- En el Resumen, cada tarjeta de «Avance de vendedores» abre `abrirVendedor(usuario)` (folios detallados/por detallar, formas de pago, quién detalló, cobranza, gastos). Solo sintaxis verificada.
