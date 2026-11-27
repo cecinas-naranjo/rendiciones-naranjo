@@ -977,3 +977,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v229 — Inventario: columnas «Laminados» y «Reproceso» en Contar y anotar (solo frontend: app.js, sw.js)
 - Pedido del dueño: dos celdas a la vista junto a «Entrada de fábrica» (no en cámara). Son las salidas LAMINADO y REPROCESO de «Otras salidas» (`o:LAMINADO`, `o:REPROCESO` en `est.otras`), así que se guardan igual que antes y siguen apareciendo en la hoja «Otras salidas». Sin cambios en el servidor. Solo sintaxis verificada.
+
+## v230 — «Recargar» sin internet ya no borra la copia guardada (solo frontend: app.js, sw.js)
+- Caso: vendedor en ruta sin internet apretó recargar y quedó con «No se pudo cargar»: `actualizarTodo` llamaba `olvidarCache(true)` ANTES de pedir el catálogo; sin red fallaba y las pantallas quedaban sin copia. Ahora pide primero el catálogo y solo si responde borra la caché. Pendiente: `ir()` muestra «Revisa tu conexión» ante cualquier error (también del servidor). Solo sintaxis verificada.

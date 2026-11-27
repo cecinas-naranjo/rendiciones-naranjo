@@ -935,8 +935,9 @@ async function actualizarTodo() {
       let fallo = null; await Promise.all([llamar('ping', []).catch(x => { fallo = x; }), new Promise(r => setTimeout(r, 900))]); if (fallo) throw fallo;
     }
     if (pendActivos().length) await sincronizar();
+    const cat = await api('catalogo', S.sess.token);      // v230: primero se confirma que hay servidor; recién ahí se borra la copia guardada (sin internet no se pierde lo que ya se veía)
     olvidarCache(true);
-    S.cat = await api('catalogo', S.sess.token);
+    S.cat = cat;
     ir(S.tab);
     toast('Información actualizada');
   } catch (e) { toast(e && e.red ? 'Todavía no hay conexión. Se intentará de nuevo solo cuando vuelva.' : 'No se pudo actualizar. Revisa tu conexión.', true); }
