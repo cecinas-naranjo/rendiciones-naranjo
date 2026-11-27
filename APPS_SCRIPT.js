@@ -2017,6 +2017,7 @@ function borrarAdjunto(token, tabla, id, fileId) {
 // Salidas y retornos de vendedores se leen de DESPACHO (no se ingresan dos veces).
 
 const SECCIONES_INV = [['TERMINADOS', 'Productos terminados', 'KG'], ['CAMARA', 'Cámara de carnes', 'KG'],
+  ['CONGELADOS', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', ''],
   ['CONGELADOS', 'Congelados y cárnicos', 'UN'], ['LAMINADOS', 'Laminados, quesos y verduras', 'UN']];
 
 // nombre en la planilla de inventario → [sección, nombre del producto de venta (si ya existe)]
@@ -2027,7 +2028,6 @@ const INV_ITEMS = [
   ['TERMINADOS', 'M. JAMONADA', 'MORTADELA JAMONADA'], ['TERMINADOS', 'JAMON SANDWICH', 'JAMON SANDWICH'], ['TERMINADOS', 'TAPABARRIGA', ''],
   ['TERMINADOS', 'CHULETA AHUMADA', ''], ['TERMINADOS', 'JAMON ACARAMELADO', ''], ['TERMINADOS', 'JAMON AHUMADO', ''],
   ['TERMINADOS', 'CAZUELA', 'CAZUELA AHUMADA'],
-  ['TERMINADOS', 'COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO', ''],
   ['CAMARA', 'PECHUGA SADIA POLLO'], ['CAMARA', 'GORDURA FILETE'], ['CAMARA', 'FORRO FRICASA'], ['CAMARA', 'PULPA ESTRELLA'], ['CAMARA', 'TOCINO FRIVAR'],
   ['CAMARA', 'TRUTRO ENTERO POLLO'], ['CAMARA', 'PANA AGROSUPER'], ['CAMARA', 'CUERO'], ['CAMARA', 'GORDURA CHICA'], ['CAMARA', 'CHULETA VETADA'],
   ['CAMARA', 'FILETILLO SADIA POLLO'], ['CAMARA', 'PULPA PAMPLONA'],
@@ -2070,6 +2070,7 @@ function prepararProductosInventario_() {
 /** Unidad en que el inventario lleva el producto (como la planilla): terminados en unidades salvo longanizas, paté y costillar (kilos). */
 function unidadInv_(p) {
   if (p.seccion === 'TERMINADOS') return CFG.INV_EN_KILOS.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre)) ? 'KG' : 'UN';
+  if (p.seccion === 'CONGELADOS' && CFG.INV_EN_KILOS.some(n => claveInv_(n) === claveInv_(p.nombre_inv || p.nombre))) return 'KG';   // v227: cárnicos en kilos
   if (p.seccion === 'CAMARA') return 'UN';   // v212: la cámara se lleva en unidades SOLO en el inventario (el producto sigue en KG)
   return (SECCIONES_INV.find(x => x[0] === p.seccion) || [])[2] || p.unidad || 'UN';
 }
@@ -2101,7 +2102,7 @@ function invDestinos_() {
 }
 const invSello_ = () => String(PropertiesService.getScriptProperties().getProperty('INV_DEST_V') || '0');
 const ROLES_INV_ = ['BODEGA', 'RENDICION', 'SUPERVISOR'];
-const NOMINA_INV_ = 'v2';
+const NOMINA_INV_ = 'v3';
 /** Deja los productos como la nómina del bodeguero (INV_ITEMS): crea los que faltan, ordena y oculta (sin borrar) los que ya no están. Se corre sola una vez. */
 function aplicarNominaInventario(token) {
   auth_(token, ROLES_INV_);

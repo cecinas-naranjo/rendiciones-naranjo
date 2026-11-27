@@ -968,3 +968,6 @@ Tras cambiar archivos del frontend, subir la versión de `CACHE_NAME` en `sw.js`
 
 ## v226 — Costillar de cerdo ahumado env. sin hueso en Cárnicos (requiere pegar APPS_SCRIPT.js COMPLETO y subir sw.js)
 - Producto nuevo «COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO»: en `INV_ITEMS` (TERMINADOS), `CFG.CARNICOS`, bloque Cárnicos de `DESPACHO_PLANILLA` e `INV_EN_KILOS` (en kilos). `NOMINA_INV_` sube a 'v2' para que la migración lo cree (código `?…`) la próxima vez que se abra Inventario. Si Mi DTE lo factura con otro nombre, agregar un par a `ALIAS_PRODUCTOS`. Solo sintaxis verificada.
+
+## v227 — El costillar sin hueso sale de Productos terminados (requiere pegar APPS_SCRIPT.js COMPLETO y subir sw.js)
+- Regla del dueño: «Productos terminados» (inventario) es solo lo que fabrica la fábrica de cecinas. «COSTILLAR DE CERDO AHUMADO ENV. SIN HUESO» pasó de TERMINADOS a CONGELADOS («Congelados y cárnicos») en `INV_ITEMS`; `unidadInv_` lleva en KG los de CONGELADOS que estén en `INV_EN_KILOS`; `NOMINA_INV_` = 'v3' (al abrir Inventario se oculta el de terminados y se crea el de congelados). Sigue en el bloque Cárnicos de Despacho. Pendiente: tapabarriga, chuleta, cazuela y jamones siguen en TERMINADOS (por la nómina del bodeguero); preguntar si también deben salir. Solo sintaxis verificada.
